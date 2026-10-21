@@ -2,7 +2,7 @@
 # Download the repo archive and run the installer without requiring Git.
 set -euo pipefail
 
-REPO="${ANKI_GEN_REPO:-YOUR_GITHUB_USER/anki-gen-skill}"
+REPO="${ANKI_GEN_REPO:-rweilab/anki-gen-skill}"
 BRANCH="${ANKI_GEN_BRANCH:-main}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

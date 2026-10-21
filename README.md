@@ -1,64 +1,52 @@
 # anki-gen + image-vision
 
-Build evidence-based Anki decks from lecture PDFs, notes, homework, and YouTube
-videos. Text-first by default; diagram images and video stills are opt-in.
+Turn lecture PDFs, notes, homework, and YouTube videos into evidence-based
+Anki decks. Text-first; diagram images and video stills are optional.
 
-The builder creates an `.apkg`. Importing it into Anki is manual.
+The builder produces an `.apkg`. Importing it into Anki is manual.
 
 ## Install
 
 No Git required:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USER/anki-gen-skill/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rweilab/anki-gen-skill/main/bootstrap.sh | bash
 ```
 
-Or click **Code → Download ZIP**, extract it, and run:
+Or use **Code → Download ZIP**, extract it, and run:
 
 ```bash
 bash install.sh
 ```
 
-The installer places both skills in `~/.claude/skills/`, verifies them, and
-backs up any previous install under `~/.claude/skills/.backups/`. It never
-touches `~/.config/anki-gen` or your Anki collection.
+The installer puts both skills in `~/.claude/skills/`, verifies them, and backs
+up any previous install under `~/.claude/skills/.backups/`. It does not touch
+`~/.config/anki-gen` or your Anki collection.
 
 Restart or reload opencode afterwards.
 
 ## Setup
 
+Requires Python 3.10+ and the Anki desktop app.
+
 ```bash
 bash ~/.claude/skills/anki-gen/scripts/setup.sh
 ```
 
-This prints the system packages for your OS and installs the Python libraries
-into your user site. It never runs `sudo`.
+The script prints the system packages for your OS and installs the Python
+libraries into your user site. It never runs `sudo`.
 
-| OS | System packages |
-|---|---|
-| macOS | `brew install python poppler ffmpeg tesseract`; Anki: `brew install --cask anki` |
-| Debian/Ubuntu | `sudo apt install python3 python3-pip python3-venv poppler-utils ffmpeg tesseract-ocr` |
-| Fedora | `sudo dnf install python3 python3-pip poppler-utils ffmpeg tesseract` (FFmpeg may need RPM Fusion) |
-| Arch | `sudo pacman -S python python-pip poppler ffmpeg tesseract` |
-
-Install the Anki desktop app separately. On Linux, use the official AppImage or
-Flathub.
-
-## Doctor
-
-Run this from a terminal and again from inside opencode:
+Then check the install from a terminal **and** from inside opencode:
 
 ```bash
 python3 ~/.claude/skills/anki-gen/scripts/doctor.py
 ```
 
-It reports the version, Python, libraries, PDF/video tools, FTS5, the optional
-Gemini key, and the platform-specific fix for anything missing. Exit code 1
-means the core text path is not ready.
+Exit code 1 means the core text path is not ready. The doctor prints the fix.
 
-## Gemini key (optional)
+## Optional Gemini key
 
-Only needed for handwriting or figures handled by `image-vision`:
+Only needed for handwriting and figures handled by `image-vision`:
 
 ```bash
 mkdir -p ~/.config/anki-gen
@@ -77,14 +65,14 @@ Ask opencode:
 
 > make flashcards from the PDFs in this folder
 
-For a YouTube video or playlist:
+For a video or playlist:
 
 > make flashcards from this playlist
 
-The agent asks once whether to pull diagram stills, selects candidate frames,
-and lists low-confidence frames instead of forcing them into cards. Review is a
-local 1–5 page at `127.0.0.1`; scope is sampled, not the whole deck. Then import
-the `.apkg` with **File → Import** in Anki.
+The agent asks once whether to pull diagram stills, picks candidate frames, and
+lists low-confidence frames rather than forcing them into cards. Review is a
+local 1–5 page on `127.0.0.1`; scope is sampled, not the whole deck. Then use
+**File → Import** in Anki.
 
 ## Update
 
@@ -99,16 +87,15 @@ Your config and Gemini key in `~/.config/anki-gen/` are untouched.
 
 ## Development
 
-For a symlinked working copy, keep the real folders in a repo and symlink them
-into the skills directory:
+Keep the real folders in the repo and symlink them into the skills directory:
 
 ```bash
 ln -s ~/repos/anki-gen-skill/anki-gen ~/.claude/skills/anki-gen
 ln -s ~/repos/anki-gen-skill/image-vision ~/.claude/skills/image-vision
 ```
 
-Use `git pull` to update. Do **not** run `install.sh` on a symlinked checkout;
-it would replace the symlinks with copies.
+Update with `git pull`. Do **not** run `install.sh` on a symlinked checkout; it
+would replace the symlinks with copies.
 
 ## Notes
 
