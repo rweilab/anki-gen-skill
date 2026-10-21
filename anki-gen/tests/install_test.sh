@@ -15,7 +15,7 @@ printf 'test-key\n' > "$W/home/.config/anki-gen/gemini.key"
 
 run_install() {
   HOME="$W/home" ANKI_GEN_SKILLS_DIR="$W/home/.claude/skills" \
-    bash "$W/stage/install.sh" >/dev/null
+    bash "$W/stage/install.sh" --no-setup >/dev/null
 }
 run_install
 test -f "$W/home/.claude/skills/anki-gen/SKILL.md" || exit 1

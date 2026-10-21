@@ -10,26 +10,27 @@ the macOS block is the supported route because GUI-launched opencode sees the
 user site.
 
 ```bash
-# macOS
-brew install python poppler pandoc ghostscript
+# setup.sh does this automatically.
+# macOS (Homebrew must already be installed)
+brew install python poppler pandoc ghostscript mupdf-tools ffmpeg tesseract
 "$(brew --prefix)/bin/python3" -m pip install --user --break-system-packages \
-  anki pymupdf pillow beautifulsoup4
-brew install --cask anki            # desktop app, for manual .apkg import
+  -r requirements.txt
 
-# Linux
-python3 -m pip install --user anki pymupdf pillow beautifulsoup4 yt-dlp
-# Fedora: sudo dnf install poppler-utils ffmpeg tesseract
+# Linux (setup.sh uses sudo for the package step)
+sudo apt install python3 python3-pip poppler-utils pandoc \
+  ghostscript mupdf-tools ffmpeg tesseract-ocr
+python3 -m pip install --user --break-system-packages -r requirements.txt
 
-# Optional video frames (macOS example)
-# brew install ffmpeg tesseract
-# python3 -m pip install --user --break-system-packages yt-dlp
+# The Anki desktop app is separate and never installed by this skill.
 ```
 
-`scripts/setup.sh` prints the system package commands for macOS, Debian/Ubuntu,
-Fedora, or Arch and installs the Python libraries into the user site. It never
-runs sudo. `scripts/setup_macos.sh` is a compatibility wrapper. `scripts/doctor.py`
-checks the result and prints platform-specific fixes. `INSTALL.md` in the handoff
-zip is the one-page user guide.
+`scripts/setup.sh` installs only the missing system packages for macOS,
+Debian/Ubuntu, Fedora, or Arch, installs the Python libraries into the user site,
+then runs the doctor. It never installs Homebrew or Anki. On macOS a missing
+Homebrew stops with one install line; on Linux the package step prompts for
+sudo. `scripts/setup_macos.sh` is a compatibility wrapper.
+`scripts/doctor.py` checks the result and prints platform-specific fixes.
+`INSTALL.md` in the handoff zip is the one-page user guide.
 
 **`anki` is required for every build** — the builder creates the collection with Anki's own library,
 which is what makes the package one Anki will open. **No `genanki`**: it is imported by nothing and
@@ -86,9 +87,10 @@ images go in the review comment.
 
 `bash scripts/package_handoff.sh [out.zip]` builds a zip containing both skills
 (`anki-gen`, `image-vision`), `install.sh`, `INSTALL.md`, and `VERSION` at the root.
-The user extracts it and runs `bash install.sh` (or asks opencode to install it),
-then `bash ~/.claude/skills/anki-gen/scripts/setup.sh`. Re-running a newer zip
-upgrades with a timestamped backup under `~/.claude/skills/.backups/`. See `HANDOFF.md`/`INSTALL.md`.
+The user extracts it and runs `bash install.sh` (or asks opencode to install it).
+The installer also installs dependencies and runs the doctor. Re-running a newer
+zip upgrades with a timestamped backup under `~/.claude/skills/.backups/`. See
+`HANDOFF.md`/`INSTALL.md`.
 
 ## Snapshots
 

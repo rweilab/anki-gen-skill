@@ -292,8 +292,15 @@ code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$URL" || true)"
 [ "$code" = "200" ] || fail "GET / returned $code, expected 200"
 pass "GET / 200"
 
-curl -s -m 3 "$URL" | grep -q 'const CARDS' || fail "page is missing the CARDS payload"
-pass "page carries the card payload"
+PAGE_HTML="$(curl -s -m 3 "$URL")" || fail "GET / page failed"
+page_has() { case "$PAGE_HTML" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
+page_has 'const CARDS' || fail "page is missing the CARDS payload"
+# Markers for the finish-ready and done screens.
+for needle in 'function allMarked' 'id="finish-review"' '--finish-bg' "You're done!" \
+              'id="confetti"' 'function tryClose' 'setTimeout(tryClose'; do
+  page_has "$needle" || fail "page is missing $needle"
+done
+pass "page carries cards and the finish/done UI"
 
 code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' "${URL}media/media/pixel.png" || true)"
 [ "$code" = "200" ] || fail "media route returned $code"
@@ -334,6 +341,14 @@ pass "hardening checks"
 
 python3 "$ROOT/tests/video_hardening.py" || fail "video hardening"
 pass "video hardening"
+
+# The zip ships scripts/handoff/install.sh; keep it identical to the repo copy.
+ROOT_INSTALL="$(dirname "$ROOT")/install.sh"
+if [ -f "$ROOT_INSTALL" ]; then
+  diff -q "$ROOT_INSTALL" "$SCRIPTS/handoff/install.sh" >/dev/null \
+    || fail "root and handoff installers differ"
+fi
+pass "installer copies match"
 
 bash "$ROOT/tests/install_test.sh" || fail "installer/upgrade"
 pass "installer/upgrade"

@@ -18,6 +18,7 @@ import os
 import platform
 import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -63,13 +64,49 @@ def has_module(name: str) -> bool:
         return False
 
 
+def anki_app() -> str | None:
+    """Find the desktop app even when it was dragged into Applications by hand."""
+    if os_id() == "macos":
+        candidates = (Path("/Applications/Anki.app"),
+                      Path.home() / "Applications/Anki.app")
+        for path in candidates:
+            if path.exists():
+                return str(path)
+        mdfind = shutil.which("mdfind")
+        if mdfind:
+            try:
+                out = subprocess.run([mdfind, "kMDItemFSName == 'Anki.app'"],
+                                     capture_output=True, text=True, timeout=5)
+                for line in out.stdout.splitlines():
+                    if line.strip():
+                        return line.strip()
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return None
+    path = shutil.which("anki")
+    if path:
+        return path
+    flatpak = shutil.which("flatpak")
+    if flatpak:
+        try:
+            out = subprocess.run([flatpak, "list", "--app", "--columns=application"],
+                                 capture_output=True, text=True, timeout=5)
+            if "net.ankiweb.Anki" in out.stdout:
+                return "flatpak"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return None
+
+
 def line(label: str, ok: bool, detail: str, fix: str = "", core: bool = False,
          warn_only: bool = False) -> bool:
     mark = "ok   " if ok else ("warn " if warn_only else "MISS ")
     print(f"{mark} {label:<30} {detail}")
     if not ok and fix:
         print(f"       fix: {fix}")
-    return ok or (warn_only) or not core
+    if ok or warn_only:
+        return True
+    return not core
 
 
 def main() -> int:
@@ -80,6 +117,7 @@ def main() -> int:
     core_ok = True
 
     py_ok = sys.version_info >= (3, 10)
+    # `&=` runs every check (no short-circuit) and keeps any failure.
     core_ok &= line("Python >= 3.10", py_ok, sys.version.split()[0],
                     pkg_fix("python3"), core=True)
     line("python3 path", True, sys.executable, warn_only=True)
@@ -94,7 +132,8 @@ def main() -> int:
         ("PIL", "Pillow (image downscale)", "pip install --user --break-system-packages pillow", False),
         ("bs4", "beautifulsoup4 (web images)", "pip install --user --break-system-packages beautifulsoup4", False),
     ):
-        core_ok &= line(label, has_module(mod), "importable" if has_module(mod) else "missing",
+        found = has_module(mod)
+        core_ok &= line(label, found, "importable" if found else "missing",
                         fix, core=core, warn_only=not core)
 
     for cmd, label, fix, warn in (
@@ -134,24 +173,22 @@ def main() -> int:
          "copy image-vision into ~/.claude/skills/ (for handwritten/figures)",
          warn_only=True)
 
+    anki_detail = anki_app()
+    anki_fix = "install Anki desktop separately for manual .apkg import"
     if os_id() == "macos":
-        anki_app = Path("/Applications/Anki.app")
-        anki_ok = anki_app.exists()
-        anki_detail = str(anki_app) if anki_ok else "not installed"
-        anki_fix = "brew install --cask anki (the pip 'anki' library is not the app)"
-    else:
-        anki_path = shutil.which("anki")
-        anki_ok = bool(anki_path)
-        anki_detail = anki_path or "not installed"
-        anki_fix = "install Anki desktop separately for manual .apkg import"
-    line("Anki desktop (manual import)", anki_ok, anki_detail, anki_fix,
-         warn_only=True)
+        anki_fix += " (brew install --cask anki)"
+    line("Anki desktop (manual import)", bool(anki_detail),
+         anki_detail or "not installed", anki_fix, warn_only=True)
 
     key_env = bool(os.environ.get("GEMINI_API_KEY"))
     key_file = Path.home() / ".config" / "anki-gen" / "gemini.key"
     key_ok = key_env or key_file.is_file()
-    where = ("env" if key_env else
-             (str(key_file) if key_file.is_file() else "not set"))
+    if key_env:
+        where = "env"
+    elif key_file.is_file():
+        where = str(key_file)
+    else:
+        where = "not set"
     line("Gemini key (images/handwriting)", key_ok, where,
          "set GEMINI_API_KEY, or write ~/.config/anki-gen/gemini.key (chmod 600)",
          warn_only=True)

@@ -14,39 +14,45 @@ bash install.sh
 ```
 
 The installer stages both skills, verifies them, backs up existing installs,
-and replaces them. It never touches `~/.config/anki-gen` or your decks.
+replaces them, installs missing dependencies, and runs the doctor. It never
+touches `~/.config/anki-gen` or your decks, and it never installs Homebrew or
+Anki.
 
 Restart opencode (or reload skills) afterwards.
 
 ## Setup
 
+The installer already did this. To re-run it:
+
 ```bash
 bash ~/.claude/skills/anki-gen/scripts/setup.sh
 ```
 
-This prints the system package commands for your OS and installs the Python
-libraries into the user site. It **never runs sudo**.
+It installs only the missing system and Python packages, then runs the doctor
+silently. macOS needs Homebrew already installed; Linux asks for sudo once.
+`--print-only` shows the commands without changing anything.
 
-| OS | System packages (printed by setup) |
+The Anki desktop app is separate and never installed by this skill. It is only
+needed to import the finished `.apkg`.
+
+| OS | System packages setup installs when missing |
 |---|---|
-| macOS | `brew install python poppler ffmpeg tesseract`; Anki: `brew install --cask anki` |
-| Debian/Ubuntu | `sudo apt install python3 python3-pip python3-venv poppler-utils ffmpeg tesseract-ocr` |
-| Fedora | `sudo dnf install python3 python3-pip poppler-utils ffmpeg tesseract` (FFmpeg may need RPM Fusion) |
-| Arch | `sudo pacman -S python python-pip poppler ffmpeg tesseract` |
-
-Install the Anki desktop app separately. Linux: official AppImage or Flathub.
+| macOS | `python poppler pandoc ghostscript mupdf-tools ffmpeg tesseract` |
+| Debian/Ubuntu | `python3 python3-pip poppler-utils pandoc ghostscript mupdf-tools ffmpeg tesseract-ocr` |
+| Fedora | `python3 python3-pip poppler-utils pandoc ghostscript mupdf-tools ffmpeg tesseract` |
+| Arch | `python python-pip poppler pandoc ghostscript mupdf-tools ffmpeg tesseract` |
 
 ## Doctor
 
-Run it from Terminal **and** from inside opencode:
+The installer runs it automatically. To check again:
 
 ```bash
 python3 ~/.claude/skills/anki-gen/scripts/doctor.py
 ```
 
 It reports the version, Python, libraries, PDF/video tools, FTS5, the Gemini key,
-and the platform-specific fix for anything missing. Exit 1 means the core text
-path is not ready.
+the Anki app, and the platform-specific fix for anything missing. Exit 1 means
+the core text path is not ready.
 
 If a GUI-launched opencode reports the wrong Python, launch opencode from a
 terminal or use the Python/user site that the doctor sees.

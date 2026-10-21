@@ -1,9 +1,39 @@
 # Changelog
 
-Versioned history: v1.0 is the base build before macOS adjustments, v1.1 adds
-the macOS handoff zip, v1.2 is post-handoff work, and v1.3 adds video sources and
-shipping/portability. Numbers below are measured snapshots, not a controlled A/B
-unless stated.
+Newest first. Keep the index to one line per release; details live below.
+
+- **v1.3.1** — One-command install and web review polish
+- **v1.3** — Video sources and shipping
+- **v1.2** — Review fidelity, guards, and token discipline
+- **v1.1** — macOS handoff kit
+- **v1.0** — Base build
+
+## v1.3.1 — One-command install and review polish
+
+### Install
+- `install.sh` now runs `setup.sh` and the doctor automatically after installing
+  the skills. `--no-setup` skips dependency work.
+- `setup.sh` installs only the missing system packages: Homebrew formulae on
+  macOS, or apt/dnf/pacman with sudo on Linux. It installs the Python libraries
+  and runs the doctor, printing doctor output only when a core check fails.
+- Homebrew is never installed. If it is missing on macOS, setup stops with one
+  install line.
+- Anki is never installed. Detection now covers `/Applications`, `~/Applications`
+  and Spotlight on macOS, plus PATH and Flatpak on Linux, so an existing app is
+  not reported as missing.
+- `bootstrap.sh` stays a documented three-step downloader and passes flags
+  through to `install.sh`.
+- `smoke.sh` fails if the repo installer and the handoff installer differ.
+- Install docs describe the one-command flow.
+
+### Review page
+- The Finish button highlights once every card is marked, with separate Gruvbox
+  Light (`#076678`/`#fbf1c7`) and Dark (`#83a598`/`#1d2021`) colors and a single
+  gentle nudge. Reduced-motion disables the nudge.
+- Saving the review now shows a done screen with a checkmark, a little confetti,
+  a "tell your agent: done" instruction, and a Close tab button. It waits a few
+  seconds, then tries to close the tab; if the browser blocks that, it says so
+  and gives the Cmd+W / Ctrl+W shortcut.
 
 ## v1.3 — Video sources and shipping
 
@@ -50,7 +80,7 @@ unless stated.
 - `package_handoff.sh` includes `VERSION`, `requirements.txt`, `setup.sh`, and
   the rewritten installer; no zip is built by this change.
 
-## v1.2 — Post-handoff work
+## v1.2 — Review fidelity, guards, and token discipline
 
 ### Changes (before → after)
 

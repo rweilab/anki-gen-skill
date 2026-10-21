@@ -4,13 +4,15 @@ This file is for maintainers/agents changing the skill; it is not loaded during 
 normal deck run.
 
 - **Every behavior, script, schema, reference, packaging, or install change gets a
-  changelog entry under the current v1.3 section. Do not bump `VERSION` or create a
-  new version unless the user explicitly says so.** Do not leave a change only in
-  code or docs.
-- **Run `bash scripts/smoke.sh`.** It includes the changelog/version check,
-  package/shipping manifest check, negative fixtures, golden deck, sabotage
-  probes, video fixtures, and installer test. Run it after every changelog or
-  packaging change.
+  changelog entry under the section matching `VERSION`. Do not bump `VERSION` or
+  create a new version unless the user explicitly says so.** Do not leave a change
+  only in code or docs.
+- **Run `bash scripts/smoke.sh` for behavior, script, schema, packaging, or test
+  changes.** It includes the changelog/version check, package/shipping manifest
+  check, negative fixtures, golden deck, sabotage probes, video fixtures, and
+  installer test.
+- **Docs-only changes do not need the full smoke.** For `CHANGELOG.md`/`VERSION`,
+  run `python3 scripts/changelog_check.py`; for prose only, a diff check is enough.
 - **Do not silently rewrite hard-earned rules or validators.** Fold new lessons
   into the rule they belong to; keep the why.
 - **No zip/package rebuild unless the user asks.** `package_handoff.sh` is ready.

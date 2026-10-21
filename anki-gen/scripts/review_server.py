@@ -270,6 +270,8 @@ APP_CSS = """
   --muted:#928374;       /* gray */
   --red:#9d0006; --green:#79740e; --yellow:#b57614; --blue:#076678;
   --purple:#8f3f71; --aqua:#427b58; --orange:#af3a03;
+  /* Finish-ready state: gruvbox faded blue on light. */
+  --finish-bg:#076678; --finish-fg:#fbf1c7;
 }
 
 /* ---------------------------------------------------------------------- dark
@@ -305,6 +307,8 @@ APP_CSS = """
   --red:#fb4934; --green:#b8bb26; --yellow:#fabd2f; --blue:#83a598;
   --purple:#d3869b; --aqua:#8ec07c; --orange:#fe8019;
   --on-accent:#1d2021;   /* the accent fills are bright here, so their text is dark */
+  /* Finish-ready state: gruvbox bright blue on dark. */
+  --finish-bg:#83a598; --finish-fg:#1d2021;
 }
 /* The sheet keeps the PAGE colour in dark mode, not the panel colour: the card it
    holds is styled by the deck (#2b2b2e in its night rules), and gruvbox layers
@@ -339,6 +343,11 @@ aside h1{font-size:0.8125rem;margin:0 0 8px;font-weight:600;letter-spacing:.02em
   padding:6px 12px;font-size:0.8125rem;color:var(--fg);cursor:pointer;min-width:4.125rem;
   display:inline-flex;align-items:center;justify-content:center}
 .hdrbtn:hover{background:var(--raised)}
+.hdrbtn.ready{background:var(--finish-bg);border-color:var(--finish-bg);color:var(--finish-fg);
+  font-weight:600;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--finish-bg);
+  animation:finish-nudge .9s ease-in-out 1}
+@keyframes finish-nudge{0%,100%{transform:none}30%{transform:translateY(-3px)}60%{transform:translateY(1px)}}
+@media (prefers-reduced-motion:reduce){.hdrbtn.ready{animation:none}}
 #themebtn{min-width:34px;padding:6px 8px}
 .icon{width:16px;height:16px;display:block}
 /* The button shows the theme you would get, not the one you are in: a moon while the page
@@ -427,8 +436,8 @@ main{display:flex;flex-direction:column;overflow:hidden}
 .overlay{position:fixed;inset:0;background:rgba(60,56,54,.55);display:none;
   align-items:center;justify-content:center;padding:20px}
 .overlay.on{display:flex}
-.summary{background:var(--panel);border:1px solid var(--border-strong);border-radius:10px;
-  max-width:44em;width:100%;max-height:86vh;overflow-y:auto;padding:20px 24px}
+.summary{position:relative;background:var(--panel);border:1px solid var(--border-strong);
+  border-radius:10px;max-width:44em;width:100%;max-height:86vh;overflow-y:auto;padding:20px 24px}
 .summary h3{margin:0 0 4px;font-size:1.0625rem}
 .summary p{color:var(--fg-dim);font-size:0.8125rem;margin:0 0 14px}
 .summary table{border-collapse:collapse;width:100%;font-size:0.8125rem;margin:0 0 16px}
@@ -444,6 +453,18 @@ main{display:flex;flex-direction:column;overflow:hidden}
 .summary button{background:var(--aqua);border:0;border-radius:6px;color:var(--on-accent);
   padding:9px 16px;font-size:0.875rem;cursor:pointer}
 .summary button:disabled{background:var(--border-strong);cursor:default}
+.done{text-align:center;padding:18px 0 6px}
+.done-check{width:58px;height:58px;margin:0 auto 10px;border-radius:50%;
+  background:var(--aqua);color:var(--on-accent);font-size:34px;line-height:58px;font-weight:700}
+.done h3{font-size:1.25rem;margin:0 0 6px}
+.done p{color:var(--fg-dim);font-size:0.875rem;margin:0 0 16px}
+.done b{color:var(--fg)}
+.done-check,.done h3,.done p,.done button{position:relative;z-index:1}
+.confetti{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+.confetti i{position:absolute;top:-12px;width:6px;height:10px;border-radius:1px;
+  animation:confetti-fall 1.6s ease-in forwards}
+@keyframes confetti-fall{to{transform:translateY(70vh) rotate(540deg);opacity:0}}
+@media (prefers-reduced-motion:reduce){.confetti{display:none}}
 """
 
 APP_JS = r"""
@@ -465,6 +486,21 @@ let cur = 0, flipped = false;
 // Same identity order as Store.row_key: hash, note number, then old index.
 function cardKey(c){
   return c.hash ? String(c.hash) : (c.n !== undefined ? String(c.n) : String(c.i));
+}
+
+function allMarked(){
+  return CARDS.every(c=>{
+    const r = STATE[cardKey(c)] || {};
+    return RECALL ? typeof r.recall === 'boolean' : r.score != null;
+  });
+}
+
+function markFinishReady(){
+  const ready = allMarked();
+  const btn = el('#finish-review');
+  if (!btn) return;
+  btn.classList.toggle('ready', ready);
+  btn.title = ready ? 'All cards marked — finish the review' : '';
 }
 
 function typeset(node){
@@ -505,6 +541,7 @@ function paint(){
   // loses track of where they are.
   const curBtn = document.querySelector('.idx button[data-cur="1"]');
   if (curBtn && curBtn.scrollIntoView) curBtn.scrollIntoView({block: 'nearest'});
+  markFinishReady();
 }
 
 function buildIndex(){
@@ -709,19 +746,45 @@ function done(){
   fetch('/finish', {method:'POST', headers:{'Content-Type':'application/json'},
                     body: JSON.stringify({deck_note: note})}).catch(()=>{});
 
-  const btn = el('#finish-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saved'; }
-  el('#sum-lead').textContent =
-    'Saved. Nothing is applied to the deck until you tell the chat you are done.';
+  el('#summary').innerHTML = `
+    <div class="done" role="status">
+      <div class="confetti" id="confetti"></div>
+      <div class="done-check" aria-hidden="true">✓</div>
+      <h3>You're done!</h3>
+      <p>Go back to opencode and tell your agent: <b>done</b>.</p>
+      <button onclick="tryClose()">Close tab</button>
+      <p id="close-hint">The review is saved. This tab will close in a few seconds.</p>
+    </div>`;
+  confetti();
+  // Give the reader a moment to see the message, then try to close the tab.
+  // Browsers may refuse; the button and hint stay if they do.
+  setTimeout(tryClose, 3000);
+}
 
-  // Browsers only honour window.close() for windows a script opened. This tab was
-  // navigated to, so it is normally ignored. Try anyway, then say so plainly
-  // instead of leaving a button that appears to have done nothing.
+function confetti(){
+  const box = el('#confetti');
+  if (!box || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['--red','--yellow','--blue','--green','--aqua','--orange'];
+  for (let i=0; i<14; i++) {
+    const bit = document.createElement('i');
+    bit.style.left = (Math.random()*100) + '%';
+    bit.style.background = 'var(' + colors[i % colors.length] + ')';
+    bit.style.animationDelay = (Math.random()*0.4) + 's';
+    bit.style.animationDuration = (1.2 + Math.random()*0.8) + 's';
+    box.appendChild(bit);
+  }
+}
+
+function tryClose(){
+  // Browsers may refuse to close a tab they did not open. Say so if it stays open.
   window.close();
   setTimeout(()=>{
-    el('#close-hint').textContent =
-      "This tab can't close itself — browsers only allow that for windows a script opened. "
-      + "Close it yourself, then tell the chat you're done.";
+    if (window.closed) return;
+    const hint = el('#close-hint');
+    if (hint) {
+      hint.textContent = 'The browser blocked the automatic close. '
+        + 'Press Cmd+W on macOS or Ctrl+W to close this tab.';
+    }
   }, 300);
 }
 
@@ -809,7 +872,7 @@ window.MathJax = {
         <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       </button>
-      <button class="hdrbtn" onclick="finish()">Finish</button>
+      <button class="hdrbtn" id="finish-review" onclick="finish()">Finish</button>
     </div>
     <div class="counts"><span id="cardno"></span><span class="sep">&middot;</span><span id="count"></span></div>
   </div>
@@ -861,7 +924,7 @@ __LEAD__
 </main>
 
 <div class="overlay" id="overlay">
-  <div class="summary">
+  <div class="summary" id="summary">
     <h3>Review complete</h3>
     <p id="sum-lead">Answers are saved as you go, and nothing is applied to the deck until
        you tell the chat you are done.</p>
@@ -871,7 +934,7 @@ __LEAD__
       thing card by card</span>
       <textarea id="decknote" placeholder="e.g. these fronts lean on labels I invented; use the course's own terms"></textarea>
     </label>
-    <button id="finish-btn" onclick="done()">Save and close</button>
+    <button id="save-close" onclick="done()">Save and close</button>
     <p id="close-hint"></p>
   </div>
 </div>

@@ -19,30 +19,31 @@ Or use **Code → Download ZIP**, extract it, and run:
 bash install.sh
 ```
 
-The installer puts both skills in `~/.claude/skills/`, verifies them, and backs
-up any previous install under `~/.claude/skills/.backups/`. It does not touch
+The installer puts both skills in `~/.claude/skills/`, verifies them, backs up
+any previous install under `~/.claude/skills/.backups/`, installs the missing
+system and Python dependencies, and runs the doctor. It does not touch
 `~/.config/anki-gen` or your Anki collection.
+
+Homebrew and the Anki desktop app are never installed. On macOS, Homebrew must
+already be present if a system tool is missing. On Linux, package installation
+uses `sudo` and asks for your password once.
 
 Restart or reload opencode afterwards.
 
 ## Setup
 
-Requires Python 3.10+ and the Anki desktop app.
+The install command already does this. To re-run it later:
 
 ```bash
 bash ~/.claude/skills/anki-gen/scripts/setup.sh
 ```
 
-The script prints the system packages for your OS and installs the Python
-libraries into your user site. It never runs `sudo`.
+It installs only the missing system tools and Python libraries, then runs the
+doctor silently. You only see the full doctor output if a core check fails.
+`--print-only` shows the commands without changing anything.
 
-Then check the install from a terminal **and** from inside opencode:
-
-```bash
-python3 ~/.claude/skills/anki-gen/scripts/doctor.py
-```
-
-Exit code 1 means the core text path is not ready. The doctor prints the fix.
+The Anki desktop app is only needed to import the finished `.apkg`; it is not a
+build dependency and this skill never installs it.
 
 ## Optional Gemini key
 
