@@ -14,9 +14,9 @@ inputs. See `AGENTS.md`.
 ## Changelog discipline
 
 Every behavior, script, schema, reference, or packaging change gets an entry
-under the current v1.3 section. Do not bump `VERSION` unless the user explicitly
-asks. `scripts/smoke.sh` runs `scripts/changelog_check.py`, which fails if
-`VERSION` and the latest changelog section disagree or the section is empty.
+under the section matching `VERSION`. Do not bump `VERSION` unless the user
+explicitly asks. `scripts/smoke.sh` runs `scripts/changelog_check.py`, which fails
+if `VERSION` and the latest changelog section disagree or the section is empty.
 See `AGENTS.md`.
 
 ## What the experimental skill tried to do

@@ -29,6 +29,9 @@ missing one is an **error**, including `deck`. **`cloze: true`** is required on 
   Paths are relative to the media root (default: the directory holding cards.json), and the
   files are bundled only with `build_apkg.py --media --media-root <root>`.
 
+**New-card order** is first-appearance topic, then `tier_zero`, then L1/L2; L3/Procedure
+keep authored order. Anki's New Card Sort Order can override it.
+
 ---
 
 ## Card shapes (the templates)

@@ -30,6 +30,10 @@ use `make_cards.py` for media/programmatic decks and write it in one pass per to
 one card at a time. The linear 67-card deck used 2 writes + 11 edits; the 99-card midterm used 67
 edits and 6× the input.
 
+**Write topics in source order.** The builder keeps first-appearance topic order, lifts each
+topic's `tier_zero` card, then L1/L2; L3/Procedure follow in authored order. Write topic-by-topic
+in the order the lecture, chapter, or video presents the material.
+
 **Line wrapping must not become line breaks in the card.** Wrap for readability; `render.py`
 re-flows paragraphs and list items with a space. Joining with `<br>` splits sentences mid-clause.
 **Use raw strings for all card text** (rule 4; table in `references/rendering.md`). The one case the table

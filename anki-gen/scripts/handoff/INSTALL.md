@@ -88,6 +88,9 @@ image per card; low-confidence frames are listed, not forced into cards.
 Review is a local 1–5 page on `127.0.0.1`. Open it on the same machine. Scope is
 sampled, not the whole deck. Then **File → Import** the `.apkg` into Anki.
 
+New cards are ordered by source topic, with each topic's concept card first. To
+follow that exact order, set **New Card Sort Order** to **Order gathered**.
+
 ## Update
 
 Extract a newer handoff zip and run `bash install.sh` again. It prints the old and

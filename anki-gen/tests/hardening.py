@@ -20,6 +20,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 GOLDEN = ROOT / "tests" / "golden_cards.jsonl"
 
+sys.path.insert(0, str(SCRIPTS))
+from build_apkg import foundation_order  # noqa: E402
+
 BASE = {
     "front": "Why does a vacancy increase a crystal's free energy?",
     "back": "**Why:** forming a vacancy costs energy $Q_v$, but configurational "
@@ -84,6 +87,34 @@ def main() -> int:
     assert good["valid"] is True, good
     print("ok    positive control")
 
+    # Soft order: source topic first, tier-zero, then L1/L2/advanced. Topic B is
+    # first on purpose, so this also proves the order is not alphabetical.
+    order_cards = [
+        {"front": "B fact one?", "back": "**Why:** b1.", "layer": "L1",
+         "topic": "Topic B", "deck": "ORDER::TEST", "source": "Lec 2 p.1"},
+        {"front": "A understanding one?", "back": "**Why:** a2.", "layer": "L2",
+         "topic": "Topic A", "deck": "ORDER::TEST", "source": "Lec 1 p.2"},
+        {"front": "A fact one?", "back": "**Why:** a1.", "layer": "L1",
+         "topic": "Topic A", "deck": "ORDER::TEST", "source": "Lec 1 p.1"},
+        {"front": "A concept?", "back": "**Why:** a0.", "layer": "L2",
+         "topic": "Topic A", "deck": "ORDER::TEST", "source": "Lec 1 p.0",
+         "tier_zero": True},
+        {"front": "B concept?", "back": "**Why:** b0.", "layer": "L2",
+         "topic": "Topic B", "deck": "ORDER::TEST", "source": "Lec 2 p.0",
+         "tier_zero": True},
+        {"front": "B boundary?", "back": "**Why:** b3.", "layer": "L3",
+         "topic": "Topic B", "deck": "ORDER::TEST", "source": "Lec 2 p.3"},
+        {"front": "B procedure?", "back": "**Why:** bp.", "layer": "Procedure",
+         "topic": "Topic B", "deck": "ORDER::TEST", "source": "Lec 2 p.4"},
+    ]
+    expected_order = [
+        "B concept?", "B fact one?", "B boundary?", "B procedure?",
+        "A concept?", "A fact one?", "A understanding one?",
+    ]
+    got_order = [c["front"] for c in foundation_order(order_cards)]
+    assert got_order == expected_order, got_order
+    print("ok    foundation-first card order")
+
     # Negative fixtures: one defect per high-value rule.
     case("missing source", lambda: [{k: v for k, v in BASE.items() if k != "source"}],
          "error", "no source")
@@ -145,6 +176,27 @@ def main() -> int:
         assert r.returncode == 0, r.stderr
         assert "5 notes" in r.stdout, r.stdout
         print("ok    golden build/import")
+
+        # The order above must survive Anki's note insertion and become the deck's
+        # new-card order, not just a sorted Python list.
+        order_path = td / "order.json"
+        order_path.write_text(json.dumps(order_cards))
+        order_apkg = td / "order.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(order_path),
+                 str(order_apkg), "--deck-name", "ORDER::TEST"])
+        assert r.returncode == 0, r.stderr
+        extract = td / "order-extract"
+        with zipfile.ZipFile(order_apkg) as z:
+            z.extract("collection.anki2", extract)
+        con = sqlite3.connect(extract / "collection.anki2")
+        try:
+            due_order = [row[0] for row in con.execute(
+                "select n.sfld from cards c join notes n on n.id=c.nid "
+                "order by c.due")]
+        finally:
+            con.close()
+        assert due_order == expected_order, due_order
+        print("ok    built deck follows foundation-first order")
 
         # Sabotage 1: disable the source check; the missing-source fixture should now pass.
         mut = copy_scripts(td / "mut-source")

@@ -23,6 +23,33 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # here because build_native.py calls build_apkg.card_hash.
 from cardid import card_hash, load_cards   # noqa: E402,F401
 
+# L3 and Procedure share the last rank: neither is reliably "easier", so keep
+# them in the order the author wrote them.
+LAYER_ORDER = {"L1": 0, "L2": 1}
+
+
+def foundation_order(cards: list[dict]) -> list[dict]:
+    """Stable soft order: source topic, then tier-zero, then L1/L2/advanced.
+
+    Topic order is first appearance in cards.jsonl, which is the order the
+    material was authored in. Ties keep their source order. Anki assigns new-card
+    positions in add order, so this becomes the deck's default study order until
+    the user changes the deck's New Card Sort Order.
+    """
+    topic_order: dict[str, int] = {}
+    for c in cards:
+        topic = str(c.get("topic", ""))
+        topic_order.setdefault(topic, len(topic_order))
+
+    return sorted(
+        cards,
+        key=lambda c: (
+            topic_order[str(c.get("topic", ""))],
+            0 if c.get("tier_zero") else 1,
+            LAYER_ORDER.get(str(c.get("layer", "")), 2),
+        ),
+    )
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()

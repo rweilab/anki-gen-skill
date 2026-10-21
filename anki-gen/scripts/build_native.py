@@ -126,6 +126,9 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
                     enable_media: bool = False) -> dict:
     import build_apkg                           # noqa: E402
 
+    # New cards are read in add order, so this is the deck's default study order.
+    cards = build_apkg.foundation_order(cards)
+
     with tempfile.TemporaryDirectory() as td:
         scratch = Path(td) / "build.anki2"
         col = Collection(str(scratch))

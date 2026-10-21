@@ -2,11 +2,23 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
-- **v1.3.1** — One-command install and web review polish
+- **v1.3.2** — Foundation-first new-card order
+- **v1.3.1** — One-command install and review polish
 - **v1.3** — Video sources and shipping
 - **v1.2** — Review fidelity, guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
+
+## v1.3.2 — Foundation-first new-card order
+
+### Added
+- New notes are added in source topic order: each topic's `tier_zero` card first,
+  then L1, L2, and L3/Procedure in authored order. The sort is stable, so ties
+  keep source order.
+- With `--merge-existing`, only the new notes are ordered; existing scheduling is
+  untouched.
+- Anki's New Card Sort Order can override the order; docs point to "Order gathered".
+- Smoke tests check both the pure order and the built deck's `due` sequence.
 
 ## v1.3.1 — One-command install and review polish
 
