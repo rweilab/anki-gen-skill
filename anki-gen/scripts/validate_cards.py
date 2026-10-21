@@ -1,0 +1,455 @@
+#!/usr/bin/env python3
+"""Static checks on cards.json, before anything is built.
+
+Run this every time. Every failure below was a real bug that shipped unnoticed:
+the deck still imported fine, it just looked broken on screen.
+
+  1. control-char corruption   LaTeX written in a non-raw Python string
+  2. LaTeX delimiter imbalance braces/\\( )/\\[ ] not closed
+  3. rendered-output leaks     stray $, literal **, markdown tables/lists
+  4. forbidden fronts          computation demands (see FORBIDDEN below)
+  5. empty / stub cards
+  6. near-duplicate fronts
+  7. missing glossary          symbol card without a definitions section
+  8. missing provenance        no `source`, or a source with no locator
+"""
+import argparse
+import json
+import re
+import sys
+from collections import Counter
+from difflib import SequenceMatcher
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cardid import load_cards   # noqa: E402
+from render import to_html   # noqa: E402
+
+# Scoped to FRONTS. A back legitimately says "set them equal and solve" as a method
+# step, or "convert before you compute". Rejecting those was a false positive that
+# trained us to ignore the check.
+FORBIDDEN_FRONT = re.compile(
+    r"\b(solve|calculate|compute|evaluate|prove|show that|derive)\b"
+    r"|find the value|determine the value|what is the value of|what is the result of",
+    re.I,
+)
+
+CTRL = re.compile(r"[\x07\x08\x09\x0b\x0c\x0d][A-Za-z]")
+SYM = re.compile(r"\\?[A-Za-z]_\{?[A-Za-z0-9]+\}?|\\[A-Za-z]+")
+
+# ---------------------------------------------------------------------------
+# IMPLICIT COMPUTATION DEMAND
+#
+# FORBIDDEN_FRONT only catches explicit verbs ("compute X"). The real failure is
+# a front that supplies given data and asks for a value OUT -- "What are the atom
+# percents?", "What is the correct Q_v?" -- which is unanswerable without doing
+# the calculation. That phrasing contains no forbidden verb, so it slipped through
+# and produced a deck of unanswerable cards.
+#
+# Heuristic: a front that carries physical quantities (units, numbers) AND asks
+# for a value is a computation prompt.
+# ---------------------------------------------------------------------------
+QUANTITY = re.compile(
+    r"\b(percents?|per\s?cents?|densit(?:y|ies)|values?|numbers?|answers?|results?|"
+    r"mole fractions?|Q_v)\b"
+    r"|\b(?:at|wt)\s*%|\bat\.%|wt\.%", re.I)
+ASKS_VALUE = re.compile(
+    # Gerunds like "solving for Q_v" or "working out N" describe the *situation*
+    # rather than demanding an output, so they are not value demands on their own.
+    r"(what (is|are) the|what would (it|they) be|find the|"
+    r"determine the|calculate the|state the (value|numbers?)|"
+    r"what value|come out to|should (?:it|they|copper|chromium|the))\b", re.I)
+# physical quantities as given data: a number carrying a unit, or an assigned symbol
+GIVEN_DATA = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:g/cm\^?3|g/m\^?3|g/mol|kg|g\b|eV|nm|°C|K\b|%)"
+    r"|\d+\s*×\s*10\^"
+    r"|(?:ρ|\\rho|A|Q_v)\s*=",
+    re.I)
+
+
+# comparative questions ("which has the lowest/highest") are recall from a printed
+# table; a bare "what percent/value does X have" is a request for a computed number.
+COMPARATIVE = re.compile(r"\b(lowest|highest|most|least|largest|smallest|greater|"
+                         r"less|above|below|more|fewer|first|last)\b", re.I)
+
+# SCOPE LIMIT -- read before trusting a clean run.
+# These two branches catch the explicit shape: given data + a request for a value.
+# They do NOT catch every implicit computation prompt. Known miss:
+#   "What percent ionic character do MgO and CH4 have?"   -> not flagged, but it
+#   demands a number off the Pauling formula and should be reframed.
+# A third branch was tried and reverted: keying on "what + quantity, no comparative"
+# also fired on recallable table cards ("what are the APF values for SC, BCC, FCC and
+# HCP?"), so it traded real recall cards for theoretical coverage.
+#
+# Consequence: a clean validate_cards run does NOT mean every card is answerable from
+# memory. Per-card human review against the recallability test is a required pipeline
+# step, not a formality. See "The recallability test" in SKILL.md.
+
+
+def is_computation_prompt(front: str) -> str | None:
+    """Return a reason string if the front demands a computed value, else None.
+
+    High-precision heuristic. Catches the explicit given-data-plus-value-out shape;
+    blind to computation demands phrased without given data.
+    """
+    if FORBIDDEN_FRONT.search(front):
+        return "explicit computation verb"
+    f = re.sub(r"\$[^$]+\$", " MATH ", front)      # math payload is given data, not phrasing
+    if GIVEN_DATA.search(f) and ASKS_VALUE.search(f) and QUANTITY.search(front):
+        return "supplies given data and asks for a value out"
+    if ASKS_VALUE.search(f) and QUANTITY.search(front) and re.search(r"\b\d+\b", f):
+        return "asks for a numeric result"
+    return None
+
+# Symbols whose meaning the exam expects you to be able to state.
+GLOSSARY_HINT = re.compile(
+    r"(glossary|legend|\bmeans\b|\bdenotes\b|\bequals\b|\bis a\b|\bare\b|=\s*[A-Za-z]|\bbecause\b|"
+    r"\*\*where\b|\*\*why\b|\*\*what\b|\*\*from\b|\*\*which\b)", re.I)
+
+TIER_ZERO = re.compile(r"tier\s*[- ]?zero|tier\s*0", re.I)
+CMP = re.compile(r'(lowest|highest|most|least|rank|among)\b', re.I)
+
+
+def findings(cards):
+    """Every check below, as (card_index, severity, message) records.
+
+    1-based `card_index` matches the numbering used everywhere else in the skill
+    (roi_report, the review page, `--show N`). Deck-level lines carry index 0.
+
+    Exists so `triage.py` can select the cards worth a human's time from the SAME
+    checks this script runs, rather than growing a second, drifting copy of them.
+    check_cards() is a thin formatter over this and remains the public CLI output;
+    the messages are byte-identical to what it printed before.
+    """
+    out: list[tuple[int, str, str]] = []
+    back_verb_cards = []      # see B4 below: counted, not warned per-card
+
+    def add(i, sev, msg):
+        out.append((i, sev, msg))
+
+    for i, c in enumerate(cards, 1):
+        label = f"card {i}: {str(c.get('front', ''))[:52]!r}"
+        for key in ("front", "back", "layer", "topic", "deck"):
+            if key not in c or not str(c.get(key, "")).strip():
+                add(i, "err", f"{label} -- missing/empty {key!r}")
+
+        # Tags: the topic heads every card and every deck tag, so it has to be a
+        # chapter a student could look up. A layer code in this field is the
+        # specific mistake of reaching for the vocabulary you happen to have in
+        # front of you -- it renders as the card's own label ("L2"), which tells
+        # the reader nothing and tags every understanding card in the deck.
+        topic = str(c.get("topic", "")).strip()
+        if topic in ("L1", "L2", "L3", "Procedure", "Recall", "Understanding",
+                     "Boundary", "Boundaries"):
+            add(i, "err", f"{label} -- topic is the layer {topic!r}, not a subject; "
+                          f"a topic is a chapter name ('Unit Cells', 'Dislocations')")
+
+        # Objects are the sniper tags. Bounded at two on purpose: a third stops
+        # being a name for a thing and starts being a paraphrase of the front.
+        objects = c.get("objects") or []
+        if isinstance(objects, str):
+            objects = [objects]
+            add(i, "err", f"{label} -- 'objects' is a string, not a list; "
+                          f'it must be a JSON array, e.g. "objects": ["fcc", "cu"]')
+        if isinstance(objects, list):
+            seen_o = []
+            for o in objects:
+                if not str(o).strip():
+                    add(i, "err", f"{label} -- empty entry in 'objects'")
+                elif str(o).strip().lower().replace(" ", "_") == topic.lower().replace(" ", "_").replace("&", "and"):
+                    # Anki folds tags case-insensitively, so this one is silently
+                    # dropped at build time: the topic already carries the name.
+                    add(i, "warn", f"{label} -- object {str(o)!r} is the topic tag; "
+                                   f"Anki will fold the two together and drop it")
+                elif str(o).strip() in seen_o:
+                    add(i, "warn", f"{label} -- duplicate object {str(o)!r}")
+                else:
+                    seen_o.append(str(o).strip())
+            if len(objects) > 2:
+                add(i, "warn", f"{label} -- {len(objects)} object tags "
+                              f"(max 2): {objects!r}; keep the ones the card is "
+                              f"actually about")
+
+        # Media is opt-in at build time, but the shape is always checked. A string
+        # is the legacy form (file only, back); an object adds side/caption/source.
+        media_list = c.get("media") or []
+        if not isinstance(media_list, list):
+            add(i, "err", f"{label} -- 'media' must be a list")
+        else:
+            for m in media_list:
+                if isinstance(m, str):
+                    mfile, mside = m, "back"
+                elif isinstance(m, dict):
+                    mfile = str(m.get("file") or "").strip()
+                    mside = str(m.get("side") or "back").lower()
+                else:
+                    add(i, "err", f"{label} -- media entry must be a string or object")
+                    continue
+                if not mfile:
+                    add(i, "err", f"{label} -- media entry has no file")
+                    continue
+                if mside not in ("front", "back"):
+                    add(i, "err", f"{label} -- media side {mside!r} (use front/back)")
+                if ".." in Path(mfile).parts:
+                    add(i, "err", f"{label} -- media path escapes the root: {mfile!r}")
+            if len(media_list) > 2:
+                add(i, "warn", f"{label} -- {len(media_list)} media entries (max 2); "
+                              "the extra ones will be skipped at build")
+
+        # 8. provenance. build_native.py renders `source` as the card footer;
+        # `source_ref` is an older spelling of the same field and still works.
+        # A card with no citation cannot be checked against the material later,
+        # which is the entire point of carrying one -- so absence is an error,
+        # and a citation with no locator (no page/slide/question/chapter number)
+        # is a warning, because it names a document but not a place in it.
+        src = str(c.get("source") or c.get("source_ref") or "").strip()
+        if not src:
+            add(i, "err",
+                f"{label} -- no source. Every card must cite where it came from: "
+                "lecture + page/slide, homework question, or textbook chapter.")
+        elif not re.search(r"\d", src):
+            add(i, "warn",
+                f"{label} -- source {src!r} carries no locator (no page, slide, "
+                "question or chapter number), so it cannot be pinpointed again.")
+        source_url = str(c.get("source_url") or "").strip()
+        if source_url:
+            if not re.match(r"^https?://\S+$", source_url, re.I):
+                add(i, "err", f"{label} -- source_url must be an http(s) URL")
+            elif re.search(r"(youtube\.com|youtu\.be)", source_url, re.I) and                     not re.search(r"[?&]t=\d+", source_url):
+                add(i, "warn", f"{label} -- YouTube source_url has no t=<seconds>")
+
+        front, back = str(c.get("front", "")), str(c.get("back", ""))
+        layer = c.get("layer", "")
+
+        # 1. escape corruption
+        for f, t in (("front", front), ("back", back)):
+            if CTRL.search(t):
+                bad = CTRL.search(t).group(0)
+                add(i, "err", f"{label} -- control char 0x{ord(bad[0]):02x} in {f}; "
+                              f"use a raw (r\"...\") string when writing LaTeX")
+
+        # 2. delimiter balance in the SOURCE
+        for f, t in (("front", front), ("back", back)):
+            if t.count("$$") % 2:
+                add(i, "err", f"{label} -- odd number of $$ in {f}")
+            if t.count(r"\(") != t.count(r"\)") or t.count(r"\[") != t.count(r"\]"):
+                add(i, "err", f"{label} -- unbalanced MathJax delimiters in {f}")
+            for m in re.finditer(r"\$([^$]+?)\$", t, re.S):
+                if m.group(1).count("{") != m.group(1).count("}"):
+                    add(i, "err", f"{label} -- brace imbalance in math: {m.group(1)[:40]!r}")
+
+        # 3. rendered leaks
+        for f, t in (("front", front), ("back", back)):
+            h = to_html(t)
+            # A literal `$` is sometimes genuinely required -- a card explaining the
+            # delimiter rules cannot say "no $ is enabled" without one. render.py puts
+            # inline code in <code>, so strip those spans before hunting for a stray
+            # delimiter, or the explanation is reported as the defect.
+            h_prose = re.sub(r"<code>.*?</code>", "", h, flags=re.S)
+            if re.search(r"(?<!\\)\$", h_prose):
+                add(i, "err", f"{label} -- stray $ survived rendering in {f}")
+            if h.count(r"\(") != h.count(r"\)") or h.count(r"\[") != h.count(r"\]"):
+                add(i, "err", f"{label} -- MathJax delimiters unbalanced after render ({f})")
+            if CTRL.search(h):
+                add(i, "err", f"{label} -- control char present after render ({f})")
+
+        # Strip display math BEFORE inline. Stripping only $...$ leaves the outer
+        # delimiters of a $$...$$ block behind, and the leftover '$' then mis-pairs
+        # with a later inline span -- swallowing a ** and reporting "unmatched **"
+        # on a card that was perfectly fine.
+        # FRONTS ONLY, deliberately: this check never runs on backs, and backs
+        # legitimately mix $$ with $...$ (32 cards in one real deck did). Do not
+        # "fix" that by extending this to backs.
+        raw_md = re.sub(r"\$\$.*?\$\$", "", front, flags=re.S)
+        raw_md = re.sub(r"\$[^$]+\$", "", raw_md, flags=re.S)
+        # parity, not presence: a matched **bold** is 2 markers; an unclosed one is odd
+        if raw_md.count("**") % 2:
+            add(i, "err", f"{label} -- unmatched ** in front (would render literally)")
+        if re.match(r"^\s*[-*]\s", front):
+            add(i, "warn", f"{label} -- front starts with a markdown bullet")
+
+        # 4. computation demands -- explicit verbs and implicit prompts alike
+        why = is_computation_prompt(front)
+        if why and layer != "L3":
+            add(i, "err", f"{label} -- computation prompt in front ({why}); a front "
+                          "must be answerable from memory, not by working it out")
+        # B4: a computation verb in a BACK is fine by the skill's own scoping rule --
+        # a back may legitimately say "set them equal and solve". Emitting one warning
+        # per card produced 10 identical lines on a real deck and buried the warnings
+        # that mattered. Counted and reported once, in `info`.
+        if FORBIDDEN_FRONT.search(back):
+            back_verb_cards.append(i)
+
+        # 6. Comparison/ranking fronts must embed decision data.
+        # If a front asks "which... lowest/highest/most/least/rank among ..."
+        # it must embed the decision data (table with |, digits, or $math$).
+        # Warn instead of error: some legitimate comparison fronts are pure recall
+        # (e.g., "which of the four Hume-Rothery criteria fails?").
+        f = c.get('front', '')
+        if CMP.search(f) and not re.search(r'[|\d$]', f):
+            add(i, "warn",
+                f"{label} -- comparison front lacks embedded data (no table |, "
+                "no digits, no $math$). Front must carry the decision data so the "
+                "answer is readable without external lookup.")
+
+        # 5. stubs
+        if len(front.strip()) < 15:
+            add(i, "err", f"{label} -- front too short")
+        if len(back.strip()) < 25:
+            add(i, "err", f"{label} -- back too short")
+        if layer not in {"L1", "L2", "L3", "Procedure"}:
+            add(i, "err", f"{label} -- bad layer {layer!r}")
+
+        # D4: the Procedure layer's whole contract is that the front STATES its
+        # demand -- "Which method applies here?" or "What are the next steps?" --
+        # because a front showing a problem plus a halfway state is otherwise
+        # ambiguous about whether to finish it, name the next step, or name the
+        # method. Nothing checked that, so such a card passed every gate and was
+        # unanswerable in review.
+        if layer == "Procedure" and "?" not in front:
+            add(i, "warn",
+                f"{label} -- Procedure front asks no question; state the demand "
+                "explicitly (which method / what are the next steps)")
+        # Cloze is a deliberate choice here: the deck carries a real cloze note
+        # type, so deletions render as independent cards. What IS worth flagging is
+        # a card marked cloze with no deletion, or unmarked cloze syntax.
+        is_cloze_flag = bool(c.get("cloze"))
+        has_deletion = bool(re.search(r"\{c\d+::", front))
+        if is_cloze_flag and not has_deletion:
+            add(i, "err", f"{label} -- flagged cloze but front has no {{cN::}} deletion")
+        if has_deletion and not is_cloze_flag:
+            add(i, "err", f"{label} -- front contains cloze syntax but card is not "
+                          "flagged cloze; it would render literally as a Basic note")
+
+        # F2: a cloze front should have ONE retrieval target -- the blank. A second
+        # question means every sibling card grades two things at once ("... {{c1::x}}
+        # ... What is the rule behind all four?"), a bundling failure created inside
+        # what looked like a clean enumeration.
+        #
+        # Paragraph-scoped on purpose. A question in the SAME paragraph as a deletion
+        # is usually that blank's own prompt ("**Which symbol?** ... {{c1::[uvw]}}"),
+        # which rule 6 requires -- flagging those was a false positive on a real deck.
+        # Only a question in a paragraph with NO deletion is a second target.
+        if is_cloze_flag:
+            for para in re.split(r"\n\s*\n", front):
+                if "?" in para and not re.search(r"\{\{c\d+::", para):
+                    add(i, "warn",
+                        f"{label} -- cloze front asks a question away from the blanks "
+                        f"({para.strip()[:40]!r}); does this front test two things? If "
+                        "so, give the second question its own card.")
+                    break
+
+        # 7. glossary presence on symbol-bearing cards
+        has_sym = len(set(SYM.findall(front) + SYM.findall(back))) >= 3
+        if has_sym and layer in {"L1", "L2"} and not GLOSSARY_HINT.search(back):
+            add(i, "warn",
+                f"{label} -- symbol-heavy card with no glossary/definition "
+                "in the back (slides say symbols get marks)")
+
+    layers = Counter(c.get("layer") for c in cards)
+    topics = Counter(c.get("topic") for c in cards)
+    add(0, "info", f"{len(cards)} cards | layers {dict(layers)}")
+    if len(cards) >= 8:
+        singles = sorted(t for t, n in topics.items() if n == 1)
+        if len(singles) >= max(3, len(topics) // 2):
+            add(0, "warn", f"{len(singles)} one-card topics "
+                          f"({', '.join(singles[:6])}); a topic is the chapter/lecture "
+                          f"heading, not a subtopic — merge these into their parent")
+        if len(topics) > max(4, len(cards) // 3):
+            add(0, "warn", f"{len(topics)} topics for {len(cards)} cards; topic is the "
+                          f"chapter/lecture heading, not a card or subtopic — do not "
+                          f"artificially split one chapter")
+    # tier-zero may be flagged as a field, or (older cards) by front text
+    tz = sum(1 for c in cards
+             if c.get("tier_zero") or TIER_ZERO.search(str(c.get("front", ""))))
+    add(0, "info", f"{len(topics)} topics | tier-zero cards: {tz}")
+    # Object tags are only worth having if they repeat -- a tag on one card names
+    # nothing you can search for. One-per-deck is the signal to re-pick them.
+    objs = Counter(str(o).strip().lower()
+                   for c in cards
+                   for o in (c.get("objects") or [])
+                   if str(o).strip())
+    if objs:
+        singletons = sorted(o for o, k in objs.items() if k == 1)
+        add(0, "info", f"{len(objs)} object tags | "
+                       f"most common: {', '.join(f'{o}({k})' for o, k in objs.most_common(6))}")
+        if len(objs) >= 3 and len(singletons) > len(objs) / 2:
+            add(0, "warn", f"{len(singletons)} of {len(objs)} object tags appear on a "
+                           f"single card ({', '.join(singletons[:6])}); an object "
+                           "tag should name a thing more than one card is about")
+    if back_verb_cards:
+        add(0, "info", f"{len(back_verb_cards)} card(s) use an instructional verb in the "
+                       "back (expected -- a back may describe method)")
+    return out
+
+
+DUPLICATE_FRONT_RATIO = 0.85
+
+
+def similar_front_pairs(cards) -> list[tuple[int, int, float]]:
+    """[(i, j, ratio)] for front pairs above DUPLICATE_FRONT_RATIO, 1-based, i < j.
+
+    Deliberately a function rather than a warning emitted inline from `findings`:
+    triage.py needs the PAIRS and their ratios, not the sentence describing them.
+    It used to recover them by regex-parsing this module's message text, so
+    rewording the message would have silently stopped pairs being recombined.
+    Both readers now call this one definition.
+    """
+    out = []
+    for i in range(len(cards)):
+        for j in range(i + 1, len(cards)):
+            a, b = str(cards[i].get("front", "")), str(cards[j].get("front", ""))
+            r = SequenceMatcher(None, a, b).ratio()
+            if r > DUPLICATE_FRONT_RATIO:
+                out.append((i + 1, j + 1, r))
+    return out
+
+
+def check_cards(cards):
+    """The CLI's (errors, warnings, info) view.
+
+    Identical strings, in the same order, to what this printed before the findings
+    split. Deck-level checks that are not per-card findings -- the duplicate-front
+    pairs -- are composed here, so that `findings()` stays a pure per-card view
+    and its other caller (triage.py) can use `similar_front_pairs()` directly.
+    """
+    fs = findings(cards)
+    errs = [m for _, s, m in fs if s == "err"]
+    seen: set[str] = set()
+    warns = [m for _, s, m in fs if s == "warn" and not (m in seen or seen.add(m))]
+    info = [m for _, s, m in fs if s == "info"]
+
+    # Annotated against BOTH cards: at review time either half of a competing pair
+    # is worth looking at, and triage wants both.
+    for i, j, r in similar_front_pairs(cards):
+        warns.append(f"cards {i} and {j} fronts {r:.0%} similar")
+    return errs, warns, info
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cards_json")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    cards = load_cards(args.cards_json)
+    errs, warns, info = check_cards(cards)
+
+    if args.json:
+        print(json.dumps({"valid": not errs, "errors": errs, "warnings": warns,
+                          "info": info}, indent=2))
+    else:
+        for line in info:
+            print(line)
+        print(f"\n{len(errs)} error(s), {len(warns)} warning(s)")
+        for e in errs:
+            print("  ERROR  ", e)
+        for w in warns[:20]:
+            print("  warn   ", w)
+        if len(warns) > 20:
+            print(f"  ... and {len(warns) - 20} more warnings")
+    return 1 if errs else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

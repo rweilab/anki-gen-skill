@@ -1,0 +1,6 @@
+# Tested with Python 3.10+; minimum versions allow patch updates.
+anki>=26.9.3
+pymupdf>=1.28.2
+pillow>=12.2.0
+beautifulsoup4>=4.14.3
+yt-dlp>=2026.8.19

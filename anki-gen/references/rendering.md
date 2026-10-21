@@ -1,0 +1,41 @@
+# Rendering
+
+## Rendering: what Anki actually supports
+
+**Math goes through Anki's bundled MathJax, using `\( ... \)` inline and `\[ ... \]` display.** The
+`$...$` / `$$...$$` form is **not enabled by default** and renders literally. Always write `$...$`
+in cards.json; the builder converts to Anki's delimiters.
+
+**Deliberate line breaks inside a paragraph: use the markdown hard-break signal.** `render.py`
+re-flows wrapped source lines into single paragraphs; to force a break — needed for
+one-fact-per-line cloze fronts — end the source line with **two spaces** (`  \n`) or a trailing
+backslash (`\n`). Both are honoured as `<br>`:
+
+    atoms/unit cell: {{c1::4}}  
+    coordination number: {{c2::12}}  
+    APF: {{c3::0.74}}  
+
+Soft wraps re-flow; hard breaks are preserved.
+
+**CSS night-mode guard.** Every element with a custom `background` MUST have an explicit `color`, or
+it inherits the host theme's (light-on-light, invisible). Include a `.night_mode` / `.nightMode`
+override block; if neither matches, the hardcoded light colours stand and nothing is lost.
+
+**Anki renders no markdown.** A field is HTML: `**bold**`, `*italic*`, `|tables|`, `- lists` appear
+literally unless converted. The builder handles it — write markdown in cards.json, get HTML in the
+deck. **Do not route math through SVG** (rule 25): MathJax gives selectable text, keeps the .apkg
+small, works offline.
+
+**Use raw strings for all card text.** Non-raw strings silently corrupt LaTeX; these are Python
+escapes:
+
+| Written | Becomes | Breaks |
+|---|---|---|
+| `\t` | TAB | `\text{}`, `\times`, `\theta` |
+| `\f` | formfeed | `\frac` |
+| `\r` | CR | `\rho` |
+| `\b` | backspace | `\bar` |
+| `\n` | newline | `\nu`, `\neq` |
+| `\v` | vtab | `\vert` |
+
+`\frac` becoming a formfeed raises no error and no readable warning. `validate_cards.py` checks.
