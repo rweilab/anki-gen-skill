@@ -86,7 +86,8 @@ images go in the review comment.
 ## Handing the skill to someone else
 
 `bash scripts/package_handoff.sh [out.zip]` builds a zip containing both skills
-(`anki-gen`, `image-vision`), `install.sh`, `INSTALL.md`, and `VERSION` at the root.
+(`anki-gen`, `image-vision`), `install.sh`, `INSTALL.md`, and a root `VERSION`
+generated from `anki-gen/VERSION`.
 The user extracts it and runs `bash install.sh` (or asks opencode to install it).
 The installer also installs dependencies and runs the doctor. Re-running a newer
 zip upgrades with a timestamped backup under `~/.claude/skills/.backups/`. See
