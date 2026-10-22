@@ -13,7 +13,10 @@ not produce a cloze deck that Anki 26 opens (see rule 15) and it made `genanki` 
 hard import for every caller of this module, including `build_native`.
 """
 import argparse
+import hashlib
 import json
+import random
+import re
 import sys
 from pathlib import Path
 
@@ -26,21 +29,80 @@ from cardid import card_hash, load_cards   # noqa: E402,F401
 # L3 and Procedure share the last rank: neither is reliably "easier", so keep
 # them in the order the author wrote them.
 LAYER_ORDER = {"L1": 0, "L2": 1}
+SOURCE_BIAS = 2.0
+ANCHOR_BOOST = 2.0
+REPEAT_PENALTY = 0.35
 
 
-def foundation_order(cards: list[dict]) -> list[dict]:
-    """Stable soft order: source topic, then tier-zero, then L1/L2/advanced.
+def _tag_key(value) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(value).lower()).strip("_")
 
-    Topic order is first appearance in cards.jsonl, which is the order the
-    material was authored in. Ties keep their source order. Anki assigns new-card
-    positions in add order, so this becomes the deck's default study order until
-    the user changes the deck's New Card Sort Order.
+
+def _same_stem(a: str, b: str) -> bool:
+    if a == b or a.rstrip("s") == b.rstrip("s"):
+        return True
+    return len(a) >= 6 and len(b) >= 6 and a[:6] == b[:6]
+
+
+def normalize_objects(cards: list[dict]) -> list[dict]:
+    """Keep broad, cross-topic buckets; drop topic/subtopic and one-topic tags.
+
+    The writer's object list is deliberately a suggestion. A topic already tags
+    every card, so `heap` under Memory Management or `queue` under Queues adds
+    nothing. A tag earns its place only if it recurs across topics.
     """
+    spans: dict[str, set[str]] = {}
+    counts: dict[str, int] = {}
+    for c in cards:
+        topic = _tag_key(c.get("topic", ""))
+        raw = c.get("objects") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        for obj in raw:
+            key = _tag_key(obj)
+            if key:
+                spans.setdefault(key, set()).add(topic)
+                counts[key] = counts.get(key, 0) + 1
+
+    # A tag must span a meaningful share of the deck's topics, not just two
+    # cards in neighbouring chapters. The share scales with topic count.
+    topic_keys = {_tag_key(c.get("topic", "")) for c in cards}
+    topic_words = {word for key in topic_keys for word in key.split("_")}
+    topic_count = len(topic_keys)
+    min_topics = max(2, (topic_count + 3) // 4)
+    ranked = sorted(spans, key=lambda k: (len(spans[k]), counts[k]),
+                    reverse=True)
+    allowed = {k for k in ranked if len(spans[k]) >= min_topics}
+    allowed = set(sorted(allowed, key=lambda k: (len(spans[k]), counts[k]),
+                         reverse=True)[:max(3, topic_count // 2)])
+    out = []
+    for c in cards:
+        topic = _tag_key(c.get("topic", ""))
+        raw = c.get("objects") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        keep = []
+        for obj in raw:
+            key = _tag_key(obj)
+            if not key or key in keep:
+                continue
+            if (key == topic or key in topic.split("_")
+                    or any(_same_stem(key, word) for word in topic_words)):
+                continue
+            if (key not in allowed or len(spans.get(key, ())) < 2
+                    or counts.get(key, 0) < 2):
+                continue
+            keep.append(key)
+        keep.sort(key=lambda k: (len(spans[k]), counts[k]), reverse=True)
+        out.append({**c, "objects": keep[:2]})
+    return out
+
+
+def _grouped_order(cards: list[dict]) -> list[dict]:
     topic_order: dict[str, int] = {}
     for c in cards:
         topic = str(c.get("topic", ""))
         topic_order.setdefault(topic, len(topic_order))
-
     return sorted(
         cards,
         key=lambda c: (
@@ -49,6 +111,84 @@ def foundation_order(cards: list[dict]) -> list[dict]:
             LAYER_ORDER.get(str(c.get("layer", "")), 2),
         ),
     )
+
+
+def study_order(cards: list[dict]) -> list[dict]:
+    """Scatter topics loosely, without breaking a topic's tier-zero anchor.
+
+    Small decks stay grouped. Larger decks interleave topics: a topic's tier-zero
+    card is a hard release gate for that topic, then its remaining cards compete
+    with other topics. A seeded RNG makes a rebuild reproducible.
+    """
+    topics: dict[str, list[dict]] = {}
+    for c in cards:
+        topics.setdefault(str(c.get("topic", "")), []).append(c)
+    if len(topics) < 3 or len(cards) / len(topics) < 6:
+        return _grouped_order(cards)
+    names = list(topics)
+    queues = {}
+    for name, group in topics.items():
+        queues[name] = {
+            "anchors": [c for c in group if c.get("tier_zero")],
+            "rest": [c for c in group if not c.get("tier_zero")],
+            "anchor_i": 0,
+            "rest_i": 0,
+        }
+
+    def remaining(name: str) -> int:
+        q = queues[name]
+        return (len(q["anchors"]) - q["anchor_i"]
+                + len(q["rest"]) - q["rest_i"])
+
+    def take(name: str) -> dict:
+        q = queues[name]
+        if q["anchor_i"] < len(q["anchors"]):
+            card = q["anchors"][q["anchor_i"]]
+            q["anchor_i"] += 1
+            return card
+        card = q["rest"][q["rest_i"]]
+        q["rest_i"] += 1
+        return card
+
+    seed = hashlib.sha256(
+        "|".join(card_hash(c) for c in cards).encode()).digest()
+    rng = random.Random(seed)
+    max_run = max(2, min(4, len(names) // 3))
+    out, last, run = [], None, 0
+    while len(out) < len(cards):
+        choices = [n for n in names if remaining(n) and
+                   not (n == last and run >= max_run)]
+        if not choices:
+            choices = [n for n in names if remaining(n)]
+        weights = []
+        for i, name in enumerate(names):
+            if name not in choices:
+                weights.append(0.0)
+                continue
+            q = queues[name]
+            weight = float(remaining(name))
+            weight *= 1.0 + (len(names) - i) / (len(names) * SOURCE_BIAS)
+            if q["anchor_i"] < len(q["anchors"]):
+                weight *= ANCHOR_BOOST
+            if name == last:
+                weight *= REPEAT_PENALTY
+            weights.append(weight)
+        pick = rng.random() * sum(weights)
+        chosen = choices[-1]
+        total = 0.0
+        for name, weight in zip(names, weights):
+            if not weight:
+                continue
+            total += weight
+            if pick <= total:
+                chosen = name
+                break
+        out.append(take(chosen))
+        if chosen == last:
+            run += 1
+        else:
+            last, run = chosen, 1
+    return out
 
 
 def main() -> int:

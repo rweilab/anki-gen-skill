@@ -127,7 +127,8 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
     import build_apkg                           # noqa: E402
 
     # New cards are read in add order, so this is the deck's default study order.
-    cards = build_apkg.foundation_order(cards)
+    cards = build_apkg.study_order(cards)
+    cards = build_apkg.normalize_objects(cards)
 
     with tempfile.TemporaryDirectory() as td:
         scratch = Path(td) / "build.anki2"
@@ -230,9 +231,10 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
                     media_cards += 1
             src = str(c.get("source") or c.get("source_ref") or "")
             src_url = str(c.get("source_url") or "")
-            notes = media.source_notes(media_items)
-            if notes:
-                src = " · ".join(([src] if src else []) + notes)
+            media_src, media_url = media.primary_source(media_items)
+            if media_src:
+                src = media_src
+                src_url = media_url or src_url
             # Tags are a sniper, not a shotgun: the topic plus at most two
             # object tags. The layer used to be a tag here, but "L2" groups by
             # internal kind and returns every understanding card in the deck --

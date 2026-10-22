@@ -296,8 +296,9 @@ PAGE_HTML="$(curl -s -m 3 "$URL")" || fail "GET / page failed"
 page_has() { case "$PAGE_HTML" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
 page_has 'const CARDS' || fail "page is missing the CARDS payload"
 # Markers for the finish-ready and done screens.
-for needle in 'function allMarked' 'id="finish-review"' '--finish-bg' "You're done!" \
-              'id="confetti"' 'function tryClose' 'setTimeout(tryClose'; do
+for needle in 'function allMarked' 'id="finish-review"' '--finish-bg' 'finish-spotlight' \
+              'prefers-reduced-motion' "You're done!" 'id="confetti"' 'function tryClose' \
+              'setTimeout(tryClose, 6000)' 'anki-gen 1.4.1'; do
   page_has "$needle" || fail "page is missing $needle"
 done
 pass "page carries cards and the finish/done UI"
@@ -339,8 +340,20 @@ pass "review server self-exited"
 python3 "$ROOT/tests/hardening.py" || fail "hardening checks"
 pass "hardening checks"
 
+python3 "$ROOT/tests/visual_hardening.py" || fail "visual hardening"
+pass "visual hardening"
+
 python3 "$ROOT/tests/video_hardening.py" || fail "video hardening"
 pass "video hardening"
+
+python3 "$ROOT/tests/slides_hardening.py" || fail "slides hardening"
+pass "slides hardening"
+
+python3 "$ROOT/tests/local_media_hardening.py" || fail "local media hardening"
+pass "local media hardening"
+
+python3 "$ROOT/tests/pipeline_hardening.py" || fail "pipeline hardening"
+pass "pipeline hardening"
 
 # The zip ships scripts/handoff/install.sh; keep it identical to the repo copy.
 ROOT_INSTALL="$(dirname "$ROOT")/install.sh"

@@ -1,7 +1,7 @@
 # anki-gen + image-vision
 
-Turn lecture PDFs, notes, homework, and YouTube videos into evidence-based
-Anki decks. Text-first; diagram images and video stills are optional.
+Turn lecture PDFs, PowerPoint decks, notes, homework, and YouTube videos into
+evidence-based Anki decks. Text-first; diagram images and video stills are optional.
 
 The builder produces an `.apkg`. Importing it into Anki is manual.
 
@@ -20,7 +20,7 @@ bash install.sh
 ```
 
 The installer puts both skills in `~/.claude/skills/`, verifies them, backs up
-any previous install under `~/.claude/skills/.backups/`, installs the missing
+any previous install under `~/.local/share/anki-gen/backups/`, installs the missing
 system and Python dependencies, and runs the doctor. It does not touch
 `~/.config/anki-gen` or your Anki collection.
 
@@ -66,7 +66,7 @@ Ask opencode:
 
 > make flashcards from the PDFs in this folder
 
-For a video or playlist:
+For a local recording or a video playlist:
 
 > make flashcards from this playlist
 
@@ -81,7 +81,7 @@ Run the install command again. The installer prints the old and new versions and
 leaves a timestamped backup under:
 
 ```text
-~/.claude/skills/.backups/anki-gen-YYYYMMDD-HHMMSS/
+~/.local/share/anki-gen/backups/anki-gen-YYYYMMDD-HHMMSS/
 ```
 
 Your config and Gemini key in `~/.config/anki-gen/` are untouched.

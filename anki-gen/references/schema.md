@@ -12,25 +12,31 @@ missing one is an **error**, including `deck`. **`cloze: true`** is required on 
 - **`source` is the field.** `source_ref` is a deprecated alias `build_native.py` still falls back
   to; nothing new should write it. Both are searched and rendered, so a card with only `source_ref`
   still builds — it is just invisible to every grep for `source`.
-- **`source_url`** is optional and plain text (never a hyperlink). Video cards use it for the
+- **`source_url`** is optional and plain text; omit it for local recordings. (never a hyperlink). Video cards use it for the
   copyable timestamp URL: `<channel> - <video title> @ mm:ss` for a single video, or
   `<channel> - <playlist> NN - <video title> @ mm:ss` for a series. The URL includes `&t=SECONDS`
   and, for a series, `&list=PLAYLIST_ID`.
 - **`topic`** — the chapter/lecture heading, not a layer code or subtopic. **`objects`** — 0–2
-  lowercase tags for named things that recur; **`[]` is normal**. Do not tag subtopics such as
-  `radians`/`sine`/`tangent` in a Unit Circle deck; see `references/card-writing.md`.
+  lowercase **cross-topic buckets** (`concurrency`, `memory`, `rtos`), not subtopics; **`[]` is
+  normal**. Both are front-visible (the topic is printed; tags are metadata), so never encode
+  the answer: a Bernoulli-substitution card is `topic: "First-Order ODEs"`, not
+  `objects: ["bernoulli"]`. Do not tag the topic or a term already explicit in the card; see
+  `references/card-writing.md`.
 - **`stratum`** is optional and deck-authored ("Shape B", "Hess's law"); `triage.py` reports
   coverage per stratum without interpreting it. The tool cannot know what a deck ought to contain —
   only its author can say what its kinds are.
 - **`hash` is a card's identity**, not a checksum you invent: leave it empty and it is
   `md5(front|back)` — the note GUID and review-log key, one definition in `scripts/cardid.py`.
 - **`media`** is opt-in. Each entry is an object `{"file": "<tag>/media/<file>", "side":
-  "front"|"back", "caption": "...", "source": "..."}`; a bare string means `{file, back}`.
+  "front"|"back", "caption": "...", "source": "...", "source_url": "..."}`; a bare string means
+  `{file, back}`. When media is present, `source`/`source_url` become the card footer so the
+  transcript and image provenance are not printed twice.
   Paths are relative to the media root (default: the directory holding cards.json), and the
   files are bundled only with `build_apkg.py --media --media-root <root>`.
 
-**New-card order** is first-appearance topic, then `tier_zero`, then L1/L2; L3/Procedure
-keep authored order. Anki's New Card Sort Order can override it.
+**Study order** is softly scattered for larger decks: each topic's `tier_zero` card comes
+first, then topics interleave with a source-order bias. Small decks stay grouped. The order is
+deterministic for a given deck. Anki's New Card Sort Order can override it.
 
 ---
 

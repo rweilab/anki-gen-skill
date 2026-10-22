@@ -2,7 +2,9 @@
 # One-command entry point. It does three things, in order:
 #   1. download the GitHub archive for $ANKI_GEN_BRANCH (default: main)
 #   2. extract it to a temporary directory
-#   3. run install.sh, which copies the skills and calls setup.sh
+#   3. run install.sh, which copies the skills, moves old discoverable backups
+#      out of ~/.claude/skills, and calls setup.sh (including faster-whisper
+#      for local video/audio; models download on first transcription)
 # setup.sh is the only script that installs packages; install.sh --no-setup
 # skips it. Both are plain bash and can be read before running this.
 set -euo pipefail

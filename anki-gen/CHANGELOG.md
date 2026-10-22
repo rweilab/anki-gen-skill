@@ -2,12 +2,133 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.4.1** — Local video/audio and answer-aligned cards
+- **v1.4** — Visual source refinement
 - **v1.3.2** — Foundation-first new-card order
 - **v1.3.1** — One-command install and review polish
 - **v1.3** — Video sources and shipping
 - **v1.2** — Review fidelity, guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
+
+## v1.4.1 — Local video/audio and answer-aligned cards
+
+### Added
+- Local `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
+  `.m4a`, `.mp3`, `.wav`, `.flac` sources, including directory batches.
+- Sidecar `.vtt`/`.srt` captions are used before any local model work. When
+  absent, `faster-whisper` transcribes locally; no media is uploaded.
+- `--model auto` benchmarks actual speech once per machine, caches the choice,
+  and falls back to `base.en` if the benchmark fails. Apple Silicon macOS and
+  Linux are supported; Intel Macs are not supported for local transcription.
+- `pipeline.py` now handles local/video sources and can build + validate the
+  final `.apkg` in the same mechanical pass. Its summary includes the package
+  path, validation result, note/card counts, and media count.
+- Preflight rejects a discoverable stale backup `SKILL.md`; local media also
+  checks ffprobe/ffmpeg and reports unsupported Intel Macs.
+- Answer-first card rule: if the front asks “which enzyme/law/step,” the back
+  must name the target before explaining it. A narrow validator error covers
+  explicit “which enzyme” fronts with no enzyme name.
+- Install/doctor/package/docs now cover faster-whisper, ffprobe, local media,
+  and the supported Mac/Linux platforms.
+- Offline adversarial tests for local media, sidecars, audio-only inputs,
+  auto-model benchmarking, pipeline build/validation, and answer alignment.
+
+### Fixed
+- Local media no longer goes through yt-dlp; frames use the existing
+  `frames.py --video-file` path.
+- The mechanical pipeline is no longer PDF-only; it no longer leaves video
+  extraction, gates, and build as separate model turns.
+- A true but unanswered card (the fructose-1,6-bisphosphate/aldolase case) is
+  now rejected before it reaches the deck.
+
+### Notes
+- First local transcription downloads a model; later runs are offline.
+- Vector PowerPoint/PDF still cannot be rendered without a PDF export.
+- Deck revision/update of already-imported Anki collections remains deferred to
+  v1.4.2.
+
+## v1.4 — Visual source refinement
+
+### Added
+- Shared `scripts/visual.py`: edge focus, colour, background, text-wall detection,
+  and perceptual hashes; video frames and PDF raster figures use the same score.
+- Video frames are sampled in two stages, ranked by structure rather than OCR word
+  count, and collapsed only within the same cue. Image-only diagrams now survive;
+  labelled diagrams with many words are not mistaken for text walls.
+- `frames.md` is compact and merged across videos; `frames.jsonl` carries quality,
+  attach advice, metrics, and reject reason. Ambiguous `confirm` frames are
+  card-driven for `image-vision`; no fixed per-video confirmation count.
+- PDF figure extraction scores/filters raster figures, drops tiny/duplicates, keeps
+  blank/text-like/table images flagged, and `media_index.py` lists high quality first.
+- `yt-dlp[default,deno]` is installed through `requirements.txt`: EJS scripts and
+  Deno ship with the Python environment. `python -m yt_dlp` is used everywhere;
+  an existing Node 22+ is accepted as a fallback, with its path passed explicitly.
+  A system yt-dlp/Node mismatch no longer causes frame-download debugging.
+- The review done screen waits 6 seconds before attempting to close the tab.
+- Backups now live under `~/.local/share/anki-gen/backups/`; legacy
+  `~/.claude/skills/.backups` directories are migrated and their `SKILL.md`
+  files renamed so an old copy cannot be discovered as the active skill.
+- Study order is softly scattered across topics: small decks stay grouped; larger
+  decks interleave topics, but each topic's `tier_zero` anchor still comes first.
+  The order is deterministic for a given deck.
+- Object tags are broad buckets now: topic/subtopic duplicates, one-topic tags,
+  and one-offs are dropped; cross-topic buckets such as `rtos` and
+  `concurrency` remain. Topic and object tags are treated as front-visible:
+  `validate_cards.py` rejects a one-topic object tag that appears only in the
+  answer (and warns for a topic that does), so a Bernoulli-substitution card
+  cannot be tagged `bernoulli`.
+- Main-model vision is banned in the skill. Ambiguous frames are confirmed only
+  through the separate, cached `image-vision` pass, one call per unique frame,
+  with `--max` and a 429 stop. No contact sheets or scan galleries.
+- `extract_slides.py` reads `.pptx` text, speaker notes, and embedded raster
+  images without Office or LibreOffice; vector-only slides are cited, not rendered.
+- Media reuse is explicit: one shared diagram may appear on several related cards;
+  the builder bundles the file once. `roi_report.py` reports refs vs unique files.
+- Video/media docs now separate “attach” from “read”: the model chooses from
+  `frames.md` by text, and never reads the image stream itself.
+- `validate_cards.py` adds answer-aware overlap warnings and `roi_report.py`
+  reports the same clusters; review feedback is a trim/merge signal, not an
+  expansion mandate.
+- The Finish button gets a one-shot spotlight/bounce when the last score is
+  assigned, with a reduced-motion fallback.
+- macOS: PyMuPDF is pinned below 2.0 for Intel wheels, and runtime scripts add
+  Homebrew's bin directories when GUI-launched opencode omits them.
+- Media cards use one footer source line with channel, title, playlist,
+  timestamp, and URL; the duplicate `Image:` line is gone.
+- Late high/confirm frames within a shot are preferred; a coarse visual-only scan
+  covers videos with no useful cues or no attachable frames.
+- `roi_report.py` reports image coverage per topic and topics with no images.
+- Video extraction paces subtitle requests, reports skipped/failed videos in a
+  structured summary, and never uses agent sleep/poll loops.
+- `image-vision/scripts/vision_check.py` adds fast, cached frame confirmation with
+  a flash-lite model fallback and bounded 503/429 retries.
+- yt-dlp retries transient failures with short bounded backoff and skips permanent
+  ones; the skill explicitly forbids sleep/poll loops for rate limits.
+- Token discipline: independent review edits are batched in one step; deck scripts
+  are written per topic rather than one huge file; subagent summaries are one line
+  per fact. Maintainer code changes use `ponytail` at `ultra`, keeping diffs
+  minimal and replies short. Agents never spawn an `opencode` child process
+  (including `debug`) or recursively invoke the skill; shipped scripts run directly.
+
+### Fixed
+- Cached VTT files are reused instead of re-downloaded or lost to a failed retry.
+- A shared media file referenced by multiple cards is no longer treated as
+  duplicate work; both notes keep the same bundled image.
+- `extract_video.py` no longer shadows the `index()` function with a loop variable.
+- yt-dlp output with an extension (`vid.mp4.webm`) is found instead of reported as
+  a download failure.
+- `frames.md` is no longer overwritten by each video.
+
+### Notes
+- Vector diagrams in PDFs are still deferred; embedded raster figures are covered.
+  The same applies to vector-only PowerPoint slides.
+- `--max` is a safety cap, not the selection policy.
+- Deck revisions of already-imported Anki collections (stable note IDs,
+  update/retire reports, AnkiConnect) are deferred to v1.4.2. See `MAINTAINERS.md`.
+- Tests now include adversarial PPTX fixtures, tag-leak errors, answer-overlap
+  false-positive controls, media-reuse package checks, vision budgets, PATH
+  fallback, and mutation probes for the new guards.
 
 ## v1.3.2 — Foundation-first new-card order
 

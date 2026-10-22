@@ -1,6 +1,6 @@
 ---
 name: anki-gen
-description: Generate evidence-based Anki flashcards from lecture notes, PDFs, homework and textbooks, and review them in a built-in local web page. Use when the user asks to make flashcards or an Anki deck, turn course material into cards, merge a deck, or study with spaced repetition. Outputs .apkg for direct import.
+description: Generate evidence-based Anki flashcards from lecture notes, PDFs, PowerPoint, homework, textbooks, YouTube videos, and local recordings, and review them in a built-in local web page. Use when the user asks to make flashcards or an Anki deck, turn course material into cards, merge a deck, or study with spaced repetition. Outputs .apkg for direct import.
 ---
 
 # Anki STEM Flashcard Generator
@@ -15,13 +15,21 @@ entry point differs (`/anki-gen` vs description match); the pipeline is identica
 **Supporting files.** `references/card-writing.md` (read before stage 7), `references/prompts.md`
 (stages 5/7/8/13), `references/review.md` (stages 9/10), `references/lessons.md` (when changing a
 script), `references/optional.md` (programming decks, known gaps, media, deck audit),
-`references/video.md` (video sources). Each is read
+`references/video.md` (video sources), `references/slides.md` (PowerPoint). Each is read
 once at its stage, not every step. They ship with the skill; if `references/` is missing, work
 from the rules alone (they are the contract).
 
 **Token discipline.** Batch 10–15 cards per topic after a one-line-per-card ledger; read only the
 chosen sources, learner context, and the stage's reference; phase-split large reviews. Details:
 `references/authoring.md`, `references/review.md`.
+
+**Execution.** Never spawn a child `opencode` process (including `opencode run` or
+`opencode debug`) or recursively invoke this skill; run the shipped scripts directly.
+Never use main-model vision: do not `read` images, frames, scans, screenshots, or
+contact sheets. Ambiguous frames go to the separate `image-vision` pass, once per
+unique frame and only when needed. Do not probe for LibreOffice, Office, desktop
+converters, or random system tools; use the declared extractors. After two failed
+tool probes, stop and report the limitation.
 
 ## How much to ask, and how much to say
 
@@ -137,8 +145,10 @@ here are prose, and prose is a bet: three rounds moved no measured number.
 10. **Anchor every shared term.** Five cards querying an undefined term is a single point of
     failure — blank on the definition, all five unreachable. `[prose; roi_report anchors]`
     → **Anchor cards for shared vocabulary**
-11. **Match the front to the back's length.** A yes/no front with a paragraph back means the
-    paragraph is never read. Demand the mechanism, or cut the back. `[prose]`
+11. **Answer the front first, then match its length.** If the front asks “which enzyme/law/step,”
+    the back names it in the first sentence; a true explanation that never answers the front is
+    broken. A yes/no front with a paragraph back means the paragraph is never read. Demand the
+    mechanism, or cut the back. `[validate_cards answer-alignment; prose]`
 12. **Speak the course's language**: its terms, its notation, no attribution it never used.
     `[prose]` → **Speak the course's language**
 13. **Calibrate scaffolding to the reader — and to backs only.** A front is never calibrated
@@ -186,9 +196,11 @@ here are prose, and prose is a bet: three rounds moved no measured number.
     a student could look up — `Unit Cells`, `Dislocations`, `XRD & Diffraction`, `Unit Circle`.
     Never a layer code (`L1`), a lecture number, a single card's identity, or a subtopic: one
     Unit Circle deck is all `Unit Circle`, not `Radians`/`Sine`/`Tangent`. `objects` carries 0–2
-    names of specific things that recur across cards; **zero is normal**, and one-off/subtopic
-    tags are noise.
-    `[validate_cards topic-is-layer-code; objects-count]` → **The topic is a chapter name**
+    broad cross-topic buckets (`concurrency`, `memory`, `rtos`); **zero is normal**. Tags are
+    front-visible: never put the answer, method, theorem, or named technique in `topic` or
+    `objects`. Do not tag the topic, a subtopic, or a term already explicit in the card; the
+    build drops those. `[validate_cards topic-is-layer-code; objects-count; tag-leak]`
+    → **The topic is a chapter name**
 
 ## Layers
 
@@ -250,20 +262,31 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     missing, ask once rather than guessing. See `references/survey.md`.
 3. DECK AUDIT     → optional, opt-in only. Search AnkiWeb/GitHub/Reddit, audit by hand
                     against "DECK AUDIT" in `references/optional.md`. Modal outcome: generate your own.
-4. EXTRACT        → extract_pdf.py "<source>" "<cwd>/.anki-gen-temp/<topic>" --tag <tag>,
-                    or --batch <src>... --out .anki-gen-temp/<topic>
+4. EXTRACT        → prefer pipeline.py --sources <...> --out .anki-gen-temp/<topic>
+                    for PDFs, text, PowerPoint, URLs, and directories (one call).
+                    For a single-source diagnosis use extract_pdf.py "<source>"
+                    "<cwd>/.anki-gen-temp/<topic>" --tag <tag>. PPTX text/notes/
+                    embedded images are parsed without Office. Local media goes
+                    through stage 4b.
                     (--date-filter limits directory sources). Single-source prints
                     content/source_type/source_path/images_count + a 3-name sample/md; batch
                     prints a manifest with counts and samples
                     of <tag> dirs + md paths (read the .md when classifying). Cite the
                     file the text came from ("Lec 04 · p.12"), not the topic dir.
-4b. VIDEO         → read $WORK/intake.md, then extract_video.py "<url>" --work "$WORK"
-                    [--whole-playlist] [--items 2-5] [--images yes|no]. Writes
+4b. VIDEO/MEDIA   → read $WORK/intake.md, then pipeline.py --sources "<url-or-local-path>"
+                    --out "$WORK" [--images yes|no] [--model auto] (preferred).
+                    Direct extract_video.py "<url-or-local-path>" --work "$WORK"
+                    is the single-source diagnosis path. Writes
                     timestamped transcript chunks, video_toc.md, and optional
                     frames.md/frames.jsonl. Manual captions first, auto captions
-                    fallback; no Whisper. Read video_toc.md and frames.md next.
-                    If a frame is low/medium confidence and matters, use the separate
-                    image-vision skill on its path; attach only if it confirms a diagram.
+                    fallback. Local files use sidecar VTT/SRT or local faster-whisper;
+                    source_url is empty for local media. Read video_toc.md and frames.md next.
+                    Frames are scored and ranked; attach `direct` frames, and confirm
+                    ambiguous `confirm` ones with the separate image-vision skill when a
+                    key exists; its `vision_check.py --max N` is the fast, cached pass.
+                    The main model never reads frames; do not make contact sheets or scan
+                    galleries. Read frames.md, not the whole candidate list. Do not sleep or
+                    poll yt-dlp; the scripts retry briefly and report skipped videos.
 5. CLASSIFY       → atomic concepts {layer, topic, objects, type, source} from content.
 6. SCOPE GATE     → the do-not-card list in .anki-gen-temp/<topic>/scope_gate.md, BOTH
                     halves: what the formula sheet prints, and — the high-yield part —
@@ -290,18 +313,19 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     not scaffold and write a script (two sources of truth). `.jsonl` one line
                     per card makes a post-review fix a one-line edit, not a 61-card rewrite;
                     every downstream script reads either form.
-                    Media is opt-in and vision-free: entries are `{file, side, caption,
-                    source}` with `<tag>/media/<file>` paths. Attach only when the user asked,
-                    from a caption/slide-title/page match or a high-signal source; unclear →
-                    drop and list it. Video frames: attach one per card when the frame
-                    illustrates the card; high/medium confidence only; low-confidence frames
-                    stay in `frames.md` and may enter the review media cross-section. Read the
-                    detail in `references/authoring.md` and `references/video.md`.
+                    Media is opt-in and main-model-vision-free: entries are `{file, side,
+                    caption, source}` with `<tag>/media/<file>` paths. Attach only when the
+                    user asked, from a caption/slide-title/page match or a high-signal
+                    source; unclear → drop and list it. Video frames: attach high/medium
+                    confidence frames; low-confidence frames stay in `frames.md`. A shared
+                    diagram may be attached to several related cards; reuse is expected.
+                    Read the detail in `references/authoring.md` and `references/video.md`.
                     Video source: `source` is the full `<channel> - ... - <title> @ mm:ss`
                     line; `source_url` is the plain timestamp URL (series includes the playlist).
                     Read $WORK/intake.md for images yes/no and the video range; do not re-ask.
 8. VERIFY (static) → validate_cards.py $WORK/cards.jsonl — escapes, delimiters, leaked markup,
-                    computation fronts, duplicates, missing glossary/provenance. Layer 2 is
+                    computation fronts, duplicates, front-visible tag leaks, answer overlap,
+                    missing glossary/provenance. Layer 2 is
                     the stage-7 batch self-check or the triaged review, never a corpus audit.
 9. TRIAGE         → read `references/review.md` first, then
                     triage.py $WORK/cards.jsonl -o $WORK/review_plan.json — picks a small
@@ -315,8 +339,10 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     re-scope (see `references/review.md`). The 1–5 scale is the primary review;
                     `--ask recall` is a second pass (default log `review_recall.jsonl`), never
                     a substitute.
-11. BUILD         → `python3 .../scripts/build_apkg.py $WORK/cards.jsonl ./<deck>.apkg --deck-name
-                    "Name"`, in the CALLER'S CWD (never the work dir). Needs `anki`.
+11. BUILD         → prefer pipeline.py --cards $WORK/cards.jsonl --gates-only --build
+                    --deck-name "Name" --out-apkg ./<deck>.apkg (build + validate in
+                    one call). Direct build_apkg.py is the diagnosis path, in the
+                    CALLER'S CWD (never the work dir). Needs `anki`.
                     --strict refuses on a validate error; --merge-existing adds only cards
                     whose hash is absent (idempotent, prints skip count). Media is bundled
                     only with `--media --media-root <work>` when intake says images: yes
@@ -326,6 +352,8 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
 12. VALIDATE      → validate_apkg.py out.apkg — the only step that sees a deck which imports
                     cleanly but is unreadable.
 13. DEBLOAT (ROI) → roi_report.py $WORK/cards.jsonl, then the deblating pass (prompt in `references/prompts.md`).
+                    Report concept overlap and media reuse; never cap or trim a deck
+                    automatically.
                     After *every* content change; step-10 feedback is measured and outranks
                     the report's surface heuristics. In the main process, not a subagent.
 14. CLEANUP       → run after the .apkg validates. The .apkg is the ONLY new file left in the

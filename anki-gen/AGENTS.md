@@ -3,6 +3,15 @@
 This file is for maintainers/agents changing the skill; it is not loaded during a
 normal deck run.
 
+- **Use `ponytail` at `ultra` for code implementation.** This is a standing
+  maintainer instruction: load the skill before changing code, keep the diff
+  minimal, and keep the explanation short. The user can override it with
+  "normal mode" or "stop ponytail".
+
+- **Use the todo tool (`todowrite`/todoskill) for multi-step work.** Create the
+  list up front, keep exactly one item in progress, and update it as work lands
+  or new follow-ups appear. A stale todo list is a failed handoff.
+
 - **Every behavior, script, schema, reference, packaging, or install change gets a
   changelog entry under the section matching `VERSION`. Do not bump `VERSION` or
   create a new version unless the user explicitly says so.** Do not leave a change
@@ -20,10 +29,18 @@ normal deck run.
 
 ## Agent execution boundaries
 
-- **Do not spawn opencode child processes** or recursively call the skill from a
-  test/debug agent.
+- **Do not spawn opencode child processes** (including `opencode run`, `debug`, `serve`,
+  or attach) or recursively call the skill from a test/debug agent.
+- **Do not use main-model vision while testing the deck path.** Do not `read` images,
+  frames, scans, screenshots, or contact sheets. Use `frames.md`/metrics; only the
+  separate `image-vision` pass may inspect an ambiguous frame.
+- **Do not probe for office/desktop converters** (LibreOffice, `soffice`, Office) or
+  unrelated tools. Use the skill's declared extractors; after two failed probes,
+  report the limitation.
 - **Do not run commands that can hang** (interactive servers, playback, unbounded
   downloads). Use short timeouts and bounded subprocess calls.
+- **Never sleep to wait out a rate limit or yt-dlp failure.** The yt-dlp wrapper
+  retries transient errors briefly; skip/report permanent ones.
 - **Do not kill the harness or your own process.** A test may stop only the known
   child process it started, after a timeout.
 - **Run autonomously to completion once a plan exists.** Ask only when blocked by

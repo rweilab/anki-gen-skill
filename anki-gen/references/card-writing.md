@@ -195,11 +195,30 @@ Ch 2 · Lec 04 Q11 / slide 95
 - **Never invent URLs.** No fabricated YouTube links with confident timestamps — if you have not
   opened it, do not cite it. Omit rather than guess.
 
+### The back answers the front before it explains it
+
+**The first sentence of the back must answer the exact question.** If the front asks “which
+enzyme,” “which law,” “which step,” or “name the X,” the back names X first, then explains the
+mechanism. A true explanation that never states the requested answer is a broken card.
+
+- Bad: “Fructose-1,6-bisphosphate → DHAP + G3P. **Why:** the six-carbon sugar splits into two
+  trioses...” — the front asked for the enzyme; the back never names it.
+- Good: “**Aldolase** (fructose-bisphosphate aldolase) cleaves fructose-1,6-bisphosphate into
+  DHAP and G3P. **Why:** ... **Next:** triose phosphate isomerase (TPI) converts DHAP to G3P.”
+
+Use a glossary/next-step line for the neighbouring molecules; do not bury the answer under the
+reaction or the why.
+
 ### Housekeeping lives in fields, not in visible card text
 
-Put the topic and tier in `topic` / `layer` / `tier_zero`. The note type already displays the topic
-and its object tags above the question. Prefixing fronts with `**Vacancies.**` makes a card read
-like a form.
+Put the topic and tier in `topic` / `layer` / `tier_zero`. The note type displays the **topic** on
+the front, and Anki tags are visible metadata; treat both as part of the question. Prefixing
+fronts with `**Vacancies.**` makes a card read like a form.
+
+**Never put the answer in a front-visible tag.** A card asking “Which substitution turns this
+into a linear ODE?” must not carry `bernoulli` in `topic` or `objects`; use the chapter
+`First-Order ODEs` and, if needed, the broad bucket `odes`. Broad context is allowed; the
+specific answer, method, theorem, or named technique is not.
 
 ### The topic is a chapter name, and object tags are a sniper
 
@@ -213,21 +232,40 @@ same lecture or chapter, they share the same topic. A topic with 1–2 cards is 
 merge it into the parent unless it is a real chapter. Roughly **4–15 cards per topic** is healthy;
 small decks may legitimately be one topic.
 
-**`objects` are optional.** A topic tag is broad by construction — searching `Vacancies` returns
-the count, the energy, the concentration, the formula (a shotgun). Apply an object tag only when
-the card is **specifically about that thing** and the thing recurs across several cards: a card
-about vacancy *concentration* in copper is `#vacancy_concentration` and `#cu`, not `#vacancies`.
-**0 to 2** per card; **zero is normal**. A third is a paraphrase of the front. Do not tag
-subtopics or single-card identities: in a Unit Circle deck, `radians`, `sine`, and `tangent` are
-usually subtopics, not object tags. Pick the objects the card is *about*, not the ones it mentions,
-and **a tag should appear on more than one card** — a one-off names nothing searchable.
-`validate_cards.py` reports the census and warns when most are singletons. What an object is: a material (`cu`, `ni`,
-`na_cl`), a structure (`fcc`, `bcc`, `hcp`), a named phenomenon or defect (`screw_dislocation`), a
-named relation (`bragg_law`, `apf`). Prefer the course's name; two or three words, not a clause.
-Tags land flat, no namespace; topics keep capitalisation, objects are lowercased. The layer code is
-**not** a tag — it stays a field for `triage.py`/`roi_report.py`. Object tags are also how "related
-notes" works: rule 26 forbids a back pointing at another card, and a tag query — *every card about
-FCC* — is the precise, never-stale version.
+**`objects` are broad buckets, not subtopics.** The topic already tags every card, so use
+`objects` for cross-topic search buckets. For an RTOS/embedded survey, examples are
+`concurrency`, `scheduling`, `memory`, `interrupts`, `multicore`, `timers`, and `rtos`; other
+decks choose their own 3–6 buckets. **0–1 is normal; two only when both
+recur across topics; zero is normal.** Do not tag a term that is already explicit in the card:
+`heap`/`stack` under Memory Management → `[]`; `queue` under Queues → `[]`;
+`mutex`/`semaphore`/`queue`/`race`/`deadlock` → `concurrency`. A broad `rtos` tag may appear on a
+good chunk of a wide survey deck. The tag is not a hint line: if naming it would answer the
+front, it does not belong there. The build drops topic/subtopic duplicates, one-topic tags, and
+one-offs, so a long list of small tags becomes a few useful buckets. Tags land flat, no namespace;
+topics keep capitalisation, objects are lowercased. The layer code is **not** a tag — it stays a
+field for `triage.py`/`roi_report.py`. Object tags are also how "related notes" works: rule 26
+forbids a back pointing at another card, and a bucket query is the precise, never-stale version.
+
+### Deck-wide uniqueness, without a card cap
+
+These are the axioms behind `similar_answer_pairs()` and the ROI report. They are about distinct
+retrieval targets, not about keeping a deck small:
+
+1. **One card, one retrieval.** Judge by the answer and source, not by front wording.
+2. **Contrast pairs are not duplicates.** Stack vs heap and bounded vs unbounded inversion must
+   stay separate; the validator's front similarity is only a warning.
+3. **A scenario card must add a decision.** If it repeats a definition with a story, merge it.
+4. **An enumeration is one comparison card unless each item changes a decision.** Five heap
+   variants with distinct failure modes can stay; five names with the same consequence should not.
+5. **API trivia is reference material unless it changes a decision.** It inflates a deck without
+   adding interview reasoning.
+6. **Review score 1 is trim/merge evidence, not a request for more cards.** Additions are allowed,
+   but they need a visible net delta and a matching cut or an explicit user request.
+7. **Source density is not a card target.** A 10–15 minute lecture usually yields a handful of
+   distinct decisions, not 14 restatements.
+8. **Media is concept-level.** A canonical diagram may appear on several related cards; uniqueness
+   is not a requirement.
+9. **Front-visible tags cannot be the answer.** See “The topic is a chapter name” above.
 
 ### The Procedure layer tests *decisions*, never solutions
 

@@ -29,11 +29,19 @@ bash ~/.claude/skills/anki-gen/scripts/setup.sh
 ```
 
 It installs only the missing system and Python packages, then runs the doctor
-silently. macOS needs Homebrew already installed; Linux asks for sudo once.
-`--print-only` shows the commands without changing anything.
+silently. YouTube support comes from `yt-dlp[default,deno]` in the Python
+requirements, including EJS and Deno; no system Node install is needed. PyMuPDF is
+pinned below 2.0 for stable wheels. PowerPoint text/notes/embedded images are read
+without Office. macOS needs Homebrew already installed; Linux asks for sudo once. `--print-only` shows the
+commands without changing anything.
 
 The Anki desktop app is separate and never installed by this skill. It is only
 needed to import the finished `.apkg`.
+
+Local recordings use ffprobe + ffmpeg and either sidecar VTT/SRT or the
+`faster-whisper` Python package. `--model auto` benchmarks actual speech once per
+machine and caches the choice. Media is never uploaded. Apple Silicon macOS and
+Linux are supported; Intel Macs are not supported for local transcription.
 
 | OS | System packages setup installs when missing |
 |---|---|
@@ -76,14 +84,15 @@ the key into chat.
 
 Ask opencode:
 
-> make flashcards from the PDFs in this folder
+> make flashcards from the PDFs or PowerPoints in this folder
 
 Text-first is the default. For a video:
 
 > make flashcards from this playlist
 
-The agent asks once whether to pull diagram stills. It auto-selects frames; one
-image per card; low-confidence frames are listed, not forced into cards.
+The agent asks once whether to pull diagram stills. It auto-selects frames and may
+reuse a shared diagram on several related cards; the main model never reads the
+images. Ambiguous frames go to the separate image-vision pass.
 
 Review is a local 1–5 page on `127.0.0.1`. Open it on the same machine. Scope is
 sampled, not the whole deck. Then **File → Import** the `.apkg` into Anki.
@@ -94,7 +103,8 @@ follow that exact order, set **New Card Sort Order** to **Order gathered**.
 ## Update
 
 Extract a newer handoff zip and run `bash install.sh` again. It prints the old and
-new versions and leaves a timestamped backup under `~/.claude/skills/.backups/`.
+new versions and leaves a timestamped backup under
+`~/.local/share/anki-gen/backups/`.
 No auto-downloader or background updater.
 
 ## Notes

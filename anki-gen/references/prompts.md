@@ -18,9 +18,10 @@ procedure), and `source` (file + page/slide/line, e.g. "Lec 04 p.12"). Use `sour
 deprecated `source_ref`. `topic` is the chapter/lecture heading the student could look up — never
 a layer code, lecture number, single fact, or subtopic. Cards from the same lecture/chapter share
 the same topic: a Unit Circle deck is `topic: "Unit Circle"`, not `Radians`/`Sine`/`Tangent`.
-`objects` is 0–2 specific things the concept is ABOUT, which become search tags: `["fcc", "cu"]`,
-not everything it mentions. **Prefer `[]`**; add an object only when that named thing recurs on
-several cards and is useful for retrieval. Do not tag subtopics. (4)
+`objects` is 0–2 **broad cross-topic buckets**, not subtopics: for an RTOS deck, `["concurrency"]`,
+`["memory"]`, `["rtos"]`; for another deck, use its own 3–6 buckets. **Prefer `[]`**; add a bucket
+only when it recurs across topics and is useful for retrieval. Do not tag the topic, a subtopic,
+or a term already explicit in the card. (4)
 Stage 6 drops anything on its list before writing; do not write cards for it.
 
 **STRICT CONSTRAINTS — do not produce concepts for:** things NOT explicitly in the source;
@@ -33,8 +34,8 @@ is not an argument for more cards.
 **Output ONLY a JSON array:**
 ```json
 [
-  {"id":"concept_001","topic":"Fourier Transform","objects":["dft"],"layer":"L2","type":"derivation","source":"Lec 05 p.12","content":"Fourier Transform converts time-domain signal to frequency domain..."},
-  {"id":"concept_002","topic":"Fourier Transform","objects":["dft","windowing"],"layer":"L3","type":"boundary","source":"Lec 05 p.18","content":"FT assumes the signal is periodic/infinite; it fails for transient signals without windowing..."}
+  {"id":"concept_001","topic":"Fourier Transform","objects":["signals"],"layer":"L2","type":"derivation","source":"Lec 05 p.12","content":"Fourier Transform converts time-domain signal to frequency domain..."},
+  {"id":"concept_002","topic":"Fourier Transform","objects":[],"layer":"L3","type":"boundary","source":"Lec 05 p.18","content":"FT assumes the signal is periodic/infinite; it fails for transient signals without windowing..."}
 ]
 ```
 
@@ -69,7 +70,14 @@ it is diagnosing, unless calibration says this learner wants boundaries as decis
 (L3), "What are the next steps?" (Procedure) — with no topic prefix (rule 18; the notetype prints
 it). **Tier-zero: rule 6. Course language: rule 12. Symbols: rule 5. Anchors: rule 10.**
 **Topic/tags: copy the classifier's coarse chapter topic; do not split one chapter into
-subtopics. Leave `objects` empty unless the same named thing recurs across cards.**
+subtopics. Leave `objects` empty unless a broad bucket recurs across topics. Prefer 0–1; never
+tag the topic, a subtopic, or a term already explicit in the card. A broad `rtos` tag is fine on
+a wide survey deck. Tags are front-visible: never put the answer, method, theorem, or named
+technique in `topic` or `objects` (e.g. no `bernoulli` on “which substitution?”).**
+
+**Answer first.** If the front asks “which enzyme/law/step/name,” the back's first sentence must
+name that target; then add the mechanism/why. Do not start with the reaction or a restatement of
+the front.
 
 **For formulas:** use Basic for the whole formula (rule 15). If a genuine enumeration needs cloze,
 blank one item only — never the whole formula or a single computed answer.

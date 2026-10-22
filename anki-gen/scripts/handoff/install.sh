@@ -7,6 +7,7 @@ set -euo pipefail
 # Directory containing this script, and the skills directory it installs into.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="${ANKI_GEN_SKILLS_DIR:-$HOME/.claude/skills}"
+BACKUP_ROOT="${ANKI_GEN_BACKUP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/anki-gen/backups}"
 NEW_VERSION="$(cat "$HERE/anki-gen/VERSION" 2>/dev/null || echo unknown)"
 OLD_VERSION="$(cat "$DEST/anki-gen/VERSION" 2>/dev/null || echo none)"
 STAGE=""
@@ -38,6 +39,22 @@ if [ ! -f "$HERE/anki-gen/SKILL.md" ] || [ ! -f "$HERE/image-vision/SKILL.md" ];
 fi
 
 mkdir -p "$DEST"
+
+# Backups used to live under ~/.claude/skills/.backups, where skill discovery
+# could load an old SKILL.md. Move them out and make them non-discoverable.
+if [ -d "$DEST/.backups" ]; then
+  mkdir -p "$BACKUP_ROOT"
+  for old in "$DEST"/.backups/*; do
+    [ -e "$old" ] || continue
+    target="$BACKUP_ROOT/legacy-$(basename "$old")"
+    if [ -e "$target" ]; then target="$target-$(date +%s)"; fi
+    mv "$old" "$target"
+    find "$target" -name 'SKILL.md' -type f -exec mv {} {}.bak \; 2>/dev/null || true
+  done
+  rmdir "$DEST/.backups" 2>/dev/null || true
+  echo "Moved legacy backups to $BACKUP_ROOT"
+fi
+
 STAGE="$(mktemp -d "$DEST/.anki-install.XXXXXX")"
 cp -R "$HERE/anki-gen" "$STAGE/anki-gen"
 cp -R "$HERE/image-vision" "$STAGE/image-vision"
@@ -62,13 +79,15 @@ done
 
 # Keep the old install as a timestamped backup before replacing it.
 if [ -e "$DEST/anki-gen" ] || [ -e "$DEST/image-vision" ]; then
-  BACKUP="$DEST/.backups/anki-gen-$(date +%Y%m%d-%H%M%S)"
+  BACKUP="$BACKUP_ROOT/anki-gen-$(date +%Y%m%d-%H%M%S)"
   mkdir -p "$BACKUP"
   for name in anki-gen image-vision; do
     if [ -e "$DEST/$name" ]; then
       mv "$DEST/$name" "$BACKUP/$name"
     fi
   done
+  # Defence in depth: a backup under the skills tree is not a loadable skill.
+  find "$BACKUP" -name 'SKILL.md' -type f -exec mv {} {}.bak \; 2>/dev/null || true
   echo "Backup: $BACKUP"
 fi
 

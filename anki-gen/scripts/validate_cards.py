@@ -221,6 +221,10 @@ def findings(cards):
         front, back = str(c.get("front", "")), str(c.get("back", ""))
         layer = c.get("layer", "")
 
+        if ENZYME_ASK.search(front) and not ENZYME_NAME.search(back):
+            add(i, "err", f"{label} -- front asks which enzyme but the back names no "
+                          "enzyme (answer first, then explain)")
+
         # 1. escape corruption
         for f, t in (("front", front), ("back", back)):
             if CTRL.search(t):
@@ -405,6 +409,88 @@ def similar_front_pairs(cards) -> list[tuple[int, int, float]]:
     return out
 
 
+ENZYME_ASK = re.compile(r"\b(?:which|what|name)\b[^?]{0,100}\benzyme\b", re.I)
+ENZYME_NAME = re.compile(r"\b(?!enzyme\b)[a-z]{4,}(?:ase|zyme)\b", re.I)
+
+
+
+
+TAG_STOP = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
+    "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "what",
+    "when", "where", "which", "who", "why", "with",
+}
+CONTRAST_FRONT = re.compile(
+    r"\b(vs\.?|versus|bounded|unbounded|difference|different|instead|"
+    r"contrast|compare|comparison)\b", re.I)
+
+
+def _tag_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower())
+            if len(w) > 2 and w not in TAG_STOP}
+
+
+def tag_leak_findings(cards):
+    """Tags are front-visible. A one-topic object tag that only appears in the
+    answer is an error; a topic that does so is a warning (topics are context).
+
+    Broad object buckets are context, not answers, so they are exempt.
+    """
+    spans = {}
+    for c in cards:
+        for obj in (c.get("objects") or []):
+            spans.setdefault(str(obj), set()).add(str(c.get("topic", "")))
+    out = []
+    for i, c in enumerate(cards, 1):
+        front = _tag_words(str(c.get("front", "")))
+        back = _tag_words(str(c.get("back", "")))
+        tags = []
+        topic = str(c.get("topic", "")).strip()
+        if topic:
+            tags.append(("topic", topic))
+        for obj in (c.get("objects") or []):
+            if spans.get(str(obj)) and len(spans[str(obj)]) > 1:
+                continue
+            tags.append(("object", str(obj)))
+        for kind, tag in tags:
+            words = _tag_words(tag)
+            if not words or not words <= back or words & front:
+                continue
+            if kind == "topic" and len(tag.split()) > 2:
+                continue
+            out.append((i, "err" if kind == "object" else "warn",
+                        f"{kind} tag {tag!r} appears only in the answer; "
+                        "tags are visible before answering, so do not reveal the answer"))
+    return out
+
+
+def similar_answer_pairs(cards) -> list[tuple[int, int, float]]:
+    """[(i, j, containment)] for same-topic/source cards whose answers overlap.
+
+    Front similarity alone flags contrasts (stack vs heap, bounded vs unbounded).
+    This uses answer vocabulary instead, and skips pairs whose fronts explicitly
+    signal a contrast. Warning-only: it asks for a merge-or-keep decision.
+    """
+    out = []
+    backs = [_tag_words(str(c.get("back", ""))) for c in cards]
+    contrast = [bool(CONTRAST_FRONT.search(str(c.get("front", "")))) for c in cards]
+    for i in range(len(cards)):
+        for j in range(i + 1, len(cards)):
+            a, b = cards[i], cards[j]
+            same_topic = a.get("topic") == b.get("topic")
+            same_source = (str(a.get("source", "")).split(" @ ")[0]
+                           == str(b.get("source", "")).split(" @ ")[0])
+            if not (same_topic or same_source) or contrast[i] or contrast[j]:
+                continue
+            shared = backs[i] & backs[j]
+            if len(shared) < 6:
+                continue
+            ratio = len(shared) / min(len(backs[i]), len(backs[j]))
+            if ratio >= 0.40:
+                out.append((i + 1, j + 1, round(ratio, 3)))
+    return out
+
+
 def check_cards(cards):
     """The CLI's (errors, warnings, info) view.
 
@@ -423,6 +509,13 @@ def check_cards(cards):
     # is worth looking at, and triage wants both.
     for i, j, r in similar_front_pairs(cards):
         warns.append(f"cards {i} and {j} fronts {r:.0%} similar")
+    tag_findings = tag_leak_findings(cards)
+    errs.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "err")
+    warns.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "warn")
+
+    for i, j, r in similar_answer_pairs(cards):
+        warns.append(f"cards {i} and {j} answers {r:.0%} overlapping; "
+                     "merge or keep only if they are a contrast")
     return errs, warns, info
 
 

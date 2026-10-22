@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Extract and auto-pick 720p video frames for card backs.
+"""Extract and rank 720p video frames for card backs.
 
-Transcript cues select candidate windows. OCR + edge/slide scoring picks one
-frame per cue; low-confidence windows are skipped. No vision calls by default.
+Transcript cues select candidate windows. A cheap visual probe shortlists the
+windows, then a second pass samples around them and scores structure, colour,
+and OCR text. One best frame is kept per cue; ambiguous frames are marked for
+optional image-vision confirmation. No vision calls happen here.
 """
 from __future__ import annotations
 
@@ -11,13 +13,31 @@ import json
 import re
 import subprocess
 import sys
+from collections import defaultdict
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-CUES = re.compile(
-    r"\b(diagram|figure|flow ?chart|state machine|block diagram|timing diagram|"
-    r"schematic|architecture|chart|graph|table|this slide|as you can see|"
-    r"here'?s the|shown here)\b", re.I)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from platform_paths import ensure_tool_paths  # noqa: E402
+ensure_tool_paths()
+import visual  # noqa: E402
+import ytdlp  # noqa: E402
+
+# Visual nouns are broad on purpose; the scorer decides whether the frame is
+# actually a diagram. Generic phrases stay out of STRONG so they need more
+# visual evidence before confirmation.
+CUT_DISTANCE = 18
+SCAN_INTERVAL = 10.0
+SCAN_MAX = 240
+CUE_OFFSETS = (-2, 0, 2, 4, 6)
+PROBE_OFFSET = 2.0
+VISUAL_WORDS = (
+    "diagram|figure|illustration|picture|image|flow ?chart|state machine|"
+    "block diagram|timing diagram|schematic|architecture|chart|graph|table|"
+    "structure|model|orbital|molecule|arrangement|circuit|map|timeline")
+CUE = re.compile(
+    rf"\b({VISUAL_WORDS}|this slide|as you can see|here'?s the|shown here)\b", re.I)
+STRONG_CUE = re.compile(rf"\b({VISUAL_WORDS})\b", re.I)
 
 
 def run(cmd, timeout=300):
@@ -25,8 +45,7 @@ def run(cmd, timeout=300):
 
 
 def ts(value: str) -> float:
-    parts = value.split(":")
-    parts = [float(p) for p in parts]
+    parts = [float(p) for p in value.split(":")]
     total = 0.0
     for p in parts:
         total = total * 60 + p
@@ -56,10 +75,18 @@ def download(url: str, work: Path, vid: str) -> Path:
     target = work / "video" / f"{vid}.mp4"
     if target.is_file() and target.stat().st_size > 0:
         return target
+    existing = sorted(target.parent.glob(f"{vid}.mp4.*"))
+    if existing:
+        return existing[0]
     target.parent.mkdir(parents=True, exist_ok=True)
-    r = run(["yt-dlp", "-f", "bv*[height<=720]+ba/b[height<=720]",
-             "--no-playlist", "--no-progress", "-o", str(target), url], timeout=600)
-    if r.returncode != 0 or not target.is_file():
+    r = ytdlp.run(
+        ("-f", "bv*[height<=720]+ba/b[height<=720]",
+         "--no-playlist", "--no-progress", "-o", str(target), url),
+        timeout=600)
+    if not target.is_file():
+        matches = sorted(target.parent.glob(f"{vid}.mp4.*"))
+        if matches:
+            return matches[0]
         raise RuntimeError(f"yt-dlp frame download failed: {r.stderr[-500:]}")
     return target
 
@@ -74,24 +101,12 @@ def grab(video: Path, at: float, out: Path) -> Path:
     return out
 
 
-def score(path: Path) -> tuple[int, float]:
-    """Return (OCR word count, edge-density score)."""
-    words = 0
+def ocr_words(path: Path) -> int:
     try:
         r = run(["tesseract", str(path), "stdout", "--psm", "6"], timeout=20)
-        if r.returncode == 0:
-            words = len(re.findall(r"\b\w+\b", r.stdout))
+        return len(re.findall(r"\b\w+\b", r.stdout)) if r.returncode == 0 else 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    edge = 0.0
-    try:
-        from PIL import Image, ImageFilter, ImageStat
-        im = Image.open(path).convert("L").filter(ImageFilter.FIND_EDGES)
-        h = im.histogram()
-        edge = sum(h[32:]) / max(1, sum(h))
-    except Exception:
-        pass
-    return words, edge
+        return 0
 
 
 def transcript_cues(path: Path) -> list[dict]:
@@ -104,61 +119,207 @@ def transcript_cues(path: Path) -> list[dict]:
         except json.JSONDecodeError:
             continue
         text = str(r.get("text", ""))
-        if CUES.search(text):
-            rows.append({"start": float(r.get("start", 0)), "end": float(r.get("end", 0)),
-                         "text": text})
+        if CUE.search(text):
+            rows.append({"start": float(r.get("start", 0)),
+                         "end": float(r.get("end", 0)),
+                         "text": text,
+                         "strong": bool(STRONG_CUE.search(text))})
     return rows
 
 
-def candidates(cues: list[dict], duration: float) -> list[tuple[float, str]]:
-    out = []
-    for cue in cues:
-        for offset in (-2.0, 0.0, 2.0, 4.0):
-            at = max(0.0, cue["start"] + offset)
-            if duration and at > duration:
-                continue
-            out.append((at, cue["text"]))
-    return out
+def probe(video: Path, vid: str, at: float, work: Path):
+    out = media_path(work, vid, at)
+    try:
+        grab(video, at, out)
+    except RuntimeError as e:
+        print(f"frames.py: {e}", file=sys.stderr)
+        return None, None
+    return out, visual.analyze(out)
+
+
+def make_row(vid: str, title: str, at: float, path: Path, metrics: dict,
+             q: dict, words: int, cue: dict, cue_id: int,
+             source_label: str, source_url: str, work: Path) -> dict:
+    return {
+        "id": f"vf-{vid}-{int(at):06d}",
+        "video_id": vid, "time": at, "timecode": fmt(at),
+        "file": str(path.relative_to(work)),
+        "caption": cue["text"][:180],
+        "source": f"{source_label or title} @ {fmt(at)}",
+        "source_url": with_time(source_url, at),
+        "confidence": q.get("confidence", q["quality"]),
+        "quality": q["quality"], "attach": q["attach"],
+        "needs_vision": q["needs_vision"], "blank": q["blank"],
+        "text_wall": q["text_wall"], "text_like": q["text_like"],
+        "reason": q["reason"], "strong_cue": cue["strong"],
+        "ocr_words": words, "edge": metrics["edge"], "focus": metrics["focus"],
+        "color": metrics["color"], "background": metrics["background"],
+        "dhash": metrics["dhash"], "best": False, "cue_id": cue_id,
+    }
+
+
+def _tier(row: dict) -> int:
+    return {"high": 3, "medium": 2}.get(row.get("quality"), 1)
+
+
+def late_best(rows: list[dict]) -> dict | None:
+    """Latest high/confirm frame inside the strongest visual shot."""
+    if not rows:
+        return None
+    rows = sorted(rows, key=lambda r: r["time"])
+    shots, current = [], []
+    for row in rows:
+        if (current and visual.dhash_distance(current[-1]["dhash"], row["dhash"])
+                > CUT_DISTANCE):
+            shots.append(current)
+            current = []
+        current.append(row)
+    if current:
+        shots.append(current)
+    shot = max(shots, key=lambda s: max(visual.rank(r) for r in s))
+    return max(shot, key=lambda r: (_tier(r), r["time"], visual.rank(r)))
+
+
+def duration(video: Path) -> float:
+    r = run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(video)], timeout=30)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def coarse_scan(video: Path, vid: str, title: str, work: Path,
+                source_label: str, source_url: str) -> list[dict]:
+    """Visual-only fallback for videos with no useful transcript cues."""
+    total = duration(video)
+    if total <= 0:
+        return []
+    limit = min(SCAN_MAX, max(30, int(total / SCAN_INTERVAL)))
+    step = max(4.0, total / limit)
+    cue = {"text": "visual scan", "strong": True}
+    rows, cluster, last_hash = [], -1, None
+    at = 0.0
+    while at < total and len(rows) < limit:
+        path, metrics = probe(video, vid, at, work)
+        if metrics is not None:
+            words = ocr_words(path)
+            q = visual.classify(metrics, words=words, strong_cue=True)
+            if not q["blank"] and not q["text_wall"]:
+                if last_hash is None or visual.dhash_distance(last_hash,
+                                                              metrics["dhash"]) > CUT_DISTANCE:
+                    cluster += 1
+                last_hash = metrics["dhash"]
+                rows.append(make_row(vid, title, at, path, metrics, q, words, cue,
+                                     f"scan-{cluster}", source_label, source_url,
+                                     work))
+        at += step
+    return rows
 
 
 def auto(video: Path, vid: str, title: str, cues: list[dict], work: Path,
          duration: float = 0, source_label: str = "", source_url: str = "") -> list[dict]:
     rows = []
-    for at, cue in candidates(cues, duration):
-        out = media_path(work, vid, at)
-        try:
-            grab(video, at, out)
-        except RuntimeError as e:
-            print(f"frames.py: {e}", file=sys.stderr)
+    for cue_id, cue in enumerate(cues):
+        # Pass 1: one cheap probe decides whether this cue is worth the full window.
+        at = max(0.0, cue["start"] + PROBE_OFFSET)
+        if duration and at > duration:
             continue
-        words, edge = score(out)
-        # A slide/diagram usually has labels or a dense line structure. A webcam
-        # frame with a little text is not enough on its own.
-        confidence = "high" if words >= 8 and edge >= 0.035 else (
-            "medium" if words >= 3 and edge >= 0.025 else "low")
-        rows.append({
-            "id": f"vf-{vid}-{int(at):06d}",
-            "video_id": vid, "time": at, "timecode": fmt(at),
-            "file": str(out.relative_to(work)),
-            "caption": cue[:180],
-            "source": f"{source_label or title} @ {fmt(at)}",
-            "source_url": with_time(source_url, at),
-            "confidence": confidence, "needs_vision": confidence != "high",
-            "ocr_words": words, "edge": round(edge, 4), "best": False,
-        })
-    # One best frame per timestamp; keep low/medium for the web cross-section.
-    dedup = {}
-    for r in rows:
-        old = dedup.get(r["time"])
-        if old is None or (r["ocr_words"], r["edge"]) > (old["ocr_words"], old["edge"]):
-            dedup[r["time"]] = r
-    rows = sorted(dedup.values(), key=lambda r: r["time"])
-    groups = {}
-    for r in rows:
-        groups.setdefault(r["caption"], []).append(r)
+        path, metrics = probe(video, vid, at, work)
+        if metrics is None:
+            continue
+        first = visual.classify(metrics, words=None, strong_cue=cue["strong"])
+        if first["blank"]:
+            continue
+        if not cue["strong"] and first["quality"] == "low":
+            continue
+
+        # Pass 2: sample around the cue, OCR only this shortlist.
+        for offset in CUE_OFFSETS:
+            t = max(0.0, round(cue["start"] + offset, 1))
+            if duration and t > duration:
+                continue
+            if abs(t - at) < 0.01:
+                p, m = path, metrics
+            else:
+                p, m = probe(video, vid, t, work)
+            if m is None:
+                continue
+            words = ocr_words(p)
+            q = visual.classify(m, words=words, strong_cue=cue["strong"])
+            if q["blank"] or q["text_wall"]:
+                continue
+            rows.append(make_row(vid, title, t, p, m, q, words, cue, cue_id,
+                                 source_label, source_url, work))
+
+    # One best frame per cue; collapse near-identical frames inside that cue only.
+    groups = defaultdict(list)
+    for row in rows:
+        groups[row["cue_id"]].append(row)
+    kept = []
     for group in groups.values():
-        group.sort(key=lambda r: (r["ocr_words"], r["edge"]), reverse=True)
-        group[0]["best"] = True
+        group.sort(key=visual.rank, reverse=True)
+        unique = []
+        for row in group:
+            if any(visual.dhash_distance(row["dhash"], other["dhash"]) <= 2
+                   for other in unique):
+                continue
+            unique.append(row)
+        best = late_best(unique)
+        if best:
+            best["best"] = True
+        kept.extend(unique)
+    kept.sort(key=lambda r: r["time"])
+    return kept
+
+
+def refresh(work: Path) -> list[dict]:
+    """Deduplicate the append-only log, recompute best, and write a compact MD."""
+    p = work / "frames.jsonl"
+    rows = []
+    if p.is_file():
+        for line in p.read_text().splitlines():
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    by_id = {r["id"]: r for r in rows if r.get("id")}
+    rows = list(by_id.values())
+    groups = defaultdict(list)
+    for row in rows:
+        cue_id = row.get("cue_id")
+        key = (row.get("video_id"), cue_id if cue_id is not None else row["id"])
+        groups[key].append(row)
+    for group in groups.values():
+        for row in group:
+            row["best"] = False
+        best = late_best(group)
+        if best:
+            best["best"] = True
+    rows.sort(key=lambda r: (r.get("video_id", ""), r.get("time", 0)))
+    p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+
+    shown = [r for r in rows if r.get("best") and
+             (r.get("attach") in ("direct", "confirm") or
+              r.get("confidence") == "manual")]
+    lines = [
+        "# Video frame candidates",
+        "",
+        "`direct` = attach. `confirm` = use image-vision when available, otherwise",
+        "attach only with a strong visual cue. `skip` and non-best candidates stay",
+        "in frames.jsonl.",
+        "",
+    ]
+    for r in shown:
+        lines.append(
+            f"- {r['video_id']} {r['timecode']} {r.get('confidence', '?')}/"
+            f"{r.get('attach', '?')} `{r['file']}`  {r.get('caption', '')[:100]}  "
+            f"{r.get('source_url', '')}")
+    if not shown:
+        lines.append("- no attachable candidates")
+    lines.append("")
+    lines.append(f"{len(rows)} candidate(s), {len(shown)} shown.")
+    (work / "frames.md").write_text("\n".join(lines) + "\n")
     return rows
 
 
@@ -174,28 +335,38 @@ def main() -> int:
     ap.add_argument("--transcript", required=True)
     ap.add_argument("--at", default=None, help="single timestamp mm:ss")
     ap.add_argument("--auto", action="store_true")
-    ap.add_argument("--max", type=int, default=0, help="0 = no cap")
+    ap.add_argument("--max", type=int, default=0,
+                    help="keep the N best candidates; 0 = no cap")
     args = ap.parse_args()
     work = Path(args.work)
-    path = media_path(work, args.video_id, ts(args.at) if args.at else 0)
     try:
         video = Path(args.video_file) if args.video_file else download(args.url, work, args.video_id)
         if args.at:
-            grab(video, ts(args.at), path)
-            rows = [{"id": f"vf-{args.video_id}-{int(ts(args.at)):06d}",
-                     "video_id": args.video_id, "time": ts(args.at),
-                     "timecode": fmt(ts(args.at)), "file": str(path.relative_to(work)),
-                     "caption": "manual frame",
-                     "source": f"{args.source_label or args.title} @ {args.at}",
-                     "source_url": with_time(args.source_url, ts(args.at)),
-                     "confidence": "manual", "needs_vision": False,
-                     "ocr_words": 0, "edge": 0}]
+            at = ts(args.at)
+            path = grab(video, at, media_path(work, args.video_id, at))
+            metrics = visual.analyze(path)
+            words = ocr_words(path)
+            cue = {"text": "manual frame", "strong": True}
+            if metrics is None:
+                raise RuntimeError("could not read the extracted frame")
+            q = visual.classify(metrics, words=words, strong_cue=True)
+            q = {**q, "quality": "high", "confidence": "manual",
+                 "attach": "direct", "needs_vision": False, "reason": "manual"}
+            row = make_row(args.video_id, args.title, at, path, metrics, q, words,
+                           cue, None, args.source_label, args.source_url, work)
+            row["id"] = f"vf-manual-{args.video_id}-{int(at):06d}"
+            row["best"] = True
+            rows = [row]
         else:
             cues = transcript_cues(Path(args.transcript))
             rows = auto(video, args.video_id, args.title, cues, work,
                         source_label=args.source_label, source_url=args.source_url)
+            if not any(r.get("attach") in ("direct", "confirm") for r in rows):
+                rows += coarse_scan(video, args.video_id, args.title, work,
+                                    args.source_label, args.source_url)
             if args.max and len(rows) > args.max:
-                rows = rows[:args.max]
+                rows = sorted(rows, key=visual.rank, reverse=True)[:args.max]
+                rows.sort(key=lambda r: r["time"])
     except Exception as e:
         print(f"frames.py: {e}", file=sys.stderr)
         return 1
@@ -203,14 +374,8 @@ def main() -> int:
     with out.open("a") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    md = work / "frames.md"
-    md.write_text("# Video frame candidates\n\n"
-        "Low/medium confidence: hand the frame path to the separate `image-vision`\n"
-        "skill; attach only if it confirms a diagram. Do not attach low-confidence\n"
-        "frames on OCR/edge alone.\n\n" + "\n".join(
-        f"- {'BEST ' if r.get('best') else ''}{r['id']}  {r['timecode']}  {r['confidence']}  `{r['file']}`  {r['source']}  {r.get('source_url','')}"
-        for r in rows) + "\n")
-    print(f"frames.py: {len(rows)} candidate(s) -> {out}")
+    total = len(refresh(work))
+    print(f"frames.py: {len(rows)} new candidate(s), {total} total -> {out}")
     return 0
 
 

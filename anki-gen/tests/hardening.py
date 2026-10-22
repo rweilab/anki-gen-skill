@@ -21,7 +21,9 @@ SCRIPTS = ROOT / "scripts"
 GOLDEN = ROOT / "tests" / "golden_cards.jsonl"
 
 sys.path.insert(0, str(SCRIPTS))
-from build_apkg import foundation_order  # noqa: E402
+from build_apkg import normalize_objects, study_order  # noqa: E402
+from validate_cards import similar_answer_pairs  # noqa: E402
+from new_cards import C, CardError  # noqa: E402
 
 BASE = {
     "front": "Why does a vacancy increase a crystal's free energy?",
@@ -87,6 +89,13 @@ def main() -> int:
     assert good["valid"] is True, good
     print("ok    positive control")
 
+    skill = (ROOT / "SKILL.md").read_text()
+    for phrase in ("Never use main-model vision",
+                   "Never spawn a child `opencode` process",
+                   "Do not probe for LibreOffice"):
+        assert phrase in skill, f"guardrail missing from SKILL.md: {phrase!r}"
+    print("ok    execution guardrails present")
+
     # Soft order: source topic first, tier-zero, then L1/L2/advanced. Topic B is
     # first on purpose, so this also proves the order is not alphabetical.
     order_cards = [
@@ -111,9 +120,71 @@ def main() -> int:
         "B concept?", "B fact one?", "B boundary?", "B procedure?",
         "A concept?", "A fact one?", "A understanding one?",
     ]
-    got_order = [c["front"] for c in foundation_order(order_cards)]
+    got_order = [c["front"] for c in study_order(order_cards)]
     assert got_order == expected_order, got_order
-    print("ok    foundation-first card order")
+    print("ok    grouped order for a small deck")
+
+    scatter_cards = []
+    for topic in ("Alpha", "Beta", "Gamma"):
+        for i in range(16):
+            scatter_cards.append({
+                "front": f"{topic} card {i}?",
+                "back": "**Why:** test.",
+                "layer": "L1" if i % 2 == 0 else "L2",
+                "topic": topic,
+                "deck": "SCATTER::TEST",
+                "source": "Lec 1 p.1",
+                "tier_zero": i == 0,
+            })
+    scattered = study_order(scatter_cards)
+    assert len(scattered) == len(scatter_cards)
+    assert scattered == study_order(list(scatter_cards))  # deterministic
+    anchors = {c["topic"] for c in scatter_cards if c["tier_zero"]}
+    seen_anchor = set()
+    run_topic, run_len = None, 0
+    for c in scattered:
+        t = c["topic"]
+        if c["tier_zero"]:
+            seen_anchor.add(t)
+        elif t in anchors:
+            assert t in seen_anchor, f"{t} card before its tier-zero anchor"
+        run_len = run_len + 1 if t == run_topic else 1
+        run_topic = t
+        assert run_len <= 4, f"topic run too long: {t} x{run_len}"
+    assert {c["topic"] for c in scattered} == set(anchors)
+    print("ok    scattered study order")
+
+    tag_cards = [
+        {"topic": "Memory Management", "objects": ["heap", "stack"]},
+        {"topic": "Memory Management", "objects": ["heap"]},
+        {"topic": "Queues", "objects": ["queue"]},
+        {"topic": "Queues", "objects": ["queue"]},
+        {"topic": "Deadlock & Starvation", "objects": ["deadlock"]},
+        {"topic": "Deadlock & Starvation", "objects": ["critical_section", "rtos"]},
+        {"topic": "Priority Inversion", "objects": ["critical_section", "rtos"]},
+        {"topic": "Priority Inversion", "objects": ["rtos"]},
+    ]
+    normalized = normalize_objects(tag_cards)
+    assert normalized[0]["objects"] == [], normalized[0]
+    assert normalized[2]["objects"] == [], normalized[2]
+    assert normalized[4]["objects"] == [], normalized[4]
+    assert set(normalized[5]["objects"]) == {"critical_section", "rtos"}, normalized[5]
+    span_cards = []
+    for i in range(12):
+        for topic in (f"T{i}", f"T{(i + 1) % 12}"):
+            span_cards.append({"topic": topic, "objects": [f"narrow_{i}"]})
+        for topic in (f"T{i}", f"T{(i + 3) % 12}", f"T{(i + 7) % 12}"):
+            span_cards.append({"topic": topic, "objects": [f"broad_{i}"]})
+    kept = {obj for c in normalize_objects(span_cards) for obj in c["objects"]}
+    assert not any(o.startswith("narrow_") for o in kept), kept
+    assert any(o.startswith("broad_") for o in kept), kept
+    topic_words = normalize_objects([
+        {"topic": "Interrupts & ISRs", "objects": ["interrupt"]},
+        {"topic": "Scheduling", "objects": ["interrupt"]},
+        {"topic": "Interrupts & ISRs", "objects": ["interrupt"]},
+    ])
+    assert all("interrupt" not in c["objects"] for c in topic_words), topic_words
+    print("ok    broad tag normalization (topic span/name)")
 
     # Negative fixtures: one defect per high-value rule.
     case("missing source", lambda: [{k: v for k, v in BASE.items() if k != "source"}],
@@ -154,6 +225,96 @@ def main() -> int:
         for i in range(1, 9)], "warning", "topics")
     case("near-duplicate fronts", lambda: [BASE, BASE],
          "warning", "similar")
+    case("enzyme question missing enzyme", lambda: [dict(
+        BASE, topic="Glycolysis", objects=[],
+        front="Which enzyme splits fructose-1,6-bisphosphate into DHAP and G3P?",
+        back="Fructose-1,6-bisphosphate → DHAP + G3P. **Why:** it splits the six-carbon sugar into two trioses.")],
+        "error", "names no enzyme")
+    enzyme_ok, _ = validate([dict(
+        BASE, topic="Glycolysis", objects=[],
+        front="Which enzyme splits fructose-1,6-bisphosphate into DHAP and G3P?",
+        back="**Aldolase** cleaves it into DHAP and G3P. **Why:** the six-carbon sugar becomes two trioses.")])
+    assert enzyme_ok["valid"] is True, enzyme_ok
+    generic_enzyme, _ = validate([dict(
+        BASE, topic="Glycolysis", objects=[],
+        front="Which enzyme splits fructose-1,6-bisphosphate?",
+        back="The enzyme splits it into DHAP and G3P.")])
+    assert generic_enzyme["valid"] is False, generic_enzyme
+    lysozyme, _ = validate([dict(
+        BASE, topic="Immunology", objects=[],
+        front="Which enzyme hydrolyses bacterial peptidoglycan?",
+        back="**Lysozyme** cleaves the peptidoglycan backbone. **Why:** it breaks the sugar links.")])
+    assert lysozyme["valid"] is True, lysozyme
+    why_card, _ = validate([dict(
+        BASE, topic="Glycolysis", objects=[],
+        front="Why does the six-carbon sugar split into two trioses?",
+        back="**Why:** the payoff phase needs two three-carbon substrates.")])
+    assert why_card["valid"] is True, why_card
+
+    tag_leak = [dict(BASE, topic="First-Order ODEs", objects=["bernoulli"],
+                     front="Which substitution turns this into a linear ODE?",
+                     back="Use the Bernoulli substitution; it turns the equation linear.")]
+    data, _ = validate(tag_leak)
+    assert any("appears only in the answer" in e for e in data["errors"]), data
+    broad_tags = [
+        dict(BASE, topic="Topic A", objects=["odes"], back="Use the ODE method."),
+        dict(BASE, topic="Topic B", objects=["odes"], back="Use the ODE method."),
+    ]
+    data, _ = validate(broad_tags)
+    assert not any("appears only in the answer" in w for w in data["errors"]
+                   + data["warnings"]), data
+    topic_leak = [dict(BASE, topic="Bernoulli", objects=[],
+                       front="Which substitution turns this into a linear ODE?",
+                       back="Use the Bernoulli substitution; it turns the equation linear.")]
+    data, _ = validate(topic_leak)
+    assert any("topics" not in w and "appears only in the answer" in w
+               for w in data["warnings"]), data
+    try:
+        C(front="Which enzyme splits fructose-1,6-bisphosphate?",
+          back="It splits into DHAP and G3P.", layer="L1", topic="Glycolysis",
+          deck="ENZYME::TEST", source="Lec 1 p.1")
+    except CardError as e:
+        assert "enzyme" in str(e), e
+    else:
+        raise AssertionError("new_cards.C accepted a missing enzyme answer")
+    print("ok    authoring helper rejects missing enzyme answer")
+
+    print("ok    front-visible tag leak warning")
+
+    same_answer = [
+        dict(BASE, topic="Scheduling", front="How is the next task chosen?",
+             back="The scheduler picks the highest priority ready task and runs it until it blocks."),
+        dict(BASE, topic="Scheduling", front="Why is that task chosen?",
+             back="The scheduler picks the highest priority ready task and runs it until it blocks."),
+    ]
+    pairs = similar_answer_pairs(same_answer)
+    assert pairs and pairs[0][:2] == (1, 2), pairs
+    contrast = [
+        dict(BASE, topic="Inversion", front="What is bounded inversion?",
+             back="A high-priority task waits for a low-priority lock holder."),
+        dict(BASE, topic="Inversion", front="What is unbounded inversion?",
+             back="A high-priority task waits for a low-priority lock holder."),
+    ]
+    assert not similar_answer_pairs(contrast), contrast
+    print("ok    answer-aware overlap warning")
+
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        mut = copy_scripts(td / "mut-tag")
+        mutate(mut / "validate_cards.py", mut / "validate_cards.py",
+               [("tag_findings = tag_leak_findings(cards)", "tag_findings = []")])
+        data, _ = validate(tag_leak, mut)
+        assert data["valid"] is True and not any(
+            "appears only in the answer" in m for m in data["errors"]), data
+        print("ok    sabotage detected: tag leak")
+
+        mut = copy_scripts(td / "mut-overlap")
+        mutate(mut / "validate_cards.py", mut / "validate_cards.py",
+               [("for i, j, r in similar_answer_pairs(cards):",
+                 "for i, j, r in []:")])
+        data, _ = validate(same_answer, mut)
+        assert not any("answers" in w for w in data["warnings"]), data
+        print("ok    sabotage detected: answer overlap")
 
     # Golden deck: quality counters must not silently drop.
     golden = load_golden()
@@ -177,6 +338,51 @@ def main() -> int:
         assert "5 notes" in r.stdout, r.stdout
         print("ok    golden build/import")
 
+        # Integration: the built order actually scatters topics, and the built
+        # tags are the broad buckets rather than the source subtopics.
+        build_cards = []
+        for topic, obj in (("Alpha", "heap"), ("Beta", "queue"), ("Gamma", "critical_section")):
+            for i in range(16):
+                build_cards.append({
+                    "front": f"{topic} card {i}?",
+                    "back": "**Why:** integration test.",
+                    "layer": "L1" if i % 2 == 0 else "L2",
+                    "topic": topic, "objects": [obj, "rtos", "critical_section"],
+                    "deck": "SCATTER::TEST", "source": "Lec 1 p.1",
+                    "tier_zero": i == 0,
+                })
+        build_path = td / "scatter.json"
+        build_path.write_text(json.dumps(build_cards))
+        scatter_apkg = td / "scatter.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(build_path),
+                 str(scatter_apkg), "--deck-name", "SCATTER::TEST"])
+        assert r.returncode == 0, r.stderr
+        with zipfile.ZipFile(scatter_apkg) as z:
+            z.extract("collection.anki2", td / "scatter-extract")
+        con = sqlite3.connect(td / "scatter-extract" / "collection.anki2")
+        try:
+            rows = list(con.execute(
+                "select n.sfld, n.tags from cards c join notes n on n.id=c.nid "
+                "order by c.due"))
+        finally:
+            con.close()
+        fronts = [row[0] for row in rows]
+        tags_text = " ".join(row[1] for row in rows)
+        assert "rtos" in tags_text and "critical_section" in tags_text, tags_text
+        assert "heap" not in tags_text and "queue" not in tags_text, tags_text
+        seen = {t: False for t in ("Alpha", "Beta", "Gamma")}
+        last, run_len = None, 0
+        for front in fronts:
+            topic = front.split()[0]
+            if front.endswith("card 0?"):
+                seen[topic] = True
+            else:
+                assert seen[topic], f"{topic} card before its tier-zero anchor"
+            run_len = run_len + 1 if topic == last else 1
+            last = topic
+            assert run_len <= 4, f"topic run too long: {topic} x{run_len}"
+        print("ok    built deck scatter/tags")
+
         # The order above must survive Anki's note insertion and become the deck's
         # new-card order, not just a sorted Python list.
         order_path = td / "order.json"
@@ -198,6 +404,52 @@ def main() -> int:
         assert due_order == expected_order, due_order
         print("ok    built deck follows foundation-first order")
 
+        # One canonical diagram can be attached to several cards; the package must
+        # bundle the file once and both notes must reference it.
+        from PIL import Image
+        shared = td / "media" / "shared.png"
+        shared.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (320, 200), "white").save(shared)
+        reuse_cards = [
+            dict(BASE, front="What does the shared state diagram show?",
+                 back="**Why:** the four task states.", topic="Scheduling",
+                 media=[{"file": "media/shared.png", "side": "back",
+                         "caption": "state machine"}]),
+            dict(BASE, front="Which state is missing from an early diagram?",
+                 back="**Why:** the full state machine has all four states.",
+                 topic="Scheduling",
+                 media=[{"file": "media/shared.png", "side": "back",
+                         "caption": "state machine"}]),
+        ]
+        reuse_path = td / "reuse.json"
+        reuse_path.write_text(json.dumps(reuse_cards))
+        reuse_apkg = td / "reuse.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(reuse_path),
+                 str(reuse_apkg), "--deck-name", "REUSE::TEST", "--media",
+                 "--media-root", str(td)])
+        assert r.returncode == 0, r.stderr
+        extract = td / "reuse-extract"
+        with zipfile.ZipFile(reuse_apkg) as z:
+            z.extract("collection.anki2", extract)
+            media_entries = [n for n in z.namelist() if n.isdigit()]
+        con = sqlite3.connect(extract / "collection.anki2")
+        try:
+            fields = [row[0] for row in con.execute("select flds from notes")]
+        finally:
+            con.close()
+        assert len(media_entries) == 1, media_entries
+        assert sum("<img" in f for f in fields) == 2, fields
+        print("ok    shared media reused across cards")
+
+        # The tag leak must stop a strict build, not merely print a warning.
+        leak_path = td / "leak.json"
+        leak_path.write_text(json.dumps(tag_leak))
+        leaked_apkg = td / "leaked.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(leak_path),
+                 str(leaked_apkg), "--deck-name", "LEAK::TEST", "--strict"])
+        assert r.returncode == 1 and not leaked_apkg.exists(), (r.returncode, r.stderr)
+        print("ok    strict build rejects answer-bearing tags")
+
         # Sabotage 1: disable the source check; the missing-source fixture should now pass.
         mut = copy_scripts(td / "mut-source")
         mutate(mut / "validate_cards.py", mut / "validate_cards.py",
@@ -210,7 +462,8 @@ def main() -> int:
         mut = copy_scripts(td / "mut-compute")
         mutate(mut / "validate_cards.py", mut / "validate_cards.py",
                [("why = is_computation_prompt(front)", "why = None")])
-        data, _ = validate([dict(BASE, front="Calculate the runtime of nested loops.")], mut)
+        data, _ = validate([dict(BASE, front="Calculate the runtime of nested loops.",
+                                 objects=[])], mut)
         assert data["valid"] is True and not any("computation" in e for e in data["errors"]), data
         print("ok    sabotage detected: computation check")
 

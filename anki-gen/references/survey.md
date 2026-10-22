@@ -13,17 +13,21 @@ extracting on the strength of a directory name. Report:
 | Extraction quality — text layer vs scanned | a scan needs OCR and degrades; say so |
 | Anything that would leak answers onto fronts | an answer key puts worked numbers where a front must not have them |
 
-**Name the material shape** — single PDF, nest of directories, mixed formats, conflicting answer
-keys, scan with no text layer, video URL/playlist — and say what you will do about it.
+**Name the material shape** — single PDF, PowerPoint, nest of directories, mixed formats,
+conflicting answer keys, scan with no text layer, video URL/playlist — and say what you will do
+about it. PPTX is read as text/notes/embedded images; vector slides are cited, not rendered.
 
-**Video sources.** If the request contains a YouTube video or playlist:
+**Video or local media.** If the request contains a YouTube video/playlist or a local recording:
+for local media, confirm the file/directory, title, language, and whether sidecar captions exist; skip the playlist/range questions.
 - report title/channel/duration and whether captions are manual or auto;
 - ask **whole playlist or videos x–z**;
-- ask **pull still frames when the video shows a diagram?** yes/no (one image per card,
-  automatic selection, no per-frame verification);
+- ask **pull still frames when the video shows a diagram?** yes/no (automatic
+  scoring; ambiguous frames may be confirmed with image-vision; the main model
+  never reads frames);
 - if the user said “find it,” search and prefer the official channel/playlist; proceed only when
   the match is strong, otherwise ask one confirmation;
-- no Whisper in v1.3: if no captions exist, skip that video and say so.
+- YouTube: no Whisper; if no captions exist, skip that video and say so.
+- Local: sidecar captions first; otherwise faster-whisper locally. No cloud upload.
 
 **Write the answers to `$WORK/intake.md` before leaving the survey.** Stages 4b,
 7 and 10 read this instead of re-asking:

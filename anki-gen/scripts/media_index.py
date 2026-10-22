@@ -44,9 +44,14 @@ def main() -> int:
                 "width": g.get("width"),
                 "height": g.get("height"),
                 "bytes": g.get("bytes"),
+                "quality": g.get("quality") or "unknown",
+                "flags": g.get("flags") or [],
                 "caption": g.get("caption") or "",
                 "title": g.get("title") or "",
             })
+    quality_rank = {"high": 0, "medium": 1, "low": 2, "unknown": 3}
+    rows.sort(key=lambda r: (quality_rank.get(r["quality"], 3),
+                             r["page"] or 0, r["path"]))
     if args.limit > 0:
         rows = rows[:args.limit]
     if args.json:
@@ -57,7 +62,9 @@ def main() -> int:
         dim = f'{r["width"]}x{r["height"]}' if r["width"] else "?"
         cap = r["caption"][:60]
         title = r["title"][:50]
-        print(f'{r["path"]}  p{r["page"]}  {dim}  {kb:.0f}KB  {title}  {cap}')
+        flags = ",".join(r["flags"])
+        print(f'{r["path"]}  p{r["page"]}  {dim}  {kb:.0f}KB  '
+              f'{r["quality"]}  {flags}  {title}  {cap}')
     if not rows:
         print("no figures found", flush=True)
     return 0

@@ -39,6 +39,20 @@ domain and schema (a circuit is one example instance, never a hardcoded shape).
   trust *which* drawing it was and *what* it said.
 - Do NOT use for PDF color inversion (`pdf-study`) or teaching (`tutor`).
 
+## Fast frame confirmation (video triage)
+
+For the shallow "is this still a usable diagram?" pass, use
+`scripts/vision_check.py frame1.png frame2.png ... --max N`. It:
+
+- resolves a free-tier flash-lite model and falls back if the default alias is gone;
+- retries 503/429 briefly and caches results by image SHA;
+- stops after a 429/quota error and prints one JSON line per image plus a
+  `checked/usable/kinds/errors/cached/stopped` summary.
+
+This is not a substitute for the full pipeline below. Use it only for ambiguous
+video frames, one call per unique frame, and keep the budget small. The main
+model must not read the images itself.
+
 ## The pipeline
 
 ### Stage 0 — Inventory (free, no vision)

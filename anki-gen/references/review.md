@@ -130,6 +130,9 @@ last row; low scores/comments only). Do not re-read the corpus, build script, fu
 log; pull a source page range only if an anchor needs checking. The ledger is the per-card
 reasoning record; the review still applies the same heuristics.
 
+**Check answer alignment before style.** A card can be factually true and still not answer its
+front. If the front asks “which enzyme/law/step,” the back must name it first; explanation follows.
+
 **Chunking:** only if the build still peaks >150k or a topic >40 cards. One scope gate/deck name,
 per-topic cards+ledger, concatenate or `--merge-existing`, then a deck-wide validate/triage/ROI.
 The risk is cross-topic anchors and duplicates.
@@ -139,7 +142,9 @@ The risk is cross-topic anchors and duplicates.
 - **5 → drop it.** Remove the card from the source of truth — the emitting script, or `cards.json`
   when there is none. That is the whole mechanism.
 - **1 → propose a cut list for approval.** Do not cut silently: an easy card can still be
-  load-bearing (an anchor, a cross-topic fact).
+  load-bearing (an anchor, a cross-topic fact). A review comment is never a mandate to expand:
+  if you add cards, report the net delta and make the addition replace a merged/cut card unless
+  the user explicitly asked for more.
 - **4 → decide from the comment, do not ask.** "Haven't studied this yet" → leave it; "assumes a
   term I don't have" → add an anchor or glossary; "too many steps bundled" → split. **4 with no
   comment → leave it alone** — most early-semester 4s are material not yet covered.
@@ -156,6 +161,14 @@ not reflexively split every hard card (rule 22):
 | two cards keep colliding | interference, not redundancy | contrastive pair |
 | answerable on paper, not memory | it is a computation front | rewrite to concept (8) |
 | know the fact, fail the method | procedural gap | Procedure layer, or practise outside Anki |
+
+**Batch independent edits in one step.** A per-card comment is still a one-line
+change, but several comments can be applied in one step with several edit calls;
+each separate step re-sends the whole context.
+
+`roi_report.py` now prints image coverage per topic. In the handoff, report the
+image-card count, any topic with strong visual candidates but no images, and which
+images were confirmed versus merely listed.
 
 **The deck-wide note generalises; per-card comments are evidence.** The finish screen has a
 free-text "deck-wide rule" box, separate from the per-card comment. One sentence there ("these

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import re
 import sqlite3
 import subprocess
@@ -15,10 +16,14 @@ import sys
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-CUE = re.compile(
-    r"\b(diagram|figure|flow ?chart|state machine|block diagram|timing diagram|"
-    r"schematic|architecture|chart|graph|table|this slide|as you can see|"
-    r"here'?s the|shown here)\b", re.I)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from platform_paths import ensure_tool_paths  # noqa: E402
+ensure_tool_paths()
+import ytdlp  # noqa: E402
+import media_transcribe as mt  # noqa: E402
+
+# yt-dlp's own polite pause before each subtitle request.
+SUBTITLE_PACING = "2"
 
 
 def run(cmd, timeout=300):
@@ -32,7 +37,20 @@ def video_url(vid: str, seconds: float = 0, playlist_id: str = "") -> str:
     return f"{base}&t={max(0, int(seconds))}"
 
 
+def _clean_title(title: str, channel: str) -> str:
+    """Drop a trailing `| Channel` from a YouTube title; it is already displayed."""
+    if " | " not in title:
+        return title
+    head, tail = title.rsplit(" | ", 1)
+    norm = lambda value: re.sub(r"[^a-z0-9]", "", value.lower())
+    a, b = norm(tail), norm(channel)
+    if b and (a.startswith(b) or b.startswith(a)):
+        return head
+    return title
+
+
 def source_label(channel: str, title: str, playlist: str = "", index: int = 0) -> str:
+    title = _clean_title(title, channel)
     if playlist and index:
         return f"{channel} - {playlist} {index:02d} - {title}"
     return f"{channel} - {title}"
@@ -76,10 +94,10 @@ def parse_items(value: str, count: int) -> list[int]:
 
 
 def metadata(url: str, playlist: bool) -> dict:
-    cmd = ["yt-dlp", "-J", "--skip-download", "--no-warnings"]
-    cmd += ["--flat-playlist"] if playlist else ["--no-playlist"]
-    cmd.append(url)
-    r = run(cmd, timeout=180)
+    args = ["-J", "--skip-download", "--no-warnings"]
+    args += ["--flat-playlist"] if playlist else ["--no-playlist"]
+    args.append(url)
+    r = ytdlp.run(args, timeout=180)
     if r.returncode != 0:
         raise RuntimeError(f"yt-dlp metadata failed: {r.stderr[-500:]}")
     return json.loads(r.stdout)
@@ -108,11 +126,14 @@ def get_vtt(entry: dict, work: Path, lang: str) -> Path | None:
     url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={vid}"
     outdir = work / "transcripts"
     outdir.mkdir(parents=True, exist_ok=True)
+    existing = list(outdir.glob(f"{vid}*.vtt"))
+    if existing:
+        return prefer_vtt(existing, vid)
     pattern = outdir / f"{vid}.%(ext)s"
-    cmd = ["yt-dlp", "--skip-download", "--no-playlist", "--no-progress",
-           "--write-subs", "--write-auto-subs", "--sub-langs", lang,
-           "--sub-format", "vtt", "-o", str(pattern), url]
-    r = run(cmd, timeout=180)
+    r = ytdlp.run(("--skip-download", "--no-playlist", "--no-progress",
+                   "--sleep-subtitles", SUBTITLE_PACING, "--write-subs", "--write-auto-subs",
+                   "--sub-langs", lang, "--sub-format", "vtt", "-o", str(pattern),
+                   url), timeout=180)
     files = list(outdir.glob(f"{vid}*.vtt"))
     path = prefer_vtt(files, vid)
     if path is None:
@@ -186,6 +207,96 @@ def index(work: Path, rows: list[dict]):
         con.close()
 
 
+def _local_title(path: Path, info: dict, override: str) -> str:
+    return override.strip() or info.get("title") or path.stem
+
+
+def local_source(source: str, work: Path, args) -> int:
+    if platform.system() == "Darwin" and platform.machine() != "arm64":
+        print("extract_video.py: warn: Intel Mac local transcription is unsupported",
+              file=sys.stderr)
+    files = mt.media_files(source)
+    if not files:
+        print("extract_video.py: no supported media files found", file=sys.stderr)
+        return 1
+    all_rows, videos, failures = [], [], []
+    for media in files:
+        try:
+            info = mt.probe(media)
+        except Exception as e:
+            failures.append({"id": media.name, "title": media.name, "reason": str(e)})
+            continue
+        title = _local_title(media, info, args.title if len(files) == 1 else "")
+        vid = mt.media_id(media)
+        label = f"Local recording - {title}"
+        try:
+            cues, transcript_source = mt.transcribe(
+                media, work, model=args.model,
+                language=None if args.language in ("", "auto") else args.language,
+                device=args.device,
+                initial_prompt=args.initial_prompt,
+                force=args.force_transcribe)
+        except Exception as e:
+            failures.append({"id": vid, "title": title, "reason": str(e)})
+            continue
+        if not cues:
+            failures.append({"id": vid, "title": title, "reason": "no speech/captions"})
+            continue
+        rows = chunks(cues, label)
+        all_rows.extend(rows)
+        transcript = work / "transcripts" / f"{vid}.jsonl"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        transcript.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n"
+                                      for c in cues))
+        videos.append({
+            "id": vid, "title": title, "url": "", "channel": "Local recording",
+            "duration": info.get("duration"), "playlist_title": "",
+            "playlist_index": 0, "source_label": label, "source_url": "",
+            "cues": len(cues), "caption_file": str(transcript),
+            "source_type": "local", "local_path": str(media.resolve()),
+            "media_kind": mt.kind(media), "transcript_source": transcript_source,
+            "model": "none" if transcript_source.startswith("sidecar") else transcript_source,
+        })
+        if args.images == "yes" and mt.kind(media) == "video":
+            r = run([sys.executable, str(Path(__file__).with_name("frames.py")),
+                     "--work", str(work), "--video-id", vid, "--url", "",
+                     "--video-file", str(media), "--title", title,
+                     "--source-label", label, "--source-url", "",
+                     "--transcript", str(transcript), "--auto"], timeout=900)
+            if r.returncode != 0:
+                failures.append({"id": vid, "title": title,
+                                 "reason": "frame extraction failed"})
+        elif args.images == "yes":
+            print(f"extract_video.py: audio-only {media.name}; frames skipped",
+                  file=sys.stderr)
+    if not all_rows:
+        for f in failures:
+            print(f"extract_video.py: {f['id']} — {f['reason']}", file=sys.stderr)
+        return 1
+    index(work, all_rows)
+    (work / "videos.jsonl").write_text(
+        "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in videos))
+    toc = ["# Video source map", ""]
+    for v in videos:
+        toc.extend([f"## {v['title']}", f"- id: {v['id']}",
+                    f"- {v['source_label']} @ 00:00",
+                    f"- local: {v['local_path']}",
+                    f"- transcript: {v['transcript_source']}",
+                    f"- cues: {v['cues']}", ""])
+    if failures:
+        toc.append("## Skipped")
+        toc.extend(f"- {f['id']} — {f['reason']} — {f['title']}" for f in failures)
+        toc.append("")
+    (work / "video_toc.md").write_text("\n".join(toc))
+    (work / "video_meta.json").write_text(json.dumps(
+        {"videos": videos, "chunks": len(all_rows), "failures": failures},
+        indent=2) + "\n")
+    print(json.dumps({"videos": len(videos), "chunks": len(all_rows),
+                      "frames": (work / "frames.jsonl").is_file(),
+                      "failures": failures}, indent=2))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("source", nargs="?", help="video or playlist URL")
@@ -195,12 +306,20 @@ def main() -> int:
     ap.add_argument("--lang", default="en.*")
     ap.add_argument("--images", choices=("yes", "no"), default="no")
     ap.add_argument("--search", default=None, help="print candidate videos for a query")
+    ap.add_argument("--title", default="", help="local recording title")
+    ap.add_argument("--model", default="auto", help="local Whisper model or auto")
+    ap.add_argument("--language", default="en", help="local language, or auto")
+    ap.add_argument("--device", default="cpu", help="local Whisper device")
+    ap.add_argument("--force-transcribe", action="store_true",
+                    help="ignore a sidecar VTT/SRT and transcribe anyway")
+    ap.add_argument("--initial-prompt", default=None,
+                    help="optional course terms for local transcription")
     args = ap.parse_args()
     work = Path(args.work)
     work.mkdir(parents=True, exist_ok=True)
     if args.search:
-        r = run(["yt-dlp", "-J", "--flat-playlist", "--skip-download",
-                 f"ytsearch10:{args.search}"], timeout=60)
+        r = ytdlp.run(("-J", "--flat-playlist", "--skip-download",
+                       f"ytsearch10:{args.search}"), timeout=60)
         if r.returncode != 0:
             print(f"extract_video.py: search failed: {r.stderr[-300:]}", file=sys.stderr)
             return 1
@@ -213,6 +332,9 @@ def main() -> int:
     if not args.source:
         print("extract_video.py: pass a URL or --search", file=sys.stderr)
         return 2
+    local = args.source[7:] if args.source.startswith("file://") else args.source
+    if Path(local).exists():
+        return local_source(local, work, args)
     try:
         is_watch = "watch?" in args.source
         whole = bool(args.whole_playlist or ("/playlist" in args.source) or
@@ -223,7 +345,7 @@ def main() -> int:
     except Exception as e:
         print(f"extract_video.py: {e}", file=sys.stderr)
         return 1
-    all_rows, videos = [], []
+    all_rows, videos, failures = [], [], []
     full_entries = meta.get("entries") or []
     playlist_title = str(meta.get("title") or "") if meta.get("_type") == "playlist" and (whole or args.items) else ""
     playlist_id = str(meta.get("id") or "") if meta.get("_type") == "playlist" and (whole or args.items) else ""
@@ -235,17 +357,19 @@ def main() -> int:
         channel = str(e.get("channel") or e.get("uploader") or meta.get("channel") or
                       meta.get("uploader") or "Unknown")
         try:
-            index = next(i + 1 for i, x in enumerate(full_entries) if x.get("id") == vid)
+            playlist_index = next(i + 1 for i, x in enumerate(full_entries) if x.get("id") == vid)
         except StopIteration:
-            index = 0
+            playlist_index = 0
         url = e.get("webpage_url") or e.get("url") or f"https://www.youtube.com/watch?v={vid}"
-        label = source_label(channel, title, playlist_title, index)
+        label = source_label(channel, title, playlist_title, playlist_index)
         base_url = video_url(vid, 0, playlist_id)
         vtt = get_vtt(e, work, args.lang)
         if vtt is None:
+            failures.append({"id": vid, "title": title, "reason": "no captions"})
             continue
         cues = parse_vtt(vtt)
         if not cues:
+            failures.append({"id": vid, "title": title, "reason": "empty captions"})
             continue
         rows = chunks([c for c in cues], label)
         for r in rows:
@@ -253,7 +377,7 @@ def main() -> int:
         all_rows.extend(rows)
         videos.append({"id": vid, "title": title, "url": url,
                        "channel": channel, "duration": e.get("duration"),
-                       "playlist_title": playlist_title, "playlist_index": index,
+                       "playlist_title": playlist_title, "playlist_index": playlist_index,
                        "source_label": label, "source_url": base_url,
                        "cues": len(cues), "caption_file": str(vtt)})
         (work / "transcripts" / f"{vid}.jsonl").write_text(
@@ -265,6 +389,8 @@ def main() -> int:
                      "--source-url", base_url, "--transcript",
                      str(work / "transcripts" / f"{vid}.jsonl"), "--auto"], timeout=900)
             if r.returncode != 0:
+                failures.append({"id": vid, "title": title,
+                                 "reason": "frame extraction failed"})
                 print(f"extract_video.py: frames for {vid} failed: {r.stderr[-300:]}",
                       file=sys.stderr)
     if not all_rows:
@@ -281,11 +407,18 @@ def main() -> int:
         toc.append(f"- {v['source_url']}")
         toc.append(f"- cues: {v['cues']}")
         toc.append("")
+    if failures:
+        toc.append("## Skipped")
+        for f in failures:
+            toc.append(f"- {f['id']} — {f['reason']} — {f['title']}")
+        toc.append("")
     (work / "video_toc.md").write_text("\n".join(toc))
     (work / "video_meta.json").write_text(json.dumps(
-        {"videos": videos, "chunks": len(all_rows)}, indent=2) + "\n")
+        {"videos": videos, "chunks": len(all_rows), "failures": failures},
+        indent=2) + "\n")
     print(json.dumps({"videos": len(videos), "chunks": len(all_rows),
-                      "frames": (work / "frames.jsonl").is_file()}, indent=2))
+                      "frames": (work / "frames.jsonl").is_file(),
+                      "failures": failures}, indent=2))
     return 0
 
 

@@ -31,6 +31,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from cardid import load_cards
+from validate_cards import similar_answer_pairs
 
 # Exam weights are deliberately NOT baked in. A hardcoded table only ever matches the
 # one course it was written for: keyed on "Ch N" in `source`, it sent every card of a
@@ -186,11 +187,13 @@ def main():
 
     # ---- coverage by topic (weighted only if the caller supplied weights) ----
     ch = Counter(topic_of(c) for c in cards)
+    media_ch = Counter(topic_of(c) for c in cards if c.get("media"))
     coverage = []
     for k in sorted(ch, key=lambda t: -ch[t]):
         got = ch[k] / n
         want = weights.get(k)
-        coverage.append((k, ch[k], got, want, (got / want) if want else None))
+        coverage.append((k, ch[k], got, want, (got / want) if want else None,
+                         media_ch[k]))
 
     # ---- bundle candidates --------------------------------------------------
     bundles, keep_chunks = [], []
@@ -208,6 +211,7 @@ def main():
     # pair, and one firing without the other is not a bug.
     red = redundancy(cards)
     inter = interference(cards)
+    overlap = similar_answer_pairs(cards)
     cost = cost_fn(cards)
     rep = repeated_content(cards)
 
@@ -233,6 +237,7 @@ def main():
             "keep_together": keep_chunks,
             "redundant_pairs": red,
             "interference_pairs": inter,
+            "answer_overlap": overlap,
             "restatement": [(k,w,wh) for k,w,wh in rep],
             "costliest": cost[:12],
             "anchors": anchors,
@@ -250,12 +255,12 @@ def main():
         # like findings.
         print("  no exam weights supplied — counts only, no coverage verdict.")
         print("  pass --exam-weights FILE to compare against an expected weight.")
-    hdr = f"  {'topic':<28}{'cards':>6}{'share':>8}"
+    hdr = f"  {'topic':<28}{'cards':>6}{'share':>8}{'media':>7}"
     if weighted:
         hdr += f"{'weight':>9}   verdict"
     print(hdr)
-    for k, cnt, got, want, ratio in coverage:
-        line = f"  {k[:27]:<28}{cnt:>6}{got*100:>7.0f}%"
+    for k, cnt, got, want, ratio, media in coverage:
+        line = f"  {k[:27]:<28}{cnt:>6}{got*100:>7.0f}%{media:>7}"
         if weighted:
             if want is None:
                 verdict = "no weight given"
@@ -268,6 +273,13 @@ def main():
             w = f"{want*100:.0f}%" if want else "-"
             line += f"{w:>9}   {verdict}"
         print(line)
+    no_media = sorted(k for k in ch if not media_ch[k])
+    media_refs = sum(len(c.get("media") or []) for c in cards)
+    media_unique = len({m.get("file") if isinstance(m, dict) else str(m)
+                        for c in cards for m in (c.get("media") or [])})
+    print(f"\nMEDIA: {sum(media_ch.values())}/{n} cards, {media_refs} refs / "
+          f"{media_unique} unique files"
+          + (f"; topics without images: {', '.join(no_media)}" if no_media else ""))
 
     # B3: a flat count is unusable at volume -- one real deck produced 42 restatement
     # and 34 split flags on a deck that was already correct, and triaging that noise
@@ -291,6 +303,12 @@ def main():
     print(f"\nINTERFERENCE (near-identical fronts compete) — {len(inter)} pair(s)")
     for i, j, r in inter[:15]:
         print(f"  card {i} ~ card {j}  ({r})")
+
+    print(f"\nANSWER OVERLAP (same ground; merge or justify a contrast) — {len(overlap)} pair(s)")
+    for i, j, r in overlap[:15]:
+        print(f"  card {i} ~ card {j}  ({r:.0%})")
+    if not overlap:
+        print("  none")
 
     print(f"\nSPLIT CANDIDATES ({len(bundles)}) — independent facts sharing one schedule")
     for i, items, topic in bundles[:CAP]:

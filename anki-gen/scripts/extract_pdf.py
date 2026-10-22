@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Extract text and images from PDF, text, URL, or directory sources.
-Uses: pdftotext, pymupdf (fitz), tesseract, curl, pandoc
+Uses: pdftotext, pymupdf (fitz), tesseract, curl, pandoc; .pptx is routed to
+extract_slides.py (no Office).
 
 ONE SOURCE
     extract_pdf.py <source> <output_dir> [--tag NAME] [--date-filter FILTER]
@@ -23,6 +24,7 @@ WHY STDOUT IS KEPT CLEAN
 """
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import re
@@ -33,6 +35,16 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 from typing import Dict, Any, List, Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from platform_paths import ensure_tool_paths  # noqa: E402
+ensure_tool_paths()
+import visual  # noqa: E402
+
+# Tiny logos and blank page fills are never useful card images. Keep this
+# conservative: a small but meaningful diagram should still survive.
+MIN_PX = 96
+MIN_BYTES = 4000
 
 
 def run_cmd(cmd: List[str], cwd: str = None, input: str = None,
@@ -199,6 +211,8 @@ def extract_pdf(pdf_path: str, output_dir: Path, stem: str = "source") -> Dict[s
 
     images = []
     figures = []
+    seen_hashes = set()
+    dropped = 0
     fitz = _fitz()
     if fitz is not None:
         try:
@@ -222,19 +236,59 @@ def extract_pdf(pdf_path: str, output_dir: Path, stem: str = "source") -> Dict[s
                             pix1.save(str(media_dir / img_path.name))
                             width, height = pix1.width, pix1.height
                             pix1 = None
-                        images.append(str(img_path))
-                        figures.append({
+
+                        # Drop decorative images before scoring; a tiny logo or
+                        # blank page fill is not a card figure.
+                        size = img_path.stat().st_size
+                        if width < MIN_PX or height < MIN_PX or size < MIN_BYTES:
+                            img_path.unlink(missing_ok=True)
+                            dropped += 1
+                            continue
+                        digest = hashlib.sha256(img_path.read_bytes()).hexdigest()
+                        if digest in seen_hashes:
+                            img_path.unlink(missing_ok=True)
+                            dropped += 1
+                            continue
+                        seen_hashes.add(digest)
+
+                        entry = {
                             "file": f"media/{img_path.name}",
                             "page": page_num + 1,
                             "width": width,
                             "height": height,
-                            "bytes": img_path.stat().st_size,
+                            "bytes": size,
                             "caption": _figure_caption(page),
                             "title": _page_title(page),
-                        })
+                            "sha256": digest,
+                        }
+                        # Keep text-like tables; only truly blank images go.
+                        metrics = visual.analyze(img_path)
+                        if metrics is None:
+                            entry["quality"] = "unknown"
+                            entry["flags"] = []
+                        else:
+                            q = visual.classify(metrics)
+                            flags = []
+                            if q["blank"]:
+                                flags.append("blank")
+                            if q["text_like"]:
+                                flags.append("text-like")
+                            entry.update({
+                                "quality": q["quality"],
+                                "edge": metrics["edge"],
+                                "focus": metrics["focus"],
+                                "color": metrics["color"],
+                                "background": metrics["background"],
+                                "flags": flags,
+                            })
+                        images.append(str(img_path))
+                        figures.append(entry)
                 doc.close()
         except Exception as e:
             print(f"Image extraction warning: {e}", file=sys.stderr)
+    if dropped:
+        print(f"extract_pdf.py: skipped {dropped} tiny/duplicate image(s) "
+              f"in {pdf_path}", file=sys.stderr)
 
     (Path(output_dir) / "figures.json").write_text(json.dumps(figures, indent=2) + "\n")
     return {
@@ -315,7 +369,7 @@ def extract_directory(dir_path: str, output_dir: Path, date_filter: str = None,
     if date_filter:
         cutoff_time = parse_date_filter(date_filter)
 
-    exts = {'.pdf', '.txt', '.md', '.tex', '.html', '.htm'}
+    exts = {'.pdf', '.pptx', '.txt', '.md', '.tex', '.html', '.htm'}
 
     all_content = []
     all_images = []
@@ -340,6 +394,10 @@ def extract_directory(dir_path: str, output_dir: Path, date_filter: str = None,
         try:
             if file_path.suffix.lower() == '.pdf':
                 result = extract_pdf(str(file_path), output_dir / file_path.stem)
+            elif file_path.suffix.lower() == '.pptx':
+                from extract_slides import extract_pptx
+                result = extract_pptx(str(file_path), output_dir / file_path.stem,
+                                      file_path.stem)
             elif file_path.suffix.lower() in {'.txt', '.md', '.tex'}:
                 result = extract_text(str(file_path), output_dir / file_path.stem)
             elif file_path.suffix.lower() in {'.html', '.htm'}:
@@ -459,6 +517,9 @@ def extract_source(source: str, output_dir: Path, date_filter: str = None,
         low = source.lower()
         if low.endswith(".pdf"):
             return extract_pdf(source, output_dir, stem)
+        elif low.endswith(".pptx"):
+            from extract_slides import extract_pptx
+            return extract_pptx(source, output_dir, stem)
         elif low.endswith((".txt", ".md", ".tex")):
             return extract_text(source, output_dir, stem)
         else:
@@ -538,7 +599,7 @@ def public_view(result: Dict[str, Any]) -> Dict[str, Any]:
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="extract_pdf.py",
-        description="Extract text and images from PDF, text, URL or directory sources.",
+        description="Extract text and images from PDF, PPTX, text, URL or directory sources.",
         epilog="One source:  extract_pdf.py <source> <output_dir> [--tag NAME]   "
                "|  Batch:  extract_pdf.py --batch <src> [<src> ...] --out <dir>",
         formatter_class=argparse.RawDescriptionHelpFormatter)

@@ -2,7 +2,7 @@
 
 This file is for setting the skill up once. The model does not need it during a normal run.
 
-Maintainers: read `AGENTS.md` for the dev workflow and `MAINTAINERS.md` before architectural or token-efficiency changes. Neither is loaded by `SKILL.md` during a normal run. Tests: `bash scripts/smoke.sh` now includes negative fixtures, a golden deck, sabotage probes from `tests/hardening.py`, and offline video fixtures from `tests/video_hardening.py`. On failure it prints the line, work directory, relevant hints, and logs; use `KEEP_WORK=1` to keep the fixture and `SMOKE_DEBUG=1` for a trace.
+Maintainers: read `AGENTS.md` for the dev workflow and `MAINTAINERS.md` before architectural or token-efficiency changes. Neither is loaded by `SKILL.md` during a normal run. Tests: `bash scripts/smoke.sh` now includes negative fixtures, a golden deck, sabotage/mutation probes from `tests/hardening.py`, offline video fixtures from `tests/video_hardening.py`, adversarial PPTX fixtures from `tests/slides_hardening.py`, and local-media/pipeline fixtures. On failure it prints the line, work directory, relevant hints, and logs; use `KEEP_WORK=1` to keep the fixture and `SMOKE_DEBUG=1` for a trace.
 
 **Python 3.10+ is required** (the `anki` package). On Homebrew Python,
 `pip install --user` without `--break-system-packages` is blocked (PEP 668);
@@ -26,7 +26,10 @@ python3 -m pip install --user --break-system-packages -r requirements.txt
 
 `scripts/setup.sh` installs only the missing system packages for macOS,
 Debian/Ubuntu, Fedora, or Arch, installs the Python libraries into the user site,
-then runs the doctor. It never installs Homebrew or Anki. On macOS a missing
+then runs the doctor. `requirements.txt` installs `yt-dlp[default,deno]`, which
+brings the EJS solver and Deno runtime for YouTube, so no system Node install is
+needed. PyMuPDF is pinned below 2.0 for stable macOS/Linux wheels; runtime
+scripts also add Homebrew's bin directories when opencode is GUI-launched. It never installs Homebrew or Anki. On macOS a missing
 Homebrew stops with one install line; on Linux the package step prompts for
 sudo. `scripts/setup_macos.sh` is a compatibility wrapper.
 `scripts/doctor.py` checks the result and prints platform-specific fixes.
@@ -49,7 +52,11 @@ requests. Re-vendor with:
 
 ## If a system tool is missing
 
-PDF text is tried in this order: **poppler's `pdftotext` → pymupdf → mupdf-tools
+Local video/audio uses ffprobe + ffmpeg and either sidecar VTT/SRT or the
+`faster-whisper` Python package. The default `--model auto` benchmarks actual
+speech once per machine and caches the model choice. Media is never uploaded.
+Apple Silicon macOS and Linux are supported; Intel Macs are not supported for
+local transcription. PDF text is tried in this order: **poppler's `pdftotext` → pymupdf → mupdf-tools
 (`mutool`) → ghostscript (`gs`)**. If none exists, `extract_pdf.py` fails with a
 clear message instead of writing an empty extract. pymupdf is the cross-platform
 pip fallback (wheels for macOS and Linux; no system packages).
@@ -61,6 +68,7 @@ pip fallback (wheels for macOS and Linux; no system packages).
 | Image downscale | Pillow | `pip install pillow` | `pip install pillow` | `pip install pillow` | `pip install pillow` | skip over-cap images |
 | PDF text (alternate) | mupdf-tools (`mutool draw -F txt`) | `brew install mupdf-tools` | `sudo apt install mupdf-tools` | `sudo dnf install mupdf-tools` | `sudo pacman -S mupdf-tools` | `gs` |
 | PDF text (last resort) | ghostscript (`gs -sDEVICE=txtwrite`) | `brew install ghostscript` | `sudo apt install ghostscript` | `sudo dnf install ghostscript` | `sudo pacman -S ghostscript` | clear error |
+| PowerPoint | `extract_slides.py` (stdlib) | no install | no install | no install | no install | text/notes/embedded images; vector slides cited |
 | HTML → markdown | pandoc (optional) | `brew install pandoc` | `sudo apt install pandoc` | `sudo dnf install pandoc` | `sudo pacman -S pandoc` | raw HTML |
 | Fetch URLs | curl | preinstalled / `brew install curl` | preinstalled | preinstalled | preinstalled | — |
 
@@ -90,7 +98,7 @@ images go in the review comment.
 generated from `anki-gen/VERSION`.
 The user extracts it and runs `bash install.sh` (or asks opencode to install it).
 The installer also installs dependencies and runs the doctor. Re-running a newer
-zip upgrades with a timestamped backup under `~/.claude/skills/.backups/`. See
+zip upgrades with a timestamped backup under `~/.local/share/anki-gen/backups/`. See
 `HANDOFF.md`/`INSTALL.md`.
 
 ## Snapshots

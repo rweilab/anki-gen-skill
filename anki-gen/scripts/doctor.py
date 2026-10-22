@@ -22,6 +22,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from platform_paths import ensure_tool_paths
+ensure_tool_paths()
+
+import ytdlp
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -111,6 +116,8 @@ def line(label: str, ok: bool, detail: str, fix: str = "", core: bool = False,
 
 def main() -> int:
     print(f"anki-gen doctor · {os_id()} · {platform.machine()}")
+    if os_id() == "macos" and platform.machine() != "arm64":
+        print("warn  unsupported Intel Mac for local transcription; PDF/YouTube paths still work")
     print("=" * 72)
     version = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").is_file() else "unknown"
     print(f"installed version: {version}")
@@ -131,6 +138,10 @@ def main() -> int:
         ("pymupdf", "pymupdf (PDF text/images)", "pip install --user --break-system-packages pymupdf", True),
         ("PIL", "Pillow (image downscale)", "pip install --user --break-system-packages pillow", False),
         ("bs4", "beautifulsoup4 (web images)", "pip install --user --break-system-packages beautifulsoup4", False),
+        ("yt_dlp", "yt-dlp module (video)", 'pip install --user --break-system-packages "yt-dlp[default,deno]"', False),
+        ("yt_dlp_ejs", "yt-dlp EJS (YouTube)", "pip install --user --break-system-packages yt-dlp-ejs", False),
+        ("faster_whisper", "faster-whisper (local video/audio)",
+         "pip install --user --break-system-packages faster-whisper", False),
     ):
         found = has_module(mod)
         core_ok &= line(label, found, "importable" if found else "missing",
@@ -143,13 +154,18 @@ def main() -> int:
         ("gs", "ghostscript (PDF fallback)", pkg_fix("ghostscript"), True),
         ("mutool", "mutool (PDF fallback)", pkg_fix("mupdf-tools"), True),
         ("curl", "curl (URLs)", pkg_fix("curl"), True),
-        ("yt-dlp", "yt-dlp (video transcripts/stills)",
-         "python3 -m pip install --user --break-system-packages yt-dlp", True),
-        ("ffmpeg", "ffmpeg (video frames)", pkg_fix("ffmpeg"), True),
+        ("ffmpeg", "ffmpeg (video frames/audio)", pkg_fix("ffmpeg"), True),
+        ("ffprobe", "ffprobe (local media metadata)", pkg_fix("ffmpeg"), True),
         ("tesseract", "tesseract (frame OCR)", pkg_fix("tesseract"), True),
     ):
         path = shutil.which(cmd)
         line(label, bool(path), path or "missing", fix, warn_only=warn)
+
+    runtime, runtime_path = ytdlp.runtime()
+    line("JS runtime (yt-dlp)", bool(runtime),
+         f"{runtime}: {runtime_path}" if runtime else "missing",
+         "pip install --user --break-system-packages deno; or install Node 22+",
+         warn_only=True)
 
     try:
         con = sqlite3.connect(":memory:")
@@ -171,6 +187,13 @@ def main() -> int:
     vision = Path.home() / ".claude" / "skills" / "image-vision" / "SKILL.md"
     line("image-vision skill", vision.is_file(), str(vision),
          "copy image-vision into ~/.claude/skills/ (for handwritten/figures)",
+         warn_only=True)
+
+    legacy = Path.home() / ".claude" / "skills" / ".backups"
+    stale = list(legacy.rglob("SKILL.md")) if legacy.is_dir() else []
+    line("Backups outside skills", not stale,
+         f"{len(stale)} discoverable backup(s)" if stale else "ok",
+         "run install.sh to migrate, or rename backup SKILL.md to SKILL.md.bak",
          warn_only=True)
 
     anki_detail = anki_app()
@@ -202,7 +225,7 @@ def main() -> int:
         return 1
     print("Core text path is ready.")
     print("Warnings are optional: images (Pillow), handwriting (image-vision), "
-          "web images (bs4), video (yt-dlp/ffmpeg/tesseract), and the Anki app.")
+          "web images (bs4), video (yt-dlp/EJS/Deno/ffmpeg/tesseract), and the Anki app.")
     return 0
 
 

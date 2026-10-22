@@ -6,10 +6,26 @@ verdict on every deck size or every compression idea.
 
 ## Agent execution boundaries
 
-Do not spawn opencode child processes, run unbounded/hanging commands, or kill the
-harness/own process. Stop only a known test child after a timeout. Once a plan
+Do not spawn opencode child processes (including debug/config commands), use
+main-model vision, probe for office/desktop converters, run unbounded/hanging
+commands, or kill the harness/own process. Stop only a known test child after a timeout. Once a plan
 exists, run autonomously to completion; ask only for destructive or missing
 inputs. See `AGENTS.md`.
+
+## Deferred: v1.4.2 deck revisions
+
+Do not implement this in v1.4. Notes only:
+
+- An `.apkg` import merges by note GUID; it does not replace the collection.
+  Existing notes can update while keeping scheduling/history; new notes are
+  added; notes absent from the package are not deleted. `.colpkg` replaces the
+  whole collection and is not the revision mechanism.
+- Current note IDs are `md5(front|back)` (`cardid.py`). A stable explicit `hash`
+  is required before editing existing notes, or Anki sees a new note.
+- The future revision path needs: GUID extraction/migration, revision reports
+  (`added`/`updated`/`unchanged`/`retired`), note-type compatibility checks, and
+  optional AnkiConnect cleanup. `--merge-existing` is add-only and must not be
+  presented as an update path.
 
 ## Changelog discipline
 

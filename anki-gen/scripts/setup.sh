@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Cross-platform setup: install missing system tools and Python libraries, then
-# run the doctor. Homebrew and Anki are never installed.
+# run the doctor. Homebrew and Anki are never installed. Local media
+# transcription uses the faster-whisper Python package (installed below).
 # Run: bash scripts/setup.sh [--print-only]
 set -euo pipefail
 

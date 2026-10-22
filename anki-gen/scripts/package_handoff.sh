@@ -40,9 +40,15 @@ find "$STAGE" -name '.backup*' -prune -exec rm -rf {} + 2>/dev/null || true
 find "$STAGE" -name '.anki-gen-temp' -prune -exec rm -rf {} + 2>/dev/null || true
 
 for f in anki-gen/SKILL.md image-vision/SKILL.md \
+         image-vision/scripts/vision_check.py \
          anki-gen/assets/mathjax/tex-svg.js anki-gen/VERSION \
          anki-gen/requirements.txt anki-gen/scripts/setup.sh \
          anki-gen/scripts/setup_macos.sh anki-gen/scripts/doctor.py \
+         anki-gen/scripts/visual.py anki-gen/scripts/ytdlp.py \
+         anki-gen/scripts/extract_slides.py anki-gen/scripts/media_transcribe.py \
+         anki-gen/scripts/preflight.py anki-gen/scripts/pipeline.py \
+         anki-gen/scripts/platform_paths.py \
+         anki-gen/references/slides.md \
          anki-gen/scripts/handoff/install.sh anki-gen/HANDOFF.md \
          anki-gen/AGENTS.md install.sh INSTALL.md VERSION; do
   if [ ! -f "$STAGE/$f" ]; then

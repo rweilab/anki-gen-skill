@@ -26,7 +26,8 @@ def items(card: dict) -> list[dict]:
     out = []
     for m in card.get("media") or []:
         if isinstance(m, str):
-            out.append({"file": m, "side": DEFAULT_SIDE, "caption": "", "source": ""})
+            out.append({"file": m, "side": DEFAULT_SIDE, "caption": "",
+                        "source": "", "source_url": ""})
         elif isinstance(m, dict) and str(m.get("file") or "").strip():
             side = str(m.get("side") or DEFAULT_SIDE).lower()
             out.append({
@@ -34,6 +35,7 @@ def items(card: dict) -> list[dict]:
                 "side": side if side in ("front", "back") else DEFAULT_SIDE,
                 "caption": str(m.get("caption") or "").strip(),
                 "source": str(m.get("source") or "").strip(),
+                "source_url": str(m.get("source_url") or "").strip(),
             })
     return out
 
@@ -124,6 +126,9 @@ def img_html(url: str, caption: str = "", missing: bool = False) -> str:
             f'alt="{alt}" loading="lazy"></div>{cap}')
 
 
-def source_notes(items_: list[dict]) -> list[str]:
-    """Compact `Image: <source>` lines for the card's existing footer."""
-    return [f"Image: {m['source']}" for m in items_ if m.get("source")]
+def primary_source(items_: list[dict]) -> tuple[str, str]:
+    """The footer source for a card with media: one line, no duplicate label."""
+    for m in items_:
+        if m.get("source"):
+            return m["source"], m.get("source_url") or ""
+    return "", ""

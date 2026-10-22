@@ -54,6 +54,8 @@ import media  # noqa: E402
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 MATHJAX_URL = "/assets/mathjax/tex-svg.js"
 MATHJAX_PATH = ASSETS_DIR / "mathjax" / "tex-svg.js"
+SKILL_VERSION = ((ASSETS_DIR.parent / "VERSION").read_text().strip()
+                 if (ASSETS_DIR.parent / "VERSION").is_file() else "unknown")
 
 # ------------------------------------------------------------------ cloze
 # Non-greedy to the FIRST '}}' -- deliberately matching Anki's own parser, which
@@ -139,16 +141,18 @@ def render_cards(cards: list[dict], plan_entries: list[dict] | None = None,
         # the auditor is checking the intended image. A missing file becomes a
         # visible placeholder, not a silent broken <img>.
         front_imgs, back_imgs = [], []
-        for m in media.items(c):
+        media_items = media.items(c)
+        media_src, media_url = media.primary_source(media_items)
+        if media_src:
+            source = media_src
+            source_url = media_url or source_url
+        for m in media_items:
             try:
                 missing = not media.resolve(media_root or ".", m["file"]).is_file()
             except ValueError:
                 missing = True
             snippet = media.img_html(f"/media/{m['file']}", m["caption"], missing)
             (front_imgs if m["side"] == "front" else back_imgs).append(snippet)
-        notes = media.source_notes(media.items(c))
-        if notes:
-            source = " · ".join(([source] if source else []) + notes)
 
         if c.get("cloze"):
             text = str(c.get("front", ""))
@@ -339,14 +343,18 @@ aside h1{font-size:0.8125rem;margin:0 0 8px;font-weight:600;letter-spacing:.02em
 .side-btns{display:flex;align-items:center;gap:6px}
 .counts{margin-top:7px;color:var(--fg-dim);font-size:0.75rem;font-variant-numeric:tabular-nums}
 .counts .sep{color:var(--muted);margin:0 3px}
+.version{color:var(--muted);font-size:0.6875rem;margin-top:3px}
 .hdrbtn{background:var(--panel);border:1px solid var(--border-strong);border-radius:6px;
   padding:6px 12px;font-size:0.8125rem;color:var(--fg);cursor:pointer;min-width:4.125rem;
   display:inline-flex;align-items:center;justify-content:center}
 .hdrbtn:hover{background:var(--raised)}
 .hdrbtn.ready{background:var(--finish-bg);border-color:var(--finish-bg);color:var(--finish-fg);
   font-weight:600;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--finish-bg);
-  animation:finish-nudge .9s ease-in-out 1}
-@keyframes finish-nudge{0%,100%{transform:none}30%{transform:translateY(-3px)}60%{transform:translateY(1px)}}
+  animation:finish-spotlight 1.2s ease-out 1}
+@keyframes finish-spotlight{
+  0%{transform:scale(1);box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--finish-bg),0 0 0 var(--finish-bg)}
+  35%{transform:scale(1.07);box-shadow:0 0 0 3px var(--bg),0 0 0 10px var(--finish-bg),0 0 24px var(--finish-bg)}
+  100%{transform:scale(1);box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--finish-bg),0 0 0 transparent}}
 @media (prefers-reduced-motion:reduce){.hdrbtn.ready{animation:none}}
 #themebtn{min-width:34px;padding:6px 8px}
 .icon{width:16px;height:16px;display:block}
@@ -758,7 +766,7 @@ function done(){
   confetti();
   // Give the reader a moment to see the message, then try to close the tab.
   // Browsers may refuse; the button and hint stay if they do.
-  setTimeout(tryClose, 3000);
+  setTimeout(tryClose, 6000);
 }
 
 function confetti(){
@@ -875,6 +883,7 @@ window.MathJax = {
       <button class="hdrbtn" id="finish-review" onclick="finish()">Finish</button>
     </div>
     <div class="counts"><span id="cardno"></span><span class="sep">&middot;</span><span id="count"></span></div>
+    <div class="version">anki-gen __VERSION__</div>
   </div>
   <div class="side-index">
     <h2>Cards</h2>
@@ -989,6 +998,7 @@ def build_page(cards_data: list[dict], state: dict, title: str,
     lead = LEAD.get(mode, "")
     page = (PAGE
             .replace("__TITLE__", html.escape(title))
+            .replace("__VERSION__", html.escape(SKILL_VERSION))
             .replace("__MATHJAX_URL__", MATHJAX_URL)
             .replace("__DECK_CSS__", CSS)
             .replace("__APP_CSS__", APP_CSS)
@@ -1209,6 +1219,7 @@ def main() -> int:
         cards = [cards[e["i"] - 1] for e in plan_entries]
         title = f"{title} — triage {len(cards)} of {plan_total}"
 
+    print(f"[review] anki-gen {SKILL_VERSION}", flush=True)
     print(f"[review] rendering {len(cards)} cards in {args.ask} mode…", flush=True)
     cards_data = render_cards(cards, plan_entries, media_root)
 

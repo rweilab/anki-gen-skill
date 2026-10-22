@@ -10,6 +10,19 @@ because these are the failures that are invisible until they bite.
 
 - **`--merge-existing` duplicated the whole deck on re-run.** Cards already present are now skipped
   by GUID, with the count printed.
+- **A true back can still miss the answer.** A fructose-1,6-bisphosphate card asked “which
+  enzyme?” but explained the split without naming **aldolase**. The validator now errors on an
+  explicit “which enzyme” front with no enzyme name; the card-writing rule is answer-first.
+- **The model read frames instead of letting the pipeline choose them.** Main-model vision made 23
+  image reads on a 154-card deck (21% of tokens, 28% of tool calls); ambiguous frames now go to the
+  separate cached `image-vision` pass, with no contact sheets or scan galleries.
+- **A PPTX probe for LibreOffice was a workaround, not a requirement.** `.pptx` is a ZIP of XML;
+  `extract_slides.py` reads text/notes/embedded images directly. Vector slides are cited, not
+  rendered.
+- **Tags are front-visible.** A one-topic object tag that appears only in the answer is now a
+  validator error; a Bernoulli-substitution card cannot be tagged `bernoulli`.
+- **Tests must fail on a broken implementation.** New guardrails have mutation probes; a passing
+  mutation means the test, not the code, needs fixing.
 - **`genanki` and `--engine` are gone.** That path could not produce a cloze deck Anki 26 opens,
   forced `genanki` on every import, and hashed with sha256 where everything else uses md5, so
   identity did not survive an engine change. `anki` is now a hard requirement.

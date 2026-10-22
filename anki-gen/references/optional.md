@@ -38,8 +38,14 @@ Figure extraction always happens; **bundling is off unless the user asked.**
 - `extract_pdf.py` writes `<tag>/media/fig_p<page>_<idx>.png` and `<tag>/figures.json` (page,
   dimensions, bytes, caption, slide title). The manifest keeps a count + 3-name sample, so stdout
   never carries hundreds of paths; `--manifest-full` restores them only for extraction diagnosis.
-- The model chooses from `media_index.py <workdir>` (compact: path, page, size, title, caption) —
-  **never vision**. Caption/slide-title/page match, or nothing.
+- The model chooses from `media_index.py <workdir>` (compact: path, page, size, quality,
+  flags, title, caption) — **never vision**. High-quality figures are listed first;
+  caption/slide-title/page match, or nothing.
+- Extracted raster figures are scored with the same visual metrics as video frames:
+  tiny and exact-duplicate images are dropped; blank, text-like, and table images
+  are kept and flagged so a small diagram is not lost. Ambiguous figures are confirmed
+  with `image-vision` only when they are actually being used for a card. Vector diagrams
+  are not extracted yet; document the gap instead of guessing.
 - Build with `--media --media-root <work>`; a text-only build carries no media at all.
 - Web images only on request: high-signal sources first (textbooks, OpenStax, university notes,
   Paul's Online Math Notes, Wikimedia, NASA/NOAA, publishers); attach none if the top candidate is
@@ -70,9 +76,10 @@ wrapper was removed, the judgement kept.)
 4. If the user accepts one, download it and set it as the merge target.
 
 - **Video frames are opt-in.** `extract_video.py`/`frames.py` support YouTube
-  transcripts and 720p stills; one image per card, automatic selection, no
-  per-frame verification. Personal study only; cite URL + timestamp. See
-  `references/video.md`.
+  transcripts and 720p stills; automatic scoring, with image-vision confirmation
+  for ambiguous candidates when available. The main model never reads images;
+  media may be reused across related cards. Personal study only; cite URL +
+  timestamp. See `references/video.md`.
 - **Handwritten/scanned pages are not OCR'd by the builder.** Use the separate
   `image-vision` skill (Gemini free tier) to transcribe; ask once. A figure that is the only
   source for a fact can be read the same way; attach it only if the user asked.
