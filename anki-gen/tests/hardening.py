@@ -94,7 +94,14 @@ def main() -> int:
                    "Never spawn a child `opencode` process",
                    "Do not probe for LibreOffice"):
         assert phrase in skill, f"guardrail missing from SKILL.md: {phrase!r}"
-    print("ok    execution guardrails present")
+    maintainers = (ROOT / "MAINTAINERS.md").read_text()
+    for phrase in ("## Quality contract", "**98%**", "4. speed"):
+        assert phrase in maintainers, f"quality contract missing: {phrase!r}"
+    assert (maintainers.index("1. correctness")
+            < maintainers.index("3. token and API-call efficiency")
+            < maintainers.index("4. speed")), "quality priority order changed"
+    assert "quality contract in `MAINTAINERS.md`" in (ROOT / "AGENTS.md").read_text()
+    print("ok    execution and quality guardrails present")
 
     # Soft order: source topic first, tier-zero, then L1/L2/advanced. Topic B is
     # first on purpose, so this also proves the order is not alphabetical.

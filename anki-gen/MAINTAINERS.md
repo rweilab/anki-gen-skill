@@ -4,6 +4,33 @@ Not loaded by `SKILL.md`. Read this before architectural or token-efficiency
 changes. It records what the experimental ALPHA actually showed; it is not a
 verdict on every deck size or every compression idea.
 
+## Quality contract
+
+The skill exists to take the resources available in the caller's directory — or resources it can
+find — and build cards this specific learner can actually use. The quality floor is **98%**. That
+is a quality floor, not a confidence claim; high confidence and a deck that needs few or no
+corrections are outcomes of meeting it.
+
+Priority order:
+
+1. correctness, answerability, sourcing, and learner fit
+2. reliability, portability, and resourcefulness
+3. token and API-call efficiency
+4. speed
+
+Never buy a lower priority by sacrificing a higher one. Do not remove source context, learner
+context, provenance, why-explanations, or hard-earned heuristics merely to save calls, tokens, or
+time. Compaction is allowed after the evidence and reasoning have done their job.
+
+Heuristics are adaptable guidelines, not a rigid checklist. Preserve the *why*, the precise
+vocabulary, and the distinctions that took real failures to learn. Why-questions are part of the
+product: they explain card decisions to the caller and make the heuristics transferable to new
+material.
+
+The skill must work in any supported directory and environment, discover usable sources, state
+its assumptions, and individualize the deck. Minimal API calls, low token usage, and fast runs
+are goals only within that quality contract.
+
 ## Agent execution boundaries
 
 Do not spawn opencode child processes (including debug/config commands), use

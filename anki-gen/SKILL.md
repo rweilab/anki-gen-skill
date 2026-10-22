@@ -20,8 +20,9 @@ once at its stage, not every step. They ship with the skill; if `references/` is
 from the rules alone (they are the contract).
 
 **Token discipline.** Batch 10–15 cards per topic after a one-line-per-card ledger; read only the
-chosen sources, learner context, and the stage's reference; phase-split large reviews. Details:
-`references/authoring.md`, `references/review.md`.
+chosen sources, learner context, and the stage's reference; phase-split large reviews. Quality
+outranks token, call, and speed savings; never withhold useful evidence, context, or reasoning to
+reduce cost. Details: `references/authoring.md`, `references/review.md`.
 
 **Execution.** Never spawn a child `opencode` process (including `opencode run` or
 `opencode debug`) or recursively invoke this skill; run the shipped scripts directly.

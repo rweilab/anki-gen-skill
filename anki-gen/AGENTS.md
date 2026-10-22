@@ -3,6 +3,10 @@
 This file is for maintainers/agents changing the skill; it is not loaded during a
 normal deck run.
 
+- **Read the quality contract in `MAINTAINERS.md` before proposing any optimization or new
+  implementation.** The 98% quality floor outranks token, API-call, and speed savings. Do not
+  remove context, reasoning, provenance, or hard-earned heuristics to make a run cheaper.
+
 - **Use `ponytail` at `ultra` for code implementation.** This is a standing
   maintainer instruction: load the skill before changing code, keep the diff
   minimal, and keep the explanation short. The user can override it with

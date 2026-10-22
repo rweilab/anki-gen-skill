@@ -14,6 +14,9 @@ Newest first. Keep the index to one line per release; details live below.
 ## v1.4.1 — Local video/audio and answer-aligned cards
 
 ### Added
+- A canonical quality contract in `MAINTAINERS.md`, enforced by a guardrail in `AGENTS.md`: the 98%
+  quality floor outranks reliability, token/API efficiency, and speed; context and reasoning are
+  not cut merely to make a run cheaper.
 - Local `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
   `.m4a`, `.mp3`, `.wav`, `.flac` sources, including directory batches.
 - Sidecar `.vtt`/`.srt` captions are used before any local model work. When
