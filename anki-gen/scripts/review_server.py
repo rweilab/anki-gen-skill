@@ -1114,6 +1114,7 @@ class Handler(BaseHTTPRequestHandler):
                 payload = {}
             note = str(payload.get("deck_note") or "").strip()
             done = self.server.done_file           # type: ignore[attr-defined]
+            done.parent.mkdir(parents=True, exist_ok=True)
             done.write_text(json.dumps(
                 {"finished_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                  "scored": len(self.server.store.state()),  # type: ignore[attr-defined]
@@ -1176,7 +1177,8 @@ def main() -> int:
                          "or review_recall.jsonl with --ask recall")
     ap.add_argument("--port", type=int, default=0, help="0 picks a free port")
     ap.add_argument("--title", default="anki-gen review", help="shown in the header and tab")
-    ap.add_argument("--done-file", default="review_done", help="sentinel written on finish")
+    ap.add_argument("--done-file", default=None,
+                    help="sentinel written on finish (default: beside the feedback log)")
     ap.add_argument("--idle-timeout", type=float, default=90,
                     help="minutes without a request before self-shutdown")
     ap.add_argument("--media-root", default=None,
@@ -1245,7 +1247,9 @@ def main() -> int:
     srv.store = store                                         # type: ignore[attr-defined]
     srv.title = title                                         # type: ignore[attr-defined]
     srv.mode = args.ask                                       # type: ignore[attr-defined]
-    srv.done_file = Path(args.done_file)                      # type: ignore[attr-defined]
+    done_file = (Path(args.done_file) if args.done_file
+                 else Path(args.out).parent / "review_done")
+    srv.done_file = done_file                                 # type: ignore[attr-defined]
     srv.media_root = Path(media_root)                         # type: ignore[attr-defined]
     srv.last_seen = time.monotonic()                          # type: ignore[attr-defined]
 

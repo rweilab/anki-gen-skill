@@ -12,7 +12,7 @@ normal deck run.
   minimal, and keep the explanation short. The user can override it with
   "normal mode" or "stop ponytail".
 
-- **Use the todo tool (`todowrite`/todoskill) for multi-step work.** Create the
+- **Use the todo tool (`todowrite`) for multi-step work.** Create the
   list up front, keep exactly one item in progress, and update it as work lands
   or new follow-ups appear. A stale todo list is a failed handoff.
 

@@ -27,6 +27,7 @@ ALLOWED_TAGS = {"p", "b", "strong", "i", "em", "u", "ul", "ol", "li", "table", "
                 "img"}
 VOID = {"br", "hr", "img"}
 CTRL = re.compile(r"[\x07\x08\x09\x0b\x0c\x0d]")
+MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 
 
 def audit(card_text: str) -> list[str]:
@@ -43,9 +44,11 @@ def audit(card_text: str) -> list[str]:
     for m in re.finditer(r"\\[\[(](.+?)\\[\])]", card_text, re.S):
         if m.group(1).count("{") != m.group(1).count("}"):
             bad.append(f"brace imbalance in display math: {m.group(1)[:40]!r}")
-    if "**" in card_text or "`" in card_text:
+    if "**" in prose or "`" in prose:
         bad.append("literal markdown (** or `) -- Anki renders no markdown")
-    if re.search(r"^\s*\|", card_text, re.M):
+    if MARKDOWN_IMAGE.search(prose):
+        bad.append("literal markdown image -- use card media, not ![..](..)")
+    if re.search(r"^\s*\|", prose, re.M):
         bad.append("literal markdown table")
     if re.search(r"<p>(?:(?!</p>).)*?<div", card_text, re.S):
         bad.append("<div> nested inside <p>")
@@ -186,42 +189,31 @@ def media_test(apkg: str) -> list[str]:
 
 
 def cloze_integrity(tmpdir: str) -> list[str]:
-    """Cloze notes must expand to one card per deletion, and vice versa."""
+    """Every cloze note must produce one card per distinct deletion.
+
+    The modern schema has no `templates.qfmt` column and leaves `col.models`
+    empty, so notetype introspection silently found nothing. The card rows and the
+    note text are enough, and they work on both schemas: count the distinct
+    `{{cN::` ordinals in the note and compare with its cards. Comparing card count
+    to note count was wrong too -- a valid one-deletion note makes one card per
+    note.
+    """
     problems = []
     db = Path(tmpdir) / "collection.anki2"
     con = sqlite3.connect(db)
     try:
-        cloze_mids = set()
-        try:                                     # classic schema: col.models JSON
-            raw = con.execute("select models from col").fetchone()
-            if raw:
-                cloze_mids = {m["id"] for m in json.loads(raw[0]).values()
-                              if m.get("type") == 1}
-        except (json.JSONDecodeError, TypeError):
-            pass
-        if not cloze_mids:
-            try:                                 # native schema: templates carry it
-                rows = con.execute(
-                    "select nt.id from notetypes nt join templates t "
-                    "on t.ntid = nt.id where t.qfmt like '%cloze:%'").fetchall()
-                cloze_mids = {r[0] for r in rows}
-            except sqlite3.OperationalError:
-                pass
-        if not cloze_mids:
-            return problems
-
-        marks = ",".join(str(m) for m in cloze_mids)
-        notes = con.execute(
-            f"select count(*) from notes where mid in ({marks})").fetchone()[0]
-        cards = con.execute(
-            f"select count(*) from cards where nid in "
-            f"(select id from notes where mid in ({marks}))").fetchone()[0]
-        if not notes:
-            return problems
-        if cards <= notes:
-            problems.append(
-                f"{notes} cloze note(s) produced only {cards} card(s) — deletions "
-                "were not split into separate cards, so {{cN::}} will render raw")
+        rows = con.execute("select id, flds from notes").fetchall()
+        for nid, flds in rows:
+            front = (flds or "").split("\x1f", 1)[0]
+            ordinals = {int(n) for n in re.findall(r"\{\{c(\d+)::", front)}
+            if not ordinals:
+                continue
+            cards = con.execute(
+                "select count(*) from cards where nid=?", (nid,)).fetchone()[0]
+            if cards != len(ordinals):
+                problems.append(
+                    f"note {nid}: {len(ordinals)} cloze deletion(s) but {cards} "
+                    "card(s) — each distinct {{cN::}} must make its own card")
         return problems
     finally:
         con.close()

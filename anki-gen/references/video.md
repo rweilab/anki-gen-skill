@@ -43,7 +43,12 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 - Manual captions first; auto captions fallback with a warning.
 - No captions and local transcription unavailable → report the failure; do not
   invent timestamps. YouTube does not use Whisper.
-- Transcript chunks are indexed for `page.py`; read only the chunks a card needs.
+- Transcript chunks are written to the work tree and `source_index.sqlite`; `transcripts.md`
+  (and per-video `transcripts/<id>.compact.md`) is the compact, deduplicated read: timestamped
+  paragraphs plus a token estimate. Read that once; use the index only for a narrow lookup.
+- A video with missing or rate-limited captions is still registered and frame-scanned; `video_toc.md`
+  marks `no_captions`/`rate_limited` instead of discarding the video. Do not retry a hard 429 for
+  minutes; mark it and recover frames.
 - Video dependencies come from `requirements.txt`: `yt-dlp[default,deno]` includes
   the EJS solver and Deno runtime, so no system Node install is needed. The scripts
   call `python -m yt_dlp`, not whichever `yt-dlp` is on PATH. The scripts retry
@@ -55,7 +60,8 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
   - series: `<channel> - <playlist> NN - <video title> @ mm:ss`
   - full title, never truncated.
 - `source_url` is plain text, not a hyperlink: `https://www.youtube.com/watch?v=ID&t=SECONDS`
-  (series adds `&list=PLAYLIST_ID`).
+  (series adds `&list=PLAYLIST_ID`). `source` is the canonical short label
+  (`DigiKey · RTOS 04 · Memory Management @ 01:32`); copy it, do not rebuild it from the title.
 - The URL is copyable in Anki and the review page.
 - Do not dump a whole playlist transcript into the conversation.
 
@@ -81,6 +87,12 @@ The picker is two-stage:
 - `direct` → attach. `confirm` → confirm through `image-vision` when a key
   exists; otherwise attach only when the cue explicitly names a visual and the
   frame is visually strong. `skip` stays in `frames.jsonl`.
+- `frames.py --sweep 00:00-02:30 --every 10` is the bounded chapter scan; use it
+  instead of a long series of manual `--at` calls. `frames.md` lists canonical
+  frames; alternates stay in `frames.jsonl`.
+- For a missing/rate-limited transcript, seed one official companion-article or
+  slides search from the video title/description; register the URL as a second
+  source and cite it. Do not invent diagrams or use a random mirror.
 - `--max` is a safety cap, not a per-video target.
 - **Never read an image with the main model.** No `read` on `media/*.png`, no
   scan/contact-sheet review, no vision on the model's own stream. These are the

@@ -59,6 +59,9 @@ def main() -> int:
         assert len(videos) == 1 and videos[0]["source_type"] == "local"
         assert videos[0]["source_label"].startswith("Local recording -")
         assert videos[0]["transcript_source"] == "sidecar:vtt"
+        assert Path(videos[0]["compact_file"]).is_file(), videos[0]
+        assert videos[0]["compact_tokens"] > 0, videos[0]
+        assert (work / "transcripts.md").is_file(), "combined transcript missing"
         assert "Local recording - recording with space" in (work / "video_toc.md").read_text()
         assert not (work / "frames.jsonl").exists()
         print("ok    local sidecar ingestion and labels")

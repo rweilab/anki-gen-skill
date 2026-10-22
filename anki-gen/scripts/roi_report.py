@@ -49,7 +49,7 @@ HEADERISH = re.compile(r"^\s*\|[\s:|-]+\|\s*$", re.M)
 
 
 def strip_math(t: str) -> str:
-    return re.sub(r"\$[^$]+\$", " ⟨m⟩ ", t)
+    return re.sub(r"\$\$.*?\$\$|\$[^$]+\$", " ⟨m⟩ ", t, flags=re.S)
 
 
 def items_in_back(back: str) -> int:
@@ -165,6 +165,9 @@ def main():
                     help="print card N's full front and back, then exit. Lets the "
                          "deblater cite a card without pulling every card's text "
                          "back into the conversation.")
+    ap.add_argument("--deep", action="store_true",
+                    help="also compute soft redundancy/interference/answer-overlap "
+                         "pairs (O(n^2); opt-in)")
     args = ap.parse_args()
 
     cards = load_cards(args.cards_json)
@@ -209,9 +212,9 @@ def main():
     # >0.72 signal that two fronts COMPETE for the same retrieval cue. Different
     # questions, so different bars -- the two are not expected to agree on a given
     # pair, and one firing without the other is not a bug.
-    red = redundancy(cards)
-    inter = interference(cards)
-    overlap = similar_answer_pairs(cards)
+    red = redundancy(cards) if args.deep else []
+    inter = interference(cards) if args.deep else []
+    overlap = similar_answer_pairs(cards) if args.deep else []
     cost = cost_fn(cards)
     rep = repeated_content(cards)
 
@@ -296,19 +299,22 @@ def main():
     if not rep:
         print("  none")
 
-    print(f"\nREDUNDANCY (answer subsumed by a sibling) — {len(red)} pair(s)")
-    for i, j, r in red[:15]:
-        print(f"  card {i} ~ card {j}  ({r})")
+    if args.deep:
+        print(f"\nREDUNDANCY (answer subsumed by a sibling) — {len(red)} pair(s)")
+        for i, j, r in red[:15]:
+            print(f"  card {i} ~ card {j}  ({r})")
 
-    print(f"\nINTERFERENCE (near-identical fronts compete) — {len(inter)} pair(s)")
-    for i, j, r in inter[:15]:
-        print(f"  card {i} ~ card {j}  ({r})")
+        print(f"\nINTERFERENCE (near-identical fronts compete) — {len(inter)} pair(s)")
+        for i, j, r in inter[:15]:
+            print(f"  card {i} ~ card {j}  ({r})")
 
-    print(f"\nANSWER OVERLAP (same ground; merge or justify a contrast) — {len(overlap)} pair(s)")
-    for i, j, r in overlap[:15]:
-        print(f"  card {i} ~ card {j}  ({r:.0%})")
-    if not overlap:
-        print("  none")
+        print(f"\nANSWER OVERLAP (same ground; merge or justify a contrast) — {len(overlap)} pair(s)")
+        for i, j, r in overlap[:15]:
+            print(f"  card {i} ~ card {j}  ({r:.0%})")
+        if not overlap:
+            print("  none")
+    else:
+        print("\nPAIRWISE SIMILARITY: skipped (pass --deep for an explicit debloat pass)")
 
     print(f"\nSPLIT CANDIDATES ({len(bundles)}) — independent facts sharing one schedule")
     for i, items, topic in bundles[:CAP]:

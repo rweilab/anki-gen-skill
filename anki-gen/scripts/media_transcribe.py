@@ -87,6 +87,64 @@ def seconds(stamp: str) -> float:
     return total
 
 
+def dedupe_cues(cues: list[dict]) -> list[dict]:
+    """Collapse rolling/cumulative captions without losing new words.
+
+    YouTube auto-captions repeat a sliding prefix of the previous cue. Exact
+    dedupe leaves the repeated text; this removes the longest shared
+    suffix/prefix (at least two words) and drops cues already fully contained.
+    """
+    out: list[dict] = []
+    for cue in cues:
+        text = re.sub(r"\s+", " ", str(cue.get("text", ""))).strip()
+        if not text:
+            continue
+        if out:
+            prev = out[-1]["text"]
+            if text == prev:
+                out[-1]["end"] = max(out[-1]["end"], cue.get("end", out[-1]["end"]))
+                continue
+            if prev in text:                 # sliding caption repeats a phrase
+                text = text.split(prev, 1)[1].strip(" -–—:")
+                if not text:
+                    out[-1]["end"] = max(out[-1]["end"], cue.get("end", out[-1]["end"]))
+                    continue
+            pw, tw = prev.split(), text.split()
+            overlap = 0
+            for k in range(min(len(pw), len(tw), 12), 1, -1):
+                if pw[-k:] == tw[:k]:
+                    overlap = k
+                    break
+            if overlap:
+                text = " ".join(tw[overlap:]).strip()
+                if not text:
+                    out[-1]["end"] = max(out[-1]["end"], cue.get("end", out[-1]["end"]))
+                    continue
+        out.append({**cue, "text": text})
+    return out
+
+
+def compact_cues(cues: list[dict], max_seconds: float = 25,
+                 max_chars: int = 420) -> str:
+    """Timestamped paragraphs for the model, not for the index."""
+    lines, buf, start, last = [], [], None, None
+    for cue in cues:
+        t = float(cue.get("start", 0))
+        if start is None:
+            start = t
+        buf.append(str(cue.get("text", "")))
+        last = t
+        if (last - start >= max_seconds
+                or sum(len(x) for x in buf) >= max_chars):
+            lines.append(f"[{int(start)//60:02d}:{int(start)%60:02d}] "
+                         + " ".join(buf).strip())
+            buf, start = [], None
+    if buf:
+        lines.append(f"[{int(start)//60:02d}:{int(start)%60:02d}] "
+                     + " ".join(buf).strip())
+    return "\n\n".join(lines)
+
+
 def parse_captions(path: Path) -> list[dict]:
     text = path.read_text(errors="replace").replace("\r\n", "\n")
     lines = text.splitlines()
@@ -108,7 +166,7 @@ def parse_captions(path: Path) -> list[dict]:
         if content and (not cues or content != cues[-1]["text"]):
             cues.append({"start": start, "end": end, "text": content})
         i += 1
-    return cues
+    return dedupe_cues(cues)
 
 
 def extract_audio(media: Path, work: Path, seconds_limit: float | None = None) -> Path:

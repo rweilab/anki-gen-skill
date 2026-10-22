@@ -77,9 +77,14 @@ that works the same on every platform and covers both text (fallback) and images
 
 ## Images (opt-in) and handwritten sources
 
-**Text-first.** Image bundling is off unless the user asks. `extract_pdf.py` writes figures and
-`figures.json`; `media_index.py <workdir>` prints a compact candidate list. Build with
-`build_apkg.py cards.json Deck.apkg --deck-name NAME --media --media-root <workdir>`. Images
+**Text-first.** Image bundling is off unless the user asks. `extract_pdf.py` writes embedded
+figures and tight page/slide crops for captioned vector diagrams; web extraction records
+`alt`/`figcaption`/heading and a source URL. `media_index.py <workdir>` prints a compact
+candidate list, or `--cards cards.jsonl` ranks the best few per card. Candidates are never
+auto-attached. Build with
+`build_apkg.py cards.json Deck.apkg --deck-name NAME --media --media-root <workdir>`.
+For the one-call path, `pipeline.py --work <workdir> --out-apkg Deck.apkg`; a `.apkg`
+passed to `--work`/`--out` is rejected. Images
 require Pillow; over-cap files are downscaled, not dropped.
 
 For handwritten/scanned pages or a figure that is the only source for a fact, the separate

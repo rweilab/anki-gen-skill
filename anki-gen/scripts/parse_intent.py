@@ -83,15 +83,18 @@ def parse_intent(user_input: str, cwd: str = ".") -> Dict[str, Any]:
     if output_match:
         intent["output_path"] = output_match.group(1)
 
-    # Check for deck name
-    deck_match = re.search(r"--deck-name\s+(\S+)", user_input)
+    # Check for deck name. Quoted names keep their spaces; :: nesting survives.
+    deck_match = re.search(
+        r"--deck-name\s+(?:\"([^\"]+)\"|'([^']+)'|(\S+))", user_input)
     if deck_match:
-        intent["deck_name"] = deck_match.group(1)
+        intent["deck_name"] = next(g for g in deck_match.groups() if g)
 
-    # Check for max cards
-    max_cards_match = re.search(r"--max-cards\s+(\d+)", user_input)
+    # Max cards is advisory: the quality contract says deck value is not size.
+    max_cards_match = re.search(
+        r"--max-cards\s+(\d+)|\b(?:make|generate|create)\s+(\d+)\s+cards?\b",
+        user_input, re.I)
     if max_cards_match:
-        intent["max_cards"] = int(max_cards_match.group(1))
+        intent["max_cards"] = int(next(g for g in max_cards_match.groups() if g))
 
     # Video sources: URL/playlist/range/frames; the host model reads the prose.
     vid = re.search(r"https?://(?:www\.)?(?:youtube\.com|youtu\.be)/\S+", user_input)

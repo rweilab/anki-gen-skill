@@ -37,23 +37,39 @@ def video_url(vid: str, seconds: float = 0, playlist_id: str = "") -> str:
     return f"{base}&t={max(0, int(seconds))}"
 
 
+def _norm(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
 def _clean_title(title: str, channel: str) -> str:
-    """Drop a trailing `| Channel` from a YouTube title; it is already displayed."""
-    if " | " not in title:
-        return title
-    head, tail = title.rsplit(" | ", 1)
-    norm = lambda value: re.sub(r"[^a-z0-9]", "", value.lower())
-    a, b = norm(tail), norm(channel)
-    if b and (a.startswith(b) or b.startswith(a)):
-        return head
-    return title
+    """Drop a trailing channel marker; the channel is displayed separately."""
+    for sep in (" | ", " - ", " · "):
+        if sep in title:
+            head, tail = title.rsplit(sep, 1)
+            a, b = _norm(tail), _norm(channel)
+            if b and (a.startswith(b) or b.startswith(a)):
+                return head.strip()
+    return title.strip()
+
+
+def _short_playlist(playlist: str) -> str:
+    return re.sub(r"^(?:the\s+)?introduction\s+to\s+", "", playlist,
+                  flags=re.I).strip() or playlist
 
 
 def source_label(channel: str, title: str, playlist: str = "", index: int = 0) -> str:
+    """Canonical short citation: `DigiKey · RTOS 04 · Memory Management`.
+
+    Playlist and episode titles repeat each other in the YouTube metadata; the
+    full title stays in `title`/the URL, while the card footer stays readable.
+    """
     title = _clean_title(title, channel)
+    if playlist:
+        title = re.sub(rf"^{re.escape(playlist)}\s*(?:Part\s*\d+)?\s*[-–—:]\s*",
+                       "", title, flags=re.I).strip() or title
     if playlist and index:
-        return f"{channel} - {playlist} {index:02d} - {title}"
-    return f"{channel} - {title}"
+        return f"{channel} · {_short_playlist(playlist)} {index:02d} · {title}"
+    return f"{channel} · {title}"
 
 
 def with_time(url: str, seconds: float) -> str:
@@ -121,25 +137,32 @@ def prefer_vtt(files: list[Path], vid: str) -> Path | None:
     return files[0]
 
 
-def get_vtt(entry: dict, work: Path, lang: str) -> Path | None:
+def get_vtt(entry: dict, work: Path, lang: str) -> tuple[Path | None, str]:
     vid = str(entry.get("id"))
     url = entry.get("webpage_url") or entry.get("url") or f"https://www.youtube.com/watch?v={vid}"
     outdir = work / "transcripts"
     outdir.mkdir(parents=True, exist_ok=True)
     existing = list(outdir.glob(f"{vid}*.vtt"))
     if existing:
-        return prefer_vtt(existing, vid)
+        return prefer_vtt(existing, vid), "ok"
     pattern = outdir / f"{vid}.%(ext)s"
-    r = ytdlp.run(("--skip-download", "--no-playlist", "--no-progress",
-                   "--sleep-subtitles", SUBTITLE_PACING, "--write-subs", "--write-auto-subs",
-                   "--sub-langs", lang, "--sub-format", "vtt", "-o", str(pattern),
-                   url), timeout=180)
+    try:
+        r = ytdlp.run(("--skip-download", "--no-playlist", "--no-progress",
+                       "--sleep-subtitles", SUBTITLE_PACING, "--write-subs",
+                       "--write-auto-subs", "--sub-langs", lang, "--sub-format", "vtt",
+                       "-o", str(pattern), url), timeout=180)
+    except Exception as e:
+        print(f"extract_video.py: caption request failed for {vid}: {e}",
+              file=sys.stderr)
+        return None, "rate_limited" if "timeout" in str(e).lower() else "error"
     files = list(outdir.glob(f"{vid}*.vtt"))
     path = prefer_vtt(files, vid)
     if path is None:
-        print(f"extract_video.py: no captions for {vid} ({r.stderr[-200:]})",
+        status = "rate_limited" if ytdlp.is_transient(r.stderr) else "no_captions"
+        print(f"extract_video.py: {status} for {vid} ({r.stderr[-200:]})",
               file=sys.stderr)
-    return path
+        return None, status
+    return path, "ok"
 
 
 def parse_vtt(path: Path) -> list[dict]:
@@ -164,7 +187,7 @@ def parse_vtt(path: Path) -> list[dict]:
         if content and (not cues or content != cues[-1]["text"]):
             cues.append({"start": start, "end": end, "text": content})
         i += 1
-    return cues
+    return mt.dedupe_cues(cues)
 
 
 def chunks(cues: list[dict], source: str, max_chars=700):
@@ -182,6 +205,34 @@ def chunks(cues: list[dict], source: str, max_chars=700):
         out.append({"source": source, "loc": fmt(start), "heading": "Transcript",
                     "text": " ".join(buf), "start": start, "end": end})
     return out
+
+
+def write_transcript(work: Path, vid: str, cues: list[dict], label: str) -> dict:
+    """Write JSONL for lookup and compact markdown for the model."""
+    tdir = work / "transcripts"
+    tdir.mkdir(parents=True, exist_ok=True)
+    raw = tdir / f"{vid}.jsonl"
+    raw.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cues))
+    body = mt.compact_cues(cues)
+    compact = tdir / f"{vid}.compact.md"
+    compact.write_text(f"# {label}\n\n{body}\n" if body else f"# {label}\n\n")
+    return {"caption_file": str(raw), "compact_file": str(compact),
+            "compact_chars": len(body), "compact_tokens": max(1, len(body) // 4)}
+
+
+def write_combined_transcripts(work: Path, videos: list[dict]) -> None:
+    blocks = ["# Transcripts", ""]
+    for v in videos:
+        blocks += [f"## {v['source_label']}", ""]
+        path = v.get("compact_file")
+        body = ""
+        if path and Path(path).is_file():
+            body = Path(path).read_text().strip()
+            if body.startswith("# "):
+                body = body.split("\n", 1)[1].strip()
+        blocks += [body or f"_No transcript ({v.get('caption_error', 'missing')})._", ""]
+    text = "\n".join(blocks)
+    (work / "transcripts.md").write_text(text)
 
 
 def index(work: Path, rows: list[dict]):
@@ -240,19 +291,15 @@ def local_source(source: str, work: Path, args) -> int:
             failures.append({"id": vid, "title": title, "reason": str(e)})
             continue
         if not cues:
-            failures.append({"id": vid, "title": title, "reason": "no speech/captions"})
-            continue
+            transcript_source = "no_speech"
+        files = write_transcript(work, vid, cues, label)
         rows = chunks(cues, label)
         all_rows.extend(rows)
-        transcript = work / "transcripts" / f"{vid}.jsonl"
-        transcript.parent.mkdir(parents=True, exist_ok=True)
-        transcript.write_text("".join(json.dumps(c, ensure_ascii=False) + "\n"
-                                      for c in cues))
         videos.append({
             "id": vid, "title": title, "url": "", "channel": "Local recording",
             "duration": info.get("duration"), "playlist_title": "",
             "playlist_index": 0, "source_label": label, "source_url": "",
-            "cues": len(cues), "caption_file": str(transcript),
+            "cues": len(cues), **files,
             "source_type": "local", "local_path": str(media.resolve()),
             "media_kind": mt.kind(media), "transcript_source": transcript_source,
             "model": "none" if transcript_source.startswith("sidecar") else transcript_source,
@@ -262,17 +309,18 @@ def local_source(source: str, work: Path, args) -> int:
                      "--work", str(work), "--video-id", vid, "--url", "",
                      "--video-file", str(media), "--title", title,
                      "--source-label", label, "--source-url", "",
-                     "--transcript", str(transcript), "--auto"], timeout=900)
+                     "--transcript", files["caption_file"], "--auto"], timeout=900)
             if r.returncode != 0:
                 failures.append({"id": vid, "title": title,
                                  "reason": "frame extraction failed"})
         elif args.images == "yes":
             print(f"extract_video.py: audio-only {media.name}; frames skipped",
                   file=sys.stderr)
-    if not all_rows:
+    if not all_rows and not videos:
         for f in failures:
             print(f"extract_video.py: {f['id']} — {f['reason']}", file=sys.stderr)
         return 1
+    write_combined_transcripts(work, videos)
     index(work, all_rows)
     (work / "videos.jsonl").write_text(
         "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in videos))
@@ -282,7 +330,9 @@ def local_source(source: str, work: Path, args) -> int:
                     f"- {v['source_label']} @ 00:00",
                     f"- local: {v['local_path']}",
                     f"- transcript: {v['transcript_source']}",
-                    f"- cues: {v['cues']}", ""])
+                    f"- cues: {v['cues']}",
+                    f"- compact: {Path(v['compact_file']).name} "
+                    f"(~{v.get('compact_tokens', 0)} tokens)", ""])
     if failures:
         toc.append("## Skipped")
         toc.extend(f"- {f['id']} — {f['reason']} — {f['title']}" for f in failures)
@@ -363,39 +413,40 @@ def main() -> int:
         url = e.get("webpage_url") or e.get("url") or f"https://www.youtube.com/watch?v={vid}"
         label = source_label(channel, title, playlist_title, playlist_index)
         base_url = video_url(vid, 0, playlist_id)
-        vtt = get_vtt(e, work, args.lang)
-        if vtt is None:
-            failures.append({"id": vid, "title": title, "reason": "no captions"})
-            continue
-        cues = parse_vtt(vtt)
-        if not cues:
-            failures.append({"id": vid, "title": title, "reason": "empty captions"})
-            continue
-        rows = chunks([c for c in cues], label)
-        for r in rows:
-            r["source"] = label
-        all_rows.extend(rows)
-        videos.append({"id": vid, "title": title, "url": url,
-                       "channel": channel, "duration": e.get("duration"),
-                       "playlist_title": playlist_title, "playlist_index": playlist_index,
-                       "source_label": label, "source_url": base_url,
-                       "cues": len(cues), "caption_file": str(vtt)})
-        (work / "transcripts" / f"{vid}.jsonl").write_text(
-            "".join(json.dumps(c, ensure_ascii=False) + "\n" for c in cues))
+        vtt, caption_status = get_vtt(e, work, args.lang)
+        cues = parse_vtt(vtt) if vtt is not None else []
+        if vtt is not None and not cues:
+            caption_status = "empty_captions"
+        files = write_transcript(work, vid, cues, label)
+        if cues:
+            rows = chunks(cues, label)
+            for r in rows:
+                r["source"] = label
+            all_rows.extend(rows)
+        video = {"id": vid, "title": title, "url": url,
+                 "channel": channel, "duration": e.get("duration"),
+                 "playlist_title": playlist_title, "playlist_index": playlist_index,
+                 "source_label": label, "source_url": base_url,
+                 "cues": len(cues), "transcript_source": caption_status,
+                 **files}
+        if caption_status != "ok":
+            video["caption_error"] = caption_status
+        videos.append(video)
         if args.images == "yes":
             r = run([sys.executable, str(Path(__file__).with_name("frames.py")),
                      "--work", str(work), "--video-id", vid, "--url", url,
                      "--title", title, "--source-label", label,
                      "--source-url", base_url, "--transcript",
-                     str(work / "transcripts" / f"{vid}.jsonl"), "--auto"], timeout=900)
+                     files["caption_file"], "--auto"], timeout=900)
             if r.returncode != 0:
                 failures.append({"id": vid, "title": title,
                                  "reason": "frame extraction failed"})
                 print(f"extract_video.py: frames for {vid} failed: {r.stderr[-300:]}",
                       file=sys.stderr)
-    if not all_rows:
-        print("extract_video.py: no usable transcripts", file=sys.stderr)
+    if not all_rows and not videos:
+        print("extract_video.py: no usable transcripts or frames", file=sys.stderr)
         return 1
+    write_combined_transcripts(work, videos)
     index(work, all_rows)
     (work / "videos.jsonl").write_text(
         "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in videos))
@@ -406,6 +457,11 @@ def main() -> int:
         toc.append(f"- {v['source_label']} @ 00:00")
         toc.append(f"- {v['source_url']}")
         toc.append(f"- cues: {v['cues']}")
+        if v.get("transcript_source"):
+            toc.append(f"- transcript: {v['transcript_source']}")
+        if v.get("compact_file"):
+            toc.append(f"- compact: {Path(v['compact_file']).name} "
+                       f"(~{v.get('compact_tokens', 0)} tokens)")
         toc.append("")
     if failures:
         toc.append("## Skipped")

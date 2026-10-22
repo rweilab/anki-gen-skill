@@ -23,7 +23,7 @@ replace `validate_cards.py`**, which alone sees deck-wide checks (near-dup front
 coverage); the batch run on the written `cards.json` is mandatory.
 
 **Author in batches, not one card at a time.** Write a one-line ledger per card (front intent,
-why/answer, source anchor, heuristics checked), then append 10–15 cards for a topic in one
+retrieval target, why/answer, source anchor, heuristics checked), then append 10–15 cards for a topic in one
 `cards.jsonl` write and validate the batch. A 60-card deck is ~5 writes. The ledger is the
 reasoning record; review checks every card has a line. Prefer `.jsonl` for decks over ~30 cards;
 use `make_cards.py` for media/programmatic decks and write it in one pass per topic — never edit
@@ -93,8 +93,10 @@ stages 5 and 6 leave artifacts, and why the deck belongs in a file.
 ## Media (opt-in)
 
 Default: no images; `media` is ignored. When the user asks for figures, list candidates with
-`media_index.py <workdir>` and attach only when the caption or slide title clearly matches the
-card — never claim to have seen an image, and never guess. Unclear means drop and report it.
+`media_index.py <workdir>` (or `--cards cards.jsonl` for a ranked 3-5 per card) and attach only
+when the caption, nearby text, or slide title clearly matches the card — never claim to have seen
+an image, and never guess. Slide and page crops are `confirm` candidates, not automatic attachments.
+Unclear means drop and report it.
 `side` defaults to `back`; use `front` when the image *is* the question. Cap: ≤1600 px / ≤1 MB
 per image, ≤2 per card; over-cap images are downscaled with Pillow (not dropped) and skipped only
 if still over. Every card with `media` is audited in review. Local-media citations use the

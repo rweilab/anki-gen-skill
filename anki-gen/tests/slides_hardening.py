@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from extract_pdf import extract_source  # noqa: E402
 from extract_slides import extract_pptx  # noqa: E402
+from unittest import mock  # noqa: E402
 
 
 def make_pptx(path: Path, image: Path, *, notes: bool = True,
@@ -86,6 +87,16 @@ def main() -> int:
         no_image = extract_pptx(str(missing_image), td / "no-image-out", "no-image")
         assert no_image["images"] == [] and "![" not in (td / "no-image-out" / "no-image.md").read_text()
         print("ok    PPTX survives missing notes/image targets")
+
+        # Without Pillow, keep the image with unknown quality instead of deleting
+        # it; the build still requires Pillow, but extraction must not lie.
+        with mock.patch.object(__import__("extract_slides").visual, "analyze",
+                               return_value=None):
+            unknown = extract_pptx(str(pptx), td / "unknown-out", "unknown")
+        assert unknown["images"], unknown
+        rows = json.loads((td / "unknown-out" / "figures.json").read_text())
+        assert rows and rows[0]["quality"] == "unknown", rows
+        print("ok    PPTX keeps images when Pillow is absent")
 
         many = td / "many.pptx"
         make_pptx(many, image, notes=False, slides=3)

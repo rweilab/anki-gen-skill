@@ -7,7 +7,7 @@
 # own idle-timeout be the backstop.
 #
 #   bash scripts/smoke.sh
-#   KEEP_WORK=1 bash scripts/smoke.sh      # keep the temp tree on failure
+#   KEEP_WORK=1 bash scripts/smoke.sh      # opt in to keeping the temp tree
 #   SMOKE_DEBUG=1 bash scripts/smoke.sh    # trace shell commands
 #
 # Requires: python3, the `anki` library, and the skill's scripts. A headless Chrome
@@ -19,6 +19,9 @@ export PYTHONDONTWRITEBYTECODE=1
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS="$ROOT/scripts"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/anki-gen-smoke.XXXXXX")"
+VERSION="$(cat "$ROOT/VERSION")"
+BEFORE_STATUS="$(git -C "$ROOT/.." status --porcelain --untracked-files=all 2>/dev/null || true)"
+BEFORE_JUNK="$(find "$ROOT/.." -maxdepth 1 \( -name '*.apkg' -o -name 'review_done' -o -name '.anki-gen-temp' \) -print 2>/dev/null | sort)"
 URL=""
 server_pid=""
 KEEP_WORK="${KEEP_WORK:-0}"
@@ -89,7 +92,6 @@ fail() {
   echo "rerun: KEEP_WORK=1 SMOKE_DEBUG=1 bash $ROOT/scripts/smoke.sh" >&2
   hint_for "$msg" >&2
   show_logs
-  KEEP_WORK=1
   exit "${rc:-1}"
 }
 
@@ -275,7 +277,7 @@ pass "media review is a bounded cross-section"
 
 python3 "$SCRIPTS/review_server.py" --cards "$WORK/cards.json" \
   --media-root "$WORK" --plan "$WORK/review_plan.json" --out "$WORK/feedback.jsonl" \
-  --done-file "$WORK/done" --idle-timeout 0.1 --port 0 >"$WORK/server.log" 2>&1 &
+  --idle-timeout 0.1 --port 0 >"$WORK/server.log" 2>&1 &
 server_pid=$!
 
 i=0
@@ -298,7 +300,7 @@ page_has 'const CARDS' || fail "page is missing the CARDS payload"
 # Markers for the finish-ready and done screens.
 for needle in 'function allMarked' 'id="finish-review"' '--finish-bg' 'finish-spotlight' \
               'prefers-reduced-motion' "You're done!" 'id="confetti"' 'function tryClose' \
-              'setTimeout(tryClose, 6000)' 'anki-gen 1.4.1'; do
+              'setTimeout(tryClose, 6000)' "anki-gen $VERSION"; do
   page_has "$needle" || fail "page is missing $needle"
 done
 pass "page carries cards and the finish/done UI"
@@ -324,6 +326,8 @@ else
 fi
 
 curl -s -m 3 -X POST "${URL%/}/finish" >/dev/null 2>&1 || true
+[ -f "$WORK/review_done" ] || fail "finish sentinel was not written beside the feedback log"
+[ ! -e "./review_done" ] || fail "finish sentinel leaked into the caller cwd"
 i=0
 while [ "$i" -lt 25 ]; do
   kill -0 "$server_pid" 2>/dev/null || break
@@ -365,5 +369,12 @@ pass "installer copies match"
 
 bash "$ROOT/tests/install_test.sh" || fail "installer/upgrade"
 pass "installer/upgrade"
+
+AFTER_STATUS="$(git -C "$ROOT/.." status --porcelain --untracked-files=all 2>/dev/null || true)"
+AFTER_JUNK="$(find "$ROOT/.." -maxdepth 1 \( -name '*.apkg' -o -name 'review_done' -o -name '.anki-gen-temp' \) -print 2>/dev/null | sort)"
+if [ "$AFTER_STATUS" != "$BEFORE_STATUS" ] || [ "$AFTER_JUNK" != "$BEFORE_JUNK" ]; then
+  fail "test changed the working tree or left files behind"
+fi
+pass "no test litter in the working tree"
 
 printf '\nPASS  anki-gen smoke test\n'

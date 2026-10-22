@@ -58,6 +58,14 @@ LAYERS = {"L1", "L2", "L3", "Procedure"}
 
 # Every warning any card raised, in the order it was raised. Printed by dump().
 WARNINGS: list = []
+# Exact normalized duplicates within one authoring process.
+_SEEN: dict[tuple[str, str, str], str] = {}
+
+
+def _key(card: dict) -> tuple[str, str, str]:
+    return (str(card.get("deck", "")),
+            " ".join(str(card.get("front", "")).split()).casefold(),
+            " ".join(str(card.get("back", "")).split()).casefold())
 
 
 class CardError(ValueError):
@@ -96,6 +104,10 @@ def C(front: str, back: str, *, layer: str, topic: str, deck: str, source: str,
     if card["layer"] not in LAYERS:
         raise CardError(f"bad layer {card['layer']!r} (expected one of "
                         f"{sorted(LAYERS)})")
+    key = _key(card)
+    if key in _SEEN:
+        raise CardError(f"exact duplicate of an earlier card: {str(front)[:60]!r}")
+    _SEEN[key] = str(front)
 
     # The same checks the validator runs, on this one card. The message keeps the
     # validator's `card 1: 'front...' -- ` prefix stripped: there is no card 1 at

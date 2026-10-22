@@ -23,6 +23,16 @@ because these are the failures that are invisible until they bite.
   validator error; a Bernoulli-substitution card cannot be tagged `bernoulli`.
 - **Tests must fail on a broken implementation.** New guardrails have mutation probes; a passing
   mutation means the test, not the code, needs fixing.
+- **A check against a schema that no longer exists is not a check.** `validate_apkg`'s cloze guard
+  read `col.models` and `templates.qfmt`; modern Anki leaves both empty, so it silently passed
+  everything. Derive the ordinal count from `notes.flds` and test a one-deletion note (which the
+  old count comparison would have rejected).
+- **Card identity must follow card content.** An explicit `hash` field outlived a text edit, so a
+  corrected card kept its old GUID and `--merge-existing` skipped the fix. Identity is
+  `md5(front|back)`; stable IDs are a separate, deferred revision feature.
+- **Smoke must leave no work behind.** A failure used to opt into keeping its temp tree, and the
+  review sentinel defaulted into the caller's cwd. Clean by default, keep only on `KEEP_WORK=1`,
+  and compare the working tree before/after.
 - **`genanki` and `--engine` are gone.** That path could not produce a cloze deck Anki 26 opens,
   forced `genanki` on every import, and hashed with sha256 where everything else uses md5, so
   identity did not survive an engine change. `anki` is now a hard requirement.

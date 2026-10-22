@@ -86,7 +86,7 @@ Then generalise and re-scope, stop the server, verify nothing is listening.
 
 | Score | Label | Meaning | Action |
 |---|---|---|---|
-| 1 | Easy | retrieved instantly | cut/merge **candidate** — list it in the report; cut only on request |
+| 1 | Easy | retrieved instantly / already known | **calibration evidence**: rescope the topic, merge or re-level trivial variants, shift focus, or keep an anchor; never cut silently |
 | 2 | Medium | right level | keep |
 | 3 | Hard | struggled, got there | keep — this is where the learning is |
 | 4 | Beyond me | what the comment says | the agent decides — no reason dropdown |
@@ -141,8 +141,9 @@ The risk is cross-topic anchors and duplicates.
 
 - **5 → drop it.** Remove the card from the source of truth — the emitting script, or `cards.json`
   when there is none. That is the whole mechanism.
-- **1 → propose a cut list for approval.** Do not cut silently: an easy card can still be
-  load-bearing (an anchor, a cross-topic fact). A review comment is never a mandate to expand:
+- **1 → rescope the topic, not just the card.** “Easy” means the learner already knows it; use
+  it to rebalance scope and difficulty, merge/re-level trivial variants, or protect an anchor.
+  Propose changes; never cut silently. A review comment is never a mandate to expand:
   if you add cards, report the net delta and make the addition replace a merged/cut card unless
   the user explicitly asked for more.
 - **4 → decide from the comment, do not ask.** "Haven't studied this yet" → leave it; "assumes a
@@ -166,7 +167,9 @@ not reflexively split every hard card (rule 22):
 change, but several comments can be applied in one step with several edit calls;
 each separate step re-sends the whole context.
 
-`roi_report.py` now prints image coverage per topic. In the handoff, report the
+`roi_report.py` now prints image coverage per topic. Soft redundancy/interference/
+answer-overlap pairs are opt-in with `--deep`; the default report keeps coverage,
+restatement flags, costliest cards, and anchors. In the handoff, report the
 image-card count, any topic with strong visual candidates but no images, and which
 images were confirmed versus merely listed.
 

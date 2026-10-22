@@ -11,7 +11,9 @@
 Output is `<tag>.md` plus `media/slideNN_imgM.*` and `figures.json`; cite `source @ slide N`.
 A diagram made only of PowerPoint shapes is **not rendered**. Cite the slide, or use a PDF export
 through `extract_pdf.py`; never use LibreOffice/`soffice`/Office. Ask for a PDF when full visual
-fidelity matters.
+fidelity matters. For PDF lecture decks, `extract_pdf.py` also writes tight `slide-crop`
+candidates (caption/title/nearby-text association, `confirm` only); use
+`media_index.py <work> --cards cards.jsonl` to rank them.
 
 Do not download a random PPTX to replace missing video frames. Use slides when they are the real
 source or the user provides them; otherwise cite the video/slide and skip the image.

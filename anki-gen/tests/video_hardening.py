@@ -18,6 +18,11 @@ sys.path.insert(0, str(SCRIPTS))
 from extract_video import (chunks, entries, get_vtt, index, parse_items, parse_vtt,
                            source_label, video_url)  # noqa: E402
 from frames import late_best  # noqa: E402
+import media_transcribe as mt  # noqa: E402
+from extract_video import write_combined_transcripts, write_transcript  # noqa: E402
+import extract_video  # noqa: E402
+import ytdlp  # noqa: E402
+from unittest import mock  # noqa: E402
 
 VTT = """WEBVTT
 
@@ -44,6 +49,18 @@ def main() -> int:
         assert rows and rows[0]["loc"] == "00:01", rows
         print("ok    VTT parse and dedupe")
 
+        rolling = [
+            {"start": 0, "end": 1, "text": "here is a state machine"},
+            {"start": 1, "end": 2, "text": "a state machine with two states"},
+            {"start": 2, "end": 3, "text": "state machine with two states and a tick"},
+        ]
+        deduped = mt.dedupe_cues(rolling)
+        assert [c["text"] for c in deduped] == [
+            "here is a state machine", "with two states", "and a tick"], deduped
+        compact = mt.compact_cues(deduped)
+        assert compact.startswith("[00:00]"), compact
+        print("ok    rolling-caption dedupe and compact transcript")
+
         meta = {"_type": "playlist", "entries": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}
         assert [e["id"] for e in entries(meta, True, "")] == ["a", "b", "c"]
         assert [e["id"] for e in entries(meta, False, "2-3")] == ["b", "c"]
@@ -54,13 +71,12 @@ def main() -> int:
         single = source_label("Digi-Key", "STM32 GPIO Overview: Alternate Functions and Timing")
         series = source_label("Digi-Key", "RTOS Part 1: Tasks, Scheduling, and Context Switching",
                               "RTOS Basics", 1)
-        assert single == "Digi-Key - STM32 GPIO Overview: Alternate Functions and Timing", single
-        assert series == ("Digi-Key - RTOS Basics 01 - RTOS Part 1: Tasks, Scheduling, "
+        assert single == "Digi-Key · STM32 GPIO Overview: Alternate Functions and Timing", single
+        assert series == ("Digi-Key · RTOS Basics 01 · RTOS Part 1: Tasks, Scheduling, "
                           "and Context Switching"), series
         cleaned = source_label("DigiKey", "Introduction to RTOS Part 3 - Task Scheduling | "
                               "Digi-Key Electronics", "Introduction to RTOS", 3)
-        assert cleaned == ("DigiKey - Introduction to RTOS 03 - Introduction to RTOS "
-                           "Part 3 - Task Scheduling"), cleaned
+        assert cleaned == "DigiKey · RTOS 03 · Task Scheduling", cleaned
         assert video_url("ID", 754) == "https://www.youtube.com/watch?v=ID&t=754"
         assert video_url("ID", 754, "LIST") == "https://www.youtube.com/watch?v=ID&list=LIST&t=754"
         print("ok    full-title source labels and timestamp URLs")
@@ -69,8 +85,19 @@ def main() -> int:
         cache.mkdir(parents=True)
         cached = cache / "cached.en.vtt"
         cached.write_text("WEBVTT\n")
-        assert get_vtt({"id": "cached"}, td / "cache", "en.*") == cached
+        assert get_vtt({"id": "cached"}, td / "cache", "en.*") == (cached, "ok")
         print("ok    cached captions are reused")
+
+        # A hard 429 is not "no captions"; it must be reported as rate_limited
+        # so the caller can run frames-only or try a companion source.
+        rate_work = td / "rate-work"
+        rate_work.mkdir()
+        failed = subprocess.CompletedProcess(
+            ["yt-dlp"], 1, "", "HTTP Error 429: Too Many Requests")
+        with mock.patch.object(ytdlp, "run", return_value=failed):
+            path, status = extract_video.get_vtt({"id": "rate"}, rate_work, "en.*")
+        assert path is None and status == "rate_limited", (path, status)
+        print("ok    caption rate limit is distinguished from no captions")
 
         db = td / "mixed-index.sqlite"
         con = sqlite3.connect(db)
@@ -136,6 +163,23 @@ def main() -> int:
         assert "image-vision" in (work / "frames.md").read_text()
         print(f"ok    frame extraction/picker ({len(frames)} candidate(s))")
 
+        r = subprocess.run([sys.executable, str(SCRIPTS / "frames.py"),
+                            "--work", str(work), "--video-id", "manualtest",
+                            "--url", "https://www.youtube.com/watch?v=manualtest",
+                            "--video-file", str(video), "--title",
+                            "Introduction to RTOS Part 1 - What is an RTOS?",
+                            "--channel", "DigiKey", "--playlist", "Introduction to RTOS",
+                            "--playlist-index", "1", "--at", "00:01",
+                            "--source-url", "https://www.youtube.com/watch?v=manualtest&t=__T__",
+                            "--transcript", str(transcript)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        manual = [json.loads(x) for x in (work / "frames.jsonl").read_text().splitlines()
+                  if '"manualtest"' in x]
+        assert manual and manual[-1]["source_url"].endswith("t=1"), manual
+        assert manual[-1]["source"].startswith("DigiKey · RTOS 01 ·"), manual
+        print("ok    manual frame canonical label and timestamp URL")
+
         # An image-only diagram must not be filtered out for having no OCR words.
         diagram = td / "diagram.png"
         dim = Image.new("RGB", (1280, 720), "white")
@@ -199,10 +243,24 @@ def main() -> int:
         all_frames = [json.loads(x) for x in (work / "frames.jsonl").read_text().splitlines()]
         scanned = [f for f in all_frames if f["video_id"] == "scan"]
         assert scanned, "fallback scan produced no candidates"
-        assert any(f.get("caption") == "visual scan" and
+        assert any(f.get("caption") in ("visual scan", "visual sweep") and
                    f.get("attach") in ("direct", "confirm") for f in scanned), scanned
-        assert "visual scan" in (work / "frames.md").read_text()
+        assert ("visual scan" in (work / "frames.md").read_text()
+                or "visual sweep" in (work / "frames.md").read_text())
         print("ok    visual fallback scan")
+
+        r = subprocess.run([sys.executable, str(SCRIPTS / "frames.py"),
+                            "--work", str(work), "--video-id", "sweep",
+                            "--url", "https://www.youtube.com/watch?v=sweep",
+                            "--source-label", "Test - Sweep",
+                            "--source-url", "https://www.youtube.com/watch?v=sweep&t=0",
+                            "--video-file", str(dvid), "--title", "Sweep",
+                            "--transcript", str(dtrans), "--sweep", "0-3", "--every", "1"],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        all_frames = [json.loads(x) for x in (work / "frames.jsonl").read_text().splitlines()]
+        assert any(f["video_id"] == "sweep" for f in all_frames), all_frames[-5:]
+        print("ok    bounded visual sweep")
 
         card = {"front": "Which state machine state is idle?",
                 "back": "The left box is IDLE.\n\n**Why:** the diagram labels it.",
@@ -235,7 +293,12 @@ def main() -> int:
         assert "list=LIST&amp;t=" in flds or "list=LIST&t=" in flds, flds
         assert "Image:" not in flds, flds
         assert "<a href" not in flds, flds
-        print("ok    video frame attaches with plain source URL")
+        r = subprocess.run([sys.executable, str(SCRIPTS / "media_index.py"),
+                            str(work), "--json"], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        rows = json.loads(r.stdout)
+        assert any(row["kind"] == "frame" for row in rows), rows
+        print("ok    video frame attaches with plain source URL and index")
 
     print("\nPASS  video hardening")
     return 0

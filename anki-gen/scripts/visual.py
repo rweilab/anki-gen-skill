@@ -35,7 +35,7 @@ TEXT_LIKE_COLOR = 0.05
 def analyze(path) -> dict | None:
     """Return visual metrics, or None when Pillow is missing/unreadable."""
     try:
-        from PIL import Image, ImageFilter
+        from PIL import Image, ImageFilter, ImageOps
     except ImportError:
         return None
 
@@ -77,13 +77,22 @@ def analyze(path) -> dict | None:
         colors = small.getcolors(maxcolors=100000) or []
         background = (max(colors)[0] / (80 * 45)) if colors else 0.0
 
-        # 8x8 difference hash; no numpy.
+        # 8x8 difference hash; no numpy. Also a structure hash from the edge
+        # image: raw grayscale dHash is all-zero for sparse white diagrams, so
+        # frame dedupe/cut detection needs the edge content.
         dh = im.convert("L").resize((9, 8), Image.LANCZOS)
         px = dh.load()
         bits = 0
         for y in range(8):
             for x in range(8):
                 bits = (bits << 1) | (1 if px[x, y] > px[x + 1, y] else 0)
+        sh = ImageOps.autocontrast(gray).filter(ImageFilter.FIND_EDGES).resize(
+            (9, 8), Image.LANCZOS)
+        sp = sh.load()
+        sbits = 0
+        for y in range(8):
+            for x in range(8):
+                sbits = (sbits << 1) | (1 if sp[x, y] > sp[x + 1, y] else 0)
 
         return {
             "width": width,
@@ -94,6 +103,7 @@ def analyze(path) -> dict | None:
             "color": round(color, 4),
             "background": round(background, 3),
             "dhash": bits,
+            "shash": sbits,
         }
     except Exception:
         return None

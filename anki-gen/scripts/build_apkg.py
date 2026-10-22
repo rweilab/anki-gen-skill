@@ -202,7 +202,9 @@ def main() -> int:
                     help="the deck name; ::-separated segments make a nested tree "
                          "(e.g. SCHOOL::CIRCUITS::OPAMPS)")
     ap.add_argument("--strict", action="store_true",
-                    help="refuse to build when validate_cards.py reports an error")
+                    help="kept for compatibility; static validation is now the default")
+    ap.add_argument("--allow-invalid", action="store_true",
+                    help="build despite validate_cards.py errors (diagnosis only)")
     ap.add_argument("--media", action="store_true",
                     help="bundle card media (opt-in; off by default)")
     ap.add_argument("--media-root", default=None,
@@ -212,15 +214,14 @@ def main() -> int:
 
     cards = load_cards(args.cards_json)
 
-    # --strict is the gate, not a formality: the deck below is written through a
-    # path that cannot see a bad front or a leaked delimiter, so anything the
-    # static checks catch has to stop the build here or it ships.
-    if args.strict:
+    # The build path cannot see a bad front or a leaked delimiter, so the static
+    # checks stop it by default. --allow-invalid is for diagnosis, not delivery.
+    if not args.allow_invalid:
         from validate_cards import check_cards
         errs, _, _ = check_cards(cards)
         if errs:
-            print(f"aborting (--strict): {len(errs)} validation error(s)",
-                  file=sys.stderr)
+            print(f"aborting: {len(errs)} validation error(s) "
+                  "(pass --allow-invalid only for diagnosis)", file=sys.stderr)
             for e in errs[:10]:
                 print("  -", e, file=sys.stderr)
             if len(errs) > 10:

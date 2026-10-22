@@ -24,8 +24,13 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - ask **pull still frames when the video shows a diagram?** yes/no (automatic
   scoring; ambiguous frames may be confirmed with image-vision; the main model
   never reads frames);
+- if the caller supplied a URL, extract it first; search only around a missing/incomplete source;
+- if the user gave a description rather than a URL, use it as the seed for **one** bounded search,
+  prefer the official channel/playlist/course page, and record the URL and why in `intake.md`;
 - if the user said “find it,” search and prefer the official channel/playlist; proceed only when
   the match is strong, otherwise ask one confirmation;
+- if captions fail or a visual topic has no images, use the video title/description for one
+  official companion article/slides search; register it as a source, do not auto-attach its images;
 - YouTube: no Whisper; if no captions exist, skip that video and say so.
 - Local: sidecar captions first; otherwise faster-whisper locally. No cloud upload.
 

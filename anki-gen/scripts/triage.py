@@ -54,7 +54,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import card_hash, load_cards                       # noqa: E402
-from validate_cards import TIER_ZERO, findings, similar_front_pairs   # noqa: E402
+from validate_cards import TIER_ZERO, exact_duplicate_pairs, findings   # noqa: E402
 
 DEFAULT_PER_TOPIC = 1
 
@@ -76,12 +76,8 @@ def _short(msg: str) -> str:
 def flagged_reasons(cards: list[dict]) -> dict[int, list[str]]:
     """card number -> the reasons the validators distrust it. Info lines excluded.
 
-    Near-duplicate pairs are recombined: a card competing with five others would
-    otherwise carry five near-identical lines, burying every other reason it has.
-    The pairs come from `validate_cards.similar_front_pairs()` -- the same function
-    the validator itself uses -- rather than being recovered from its warning text,
-    which is what this used to do and why rewording that message would have
-    silently stopped the recombination.
+    Exact normalized duplicates are surfaced here; soft front/answer similarity is
+    intentionally not part of the default triage path.
     """
     out: dict[int, list[str]] = {}
     for i, sev, msg in findings(cards):
@@ -89,17 +85,9 @@ def flagged_reasons(cards: list[dict]) -> dict[int, list[str]]:
             continue
         out.setdefault(i, []).append(_short(msg))
 
-    partners: dict[int, set[int]] = defaultdict(set)
-    worst: dict[int, int] = defaultdict(int)
-    for i, j, r in similar_front_pairs(cards):
+    for i, j in exact_duplicate_pairs(cards):
         for a, b in ((i, j), (j, i)):
-            partners[a].add(b)
-            worst[a] = max(worst[a], round(r * 100))
-    for i, others in partners.items():
-        out.setdefault(i, []).append(
-            f"near-duplicate front: {worst[i]}% similar to "
-            f"{'card' if len(others) == 1 else 'cards'} "
-            + ", ".join(str(p) for p in sorted(others)))
+            out.setdefault(a, []).append(f"exact duplicate of card {b}")
     return out
 
 

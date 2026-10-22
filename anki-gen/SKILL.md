@@ -131,7 +131,7 @@ here are prose, and prose is a bet: three rounds moved no measured number.
    escapes: `\frac` becomes a formfeed, `\text` a TAB — silently. `[validate_cards control-char
    check]` → **Rendering**
 5. **Define every symbol on its own card.** "Identify all variables" is an exam objective; a
-   formula card without the glossary tests half the thing. `[validate_cards glossary warn]`
+   formula card without the glossary tests half the thing. `[validate_cards glossary info]`
    → **Every symbol is defined on its card**
 6. **A tier-zero concept card comes before each topic's formula cards.**
    `[prose; tier_zero field]` → **A tier-zero card comes before the formula cards**
@@ -254,8 +254,8 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     date_filter, merge_target, audit_web, course_hint, recursive, deck_name,
                     max_cards, output_path. A lexicon: read the request yourself for the rest.
                     Run it so audit_web, max_cards and merge_target are not silently lost.
-                    `recursive` is currently always true; if a date filter is present, use
-                    extract_pdf.py, not pipeline.py.
+                    `recursive` is currently always true; pass a date filter to
+                    pipeline.py with `--date-filter` (or use extract_pdf.py directly).
 2. SOURCE SURVEY  → survey, PROPOSE sources with a reason each, then STOP for confirmation
                     (beginner: proceed on stated assumptions). Write the answers to
                     $WORK/intake.md (deck, learner, sources, video range, images yes/no,
@@ -275,19 +275,27 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     of <tag> dirs + md paths (read the .md when classifying). Cite the
                     file the text came from ("Lec 04 · p.12"), not the topic dir.
 4b. VIDEO/MEDIA   → read $WORK/intake.md, then pipeline.py --sources "<url-or-local-path>"
-                    --out "$WORK" [--images yes|no] [--model auto] (preferred).
+                    --out "$WORK" [--images yes|no] [--model auto]
+                    [--whole-playlist | --items 2-5] [--title "..."] (preferred).
                     Direct extract_video.py "<url-or-local-path>" --work "$WORK"
                     is the single-source diagnosis path. Writes
-                    timestamped transcript chunks, video_toc.md, and optional
+                    timestamped transcript chunks, transcripts.md (compact,
+                    deduplicated, token-estimated), video_toc.md, and optional
                     frames.md/frames.jsonl. Manual captions first, auto captions
-                    fallback. Local files use sidecar VTT/SRT or local faster-whisper;
-                    source_url is empty for local media. Read video_toc.md and frames.md next.
+                    fallback. Missing/rate-limited captions still register and run
+                    frames; search one official companion article/slides from the
+                    title/description. Local files use sidecar VTT/SRT or local
+                    faster-whisper; source_url is empty for local media. Read
+                    transcripts.md and frames.md next.
                     Frames are scored and ranked; attach `direct` frames, and confirm
                     ambiguous `confirm` ones with the separate image-vision skill when a
                     key exists; its `vision_check.py --max N` is the fast, cached pass.
                     The main model never reads frames; do not make contact sheets or scan
-                    galleries. Read frames.md, not the whole candidate list. Do not sleep or
-                    poll yt-dlp; the scripts retry briefly and report skipped videos.
+                    galleries. Read frames.md, not the whole candidate list. Use
+                    `frames.py --sweep 00:00-02:30 --every 10` for a missed chapter; do
+                    not sleep or poll yt-dlp; the scripts retry briefly and report skipped videos.
+                    `pipeline.py --vision auto --vision-max 12` is the opt-in bounded
+                    pass over canonical frames; it writes vision.jsonl.
 5. CLASSIFY       → atomic concepts {layer, topic, objects, type, source} from content.
 6. SCOPE GATE     → the do-not-card list in .anki-gen-temp/<topic>/scope_gate.md, BOTH
                     halves: what the formula sheet prints, and — the high-yield part —
@@ -298,6 +306,8 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     before write. Required, and it must leave a file: a deck that skipped it
                     looks identical to one that needed none. On the run that produced this
                     rule, doing it by hand was the difference between 55 cards and 150.
+                    `pipeline.py --build` refuses without intake.md, scope_gate.md and
+                    authoring_ledger.md unless `--allow-missing-artifacts` is passed.
 7. WRITE          → read only the relevant card-writing sections (the rule map is at
                     its top), plus `authoring.md` and `schema.md`, then write
                     $WORK/cards.jsonl (front, back, layer, topic, objects, deck, source;
@@ -305,8 +315,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     card) with a locator, a glossary of every symbol, a plain-English why,
                     and a tier-zero card before each formula card. **Ledger, then batch:**
                     write `.anki-gen-temp/<topic>/authoring_ledger.md` (one line per card:
-                    intent, why, source, heuristics), then 10–15 cards for the topic in one
-                    write; validate the batch. One authoring path per deck: prefer .jsonl;
+                    intent, retrieval target, why, source, heuristics), then 10–15 cards for the topic in one
+                    write; validate the batch. Avoid redundant retrieval targets and plan a
+                    soft 4–15-card topic budget; exact front/back duplicates are errors. One authoring path per deck: prefer .jsonl;
                     if a deck script (conventionally make_cards.py, using new_cards.C), write
                     it in one pass per topic — never one-card edits. Use author.py scaffold
                     only when there is no script: stubs with layer/topic/source, fill blanks,
@@ -317,7 +328,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     Media is opt-in and main-model-vision-free: entries are `{file, side,
                     caption, source}` with `<tag>/media/<file>` paths. Attach only when the
                     user asked, from a caption/slide-title/page match or a high-signal
-                    source; unclear → drop and list it. Video frames: attach high/medium
+                    source; `media_index.py <work> --cards cards.jsonl` ranks the best
+                    3-5 per card by locator + caption/nearby text. Never auto-attach.
+                    Unclear → drop and list it. Slide/page crops are `confirm`; video frames: attach high/medium
                     confidence frames; low-confidence frames stay in `frames.md`. A shared
                     diagram may be attached to several related cards; reuse is expected.
                     Read the detail in `references/authoring.md` and `references/video.md`.
@@ -334,7 +347,8 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
 10. REVIEW (web)  → read $WORK/intake.md (learner/review preference) and
                     `references/review.md`. review_server.py --cards $WORK/cards.jsonl
                     --plan $WORK/review_plan.json --media-root "$WORK" --out
-                    $WORK/review_feedback.jsonl. Background, hand over URL, WAIT; do
+                    $WORK/review_feedback.jsonl --done-file $WORK/review_done.
+                    Background, hand over URL, WAIT; do
                     NOT print card text into chat. On "done", reduce the log with
                     `cardid.py` (last row per card), read only low scores/comments, generalise,
                     re-scope (see `references/review.md`). The 1–5 scale is the primary review;
@@ -342,14 +356,19 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     a substitute.
 11. BUILD         → prefer pipeline.py --cards $WORK/cards.jsonl --gates-only --build
                     --deck-name "Name" --out-apkg ./<deck>.apkg (build + validate in
-                    one call). Direct build_apkg.py is the diagnosis path, in the
+                    one call). `--work`/`--out` is the work directory; a `.apkg`
+                    there is rejected, because the deck belongs in `--out-apkg`. Direct build_apkg.py is the diagnosis path, in the
                     CALLER'S CWD (never the work dir). Needs `anki`.
-                    --strict refuses on a validate error; --merge-existing adds only cards
+                    Static validation is the default; `--allow-invalid` is diagnosis
+                    only. --merge-existing adds only cards
                     whose hash is absent (idempotent, prints skip count). Media is bundled
                     only with `--media --media-root <work>` when intake says images: yes
                     (default off; --media-root defaults to the cards.jsonl directory). A hand-authored deck script is the source of
                     truth during the run; stage 14 promotes it only to a caller-named path, or
                     deletes it and the .apkg is one-shot.
+                    A missing evidence file is a hard stop; `--allow-missing-artifacts` is
+                    for a draft only. Static validation is automatic; `--allow-invalid` is
+                    diagnosis only.
 12. VALIDATE      → validate_apkg.py out.apkg — the only step that sees a deck which imports
                     cleanly but is unreadable.
 13. DEBLOAT (ROI) → roi_report.py $WORK/cards.jsonl, then the deblating pass (prompt in `references/prompts.md`).

@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.4.2** — Image/alternate-source ingest and review calibration
 - **v1.4.1** — Local video/audio and answer-aligned cards
 - **v1.4** — Visual source refinement
 - **v1.3.2** — Foundation-first new-card order
@@ -11,12 +12,61 @@ Newest first. Keep the index to one line per release; details live below.
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
 
+## v1.4.2 — Image/alternate-source ingest and review calibration
+
+### Added
+- Compact transcript output from `extract_video.py`: rolling captions are deduplicated and
+  grouped into timestamped paragraphs, with a token estimate; the original JSONL/SQLite index
+  remains for exact lookup.
+- A no-caption path: a video whose captions are missing or rate-limited still registers and
+  runs a visual frame scan, instead of being skipped.
+- Canonical short source labels (`DigiKey · RTOS 04 · Memory Management @ 01:32`); the full URL
+  stays in `source_url`, and manual `frames.py --at` labels are normalized.
+- `frames.py --sweep` for a bounded chapter/time-range visual scan, and structure-hash/caption
+  clustering with canonical-frame marking; alternates stay in `frames.jsonl`.
+- `vision_check.py` hardening: per-image report, flush, per-call and global deadlines, 429
+  fail-fast, model discovery with an environment override, and prompt/mode cache keys.
+- `media_index.py` merges vision results with figures/frames and ranks candidates per card.
+- `pipeline.py` accepts `--work` (and validates `--out`), `--page-crops`, and an opt-in
+  `--vision auto` bounded pass over canonical frames.
+
+### Changed
+- Exact normalized `(front, back)` duplicates are rejected; soft pairwise front/answer/ROI
+  similarity is opt-in (`--deep`) rather than default review noise.
+- Capability/coverage planning is explicit: scope/ledger guidance now asks for retrieval
+  intents and a soft per-topic target; a >15-card topic emits a warning, never an automatic cut.
+- Score 1 is treated as calibration evidence (“known / too easy”) for rescoping topics,
+  merging or re-leveling cards, and shifting focus — not as an automatic trim list. The
+  review page and its Easy button are unchanged.
+- Source survey can seed one official web search from the caller's description, and a failed
+  caption extraction can seed a bounded companion-article/slides search. A caller-supplied URL
+  is extracted first.
+
+### Fixed
+- A missing/429 caption no longer collapses into “no subtitles” and discards the whole video.
+- A 900-second vision batch can no longer disappear without output: every result is flushed
+  and written to the work tree, and a rate limit stops promptly.
+- Repetitive channel/playlist/episode labels no longer dominate card footers.
+
+### Notes
+- Deck revision/update of already-imported Anki collections is deferred to v1.5.
+
 ## v1.4.1 — Local video/audio and answer-aligned cards
 
 ### Added
 - A canonical quality contract in `MAINTAINERS.md`, enforced by a guardrail in `AGENTS.md`: the 98%
   quality floor outranks reliability, token/API efficiency, and speed; context and reasoning are
   not cut merely to make a run cheaper.
+- PDF/slide/web visual ingest: figure bboxes, nearest caption and nearby text, tight
+  `page-crop`/`slide-crop` candidates for vector figures, web image metadata (`urljoin`, alt,
+  figcaption, heading), and `media_index.py --cards` ranking. Candidates are `confirm`/`drop`;
+  nothing is auto-attached, and the main model still never reads pixels.
+- `pipeline.py --build` requires `intake.md`, `scope_gate.md` and `authoring_ledger.md`, prints an
+  evidence summary, and now passes through merge, date-filter, playlist/range, title, device and
+  initial-prompt options. Multiple video sources merge their source map instead of overwriting it.
+- Static validation is the default at build (`--allow-invalid` is diagnosis-only). Structural guards
+  cover unterminated cloze, markdown images, cross-card pointers, and content-derived card identity;
+  a narrow tier-zero coverage warning and an info-only glossary signal were added.
 - Local `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
   `.m4a`, `.mp3`, `.wav`, `.flac` sources, including directory batches.
 - Sidecar `.vtt`/`.srt` captions are used before any local model work. When
@@ -38,6 +88,14 @@ Newest first. Keep the index to one line per release; details live below.
   auto-model benchmarking, pipeline build/validation, and answer alignment.
 
 ### Fixed
+- `validate_apkg.py`'s cloze check was inert on Anki's current schema; it now compares each note's
+  distinct `{{cN::}}` ordinals with its cards, so one-deletion notes pass and missing splits fail.
+- Card identity is always `md5(front|back)`: a stale explicit `hash` no longer makes a corrected
+  card keep its old GUID and get skipped by `--merge-existing`.
+- A bad date filter now errors instead of silently filtering every file, and a zero-text/zero-image
+  source fails the batch instead of counting as a successful extract.
+- The review finish sentinel defaults beside the feedback log, not the caller's cwd; smoke now
+  cleans its temp tree on failure and fails if tests change the working tree.
 - Local media no longer goes through yt-dlp; frames use the existing
   `frames.py --video-file` path.
 - The mechanical pipeline is no longer PDF-only; it no longer leaves video
@@ -46,10 +104,12 @@ Newest first. Keep the index to one line per release; details live below.
   now rejected before it reaches the deck.
 
 ### Notes
+- Vector-only PPTX slides still need a PDF export; embedded PPTX images are extracted, vector
+  shapes are cited/skipped unless a PDF is supplied.
 - First local transcription downloads a model; later runs are offline.
 - Vector PowerPoint/PDF still cannot be rendered without a PDF export.
 - Deck revision/update of already-imported Anki collections remains deferred to
-  v1.4.2.
+  v1.5.
 
 ## v1.4 — Visual source refinement
 
@@ -128,7 +188,7 @@ Newest first. Keep the index to one line per release; details live below.
   The same applies to vector-only PowerPoint slides.
 - `--max` is a safety cap, not the selection policy.
 - Deck revisions of already-imported Anki collections (stable note IDs,
-  update/retire reports, AnkiConnect) are deferred to v1.4.2. See `MAINTAINERS.md`.
+  update/retire reports, AnkiConnect) are deferred to v1.5. See `MAINTAINERS.md`.
 - Tests now include adversarial PPTX fixtures, tag-leak errors, answer-overlap
   false-positive controls, media-reuse package checks, vision budgets, PATH
   fallback, and mutation probes for the new guards.

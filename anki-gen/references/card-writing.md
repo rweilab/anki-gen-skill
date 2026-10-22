@@ -11,8 +11,8 @@ Rule map: 5 symbols · 6 tier-zero · 10 anchors · 11 front/back length · 12 c
 
 If a front or back contains symbols, the back defines each with units — `N` = total atomic
 lattice sites, with the required density units named. "Identify all variables" is an exam
-objective, so a formula card without the glossary tests half the thing. `validate_cards` warns on
-symbol-heavy L1/L2 cards with no glossary, definition verb, or `**Why:**`.
+objective, so a formula card without the glossary tests half the thing. `validate_cards` reports (info, not a warning) symbol-heavy L1/L2 cards with no
+structural glossary or definition line; the review checklist still asks for one.
 
 ### A tier-zero card comes before the formula cards
 

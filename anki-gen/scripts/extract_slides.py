@@ -93,7 +93,9 @@ def extract_pptx(pptx_path: str, output_dir: Path, stem: str = "source") -> dict
                 dest.write_bytes(z.read(rel))
                 metrics = visual.analyze(dest)
                 quality = visual.classify(metrics)
-                if quality["attach"] == "skip":
+                if metrics is None:
+                    quality = {**quality, "quality": "unknown", "attach": "confirm"}
+                if metrics is not None and quality["attach"] == "skip":
                     dest.unlink(missing_ok=True)
                     continue
                 rel_path = f"media/{dest.name}"

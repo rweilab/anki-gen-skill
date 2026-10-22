@@ -12,10 +12,10 @@ missing one is an **error**, including `deck`. **`cloze: true`** is required on 
 - **`source` is the field.** `source_ref` is a deprecated alias `build_native.py` still falls back
   to; nothing new should write it. Both are searched and rendered, so a card with only `source_ref`
   still builds — it is just invisible to every grep for `source`.
-- **`source_url`** is optional and plain text; omit it for local recordings. (never a hyperlink). Video cards use it for the
-  copyable timestamp URL: `<channel> - <video title> @ mm:ss` for a single video, or
-  `<channel> - <playlist> NN - <video title> @ mm:ss` for a series. The URL includes `&t=SECONDS`
-  and, for a series, `&list=PLAYLIST_ID`.
+- **`source_url`** is optional plain text, never a hyperlink; omit it for local recordings.
+  It is the copyable URL (`https://...&t=SECONDS`), while `source` carries the human
+  label (`DigiKey · RTOS 04 · Memory Management @ 01:32`; full title stays in the
+  URL/video metadata). A series URL also carries `&list=PLAYLIST_ID`.
 - **`topic`** — the chapter/lecture heading, not a layer code or subtopic. **`objects`** — 0–2
   lowercase **cross-topic buckets** (`concurrency`, `memory`, `rtos`), not subtopics; **`[]` is
   normal**. Both are front-visible (the topic is printed; tags are metadata), so never encode

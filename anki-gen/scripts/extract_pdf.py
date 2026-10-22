@@ -33,7 +33,8 @@ import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
+from urllib.request import Request, urlopen
 from typing import Dict, Any, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -45,6 +46,10 @@ import visual  # noqa: E402
 # conservative: a small but meaningful diagram should still survive.
 MIN_PX = 96
 MIN_BYTES = 4000
+CAPTION_RE = re.compile(
+    r"^\s*(Figure|Fig\.?|Table|Scheme|Exhibit|Panel)\s*\d", re.I)
+PAGE_CROP_DPI = 150
+MAX_PAGE_CROPS = 120
 
 
 def run_cmd(cmd: List[str], cwd: str = None, input: str = None,
@@ -147,11 +152,89 @@ def _page_title(page) -> str:
     return ""
 
 
-def _figure_caption(page) -> str:
-    """One caption-like line on the page, or empty when ambiguous/missing."""
-    lines = [ln.strip() for ln in page.get_text().splitlines()
-             if re.match(r"^(figure|fig\.?)\s*\d", ln.strip(), re.I)]
-    return lines[0] if len(lines) == 1 else ""
+def _text_blocks(page) -> list[tuple]:
+    """Line-level (x0, y0, x1, y1, text) tuples.
+
+    Block-level text merges adjacent captions ("Figure 1 ... Figure 2 ..."), so
+    two figures get the same caption. Line spans keep each caption separate and
+    give a tighter bbox for association.
+    """
+    try:
+        data = page.get_text("dict")
+    except Exception:
+        return []
+    out = []
+    for block in data.get("blocks", []):
+        for line in block.get("lines", []):
+            text = "".join(str(s.get("text", "")) for s in line.get("spans", [])).strip()
+            if text:
+                x0, y0, x1, y1 = line.get("bbox", (0, 0, 0, 0))
+                out.append((x0, y0, x1, y1, text))
+    return out
+
+
+def _caption(blocks: list[tuple], bbox: tuple) -> tuple[str, tuple | None]:
+    """Nearest short text block, preferring a real Figure/Table caption."""
+    x0, y0, x1, y1 = bbox
+    candidates = []
+    for b in blocks:
+        text = " ".join(str(b[4]).split())
+        if len(text) < 3 or len(text) > 220 or re.fullmatch(r"\d+", text):
+            continue
+        bx0, by0, bx1, by1 = (float(v) for v in b[:4])
+        dx = 0.0 if bx1 >= x0 and bx0 <= x1 else min(abs(bx0 - x1), abs(x0 - bx1))
+        dy = min(abs(by0 - y1), abs(y0 - by1))
+        distance = dx + dy
+        rank = (0 if CAPTION_RE.match(text) else 1, distance, text,
+                (bx0, by0, bx1, by1))
+        candidates.append(rank)
+    if not candidates:
+        return "", None
+    _, _, text, box = min(candidates, key=lambda c: (c[0], c[1]))
+    return text, box
+
+
+def _nearby_text(blocks: list[tuple], bbox: tuple, caption_box=None) -> str:
+    x0, y0, x1, y1 = bbox
+    parts = []
+    for b in blocks:
+        text = " ".join(str(b[4]).split())
+        if not text:
+            continue
+        box = tuple(float(v) for v in b[:4])
+        if caption_box and box == caption_box:
+            continue
+        if min(abs(box[1] - y1), abs(y0 - box[3])) > 180:
+            continue
+        parts.append(text)
+    return " ".join(parts)[:500]
+
+
+def _drawing_bbox(page):
+    """Union of non-background drawing rects, or None when the page is text-only."""
+    rects = []
+    page_area = max(1.0, page.rect.width * page.rect.height)
+    try:
+        drawings = page.get_drawings()
+    except Exception:
+        return None
+    for d in drawings:
+        rect = d.get("rect")
+        if rect is None:
+            continue
+        area = max(0.0, rect.width) * max(0.0, rect.height)
+        if area > page_area * 0.85:          # full-page fill/background
+            continue
+        rects.append(rect)
+    if len(rects) < 3:
+        return None
+    x0 = min(r.x0 for r in rects)
+    y0 = min(r.y0 for r in rects)
+    x1 = max(r.x1 for r in rects)
+    y1 = max(r.y1 for r in rects)
+    if (x1 - x0) * (y1 - y0) < page_area * 0.01:
+        return None
+    return (x0 - 10, y0 - 10, x1 + 10, y1 + 10)
 
 
 def _pdf_text(pdf_path: str) -> str:
@@ -197,7 +280,42 @@ def _pdf_text(pdf_path: str) -> str:
     return ""
 
 
-def extract_pdf(pdf_path: str, output_dir: Path, stem: str = "source") -> Dict[str, Any]:
+def _figure_entry(img_path: Path, page: int, kind: str, bbox, caption: str,
+                  caption_box, nearby: str, heading: str, source: str,
+                  seen_hashes: set, attach: str | None = None) -> dict | None:
+    metrics = visual.analyze(img_path)
+    digest = hashlib.sha256(img_path.read_bytes()).hexdigest()
+    if digest in seen_hashes:
+        img_path.unlink(missing_ok=True)
+        return None
+    seen_hashes.add(digest)
+    entry = {
+        "file": f"media/{img_path.name}", "page": page, "kind": kind,
+        "bbox": [round(float(v), 1) for v in bbox] if bbox else None,
+        "caption": caption, "caption_bbox": (
+            [round(float(v), 1) for v in caption_box] if caption_box else None),
+        "nearby_text": nearby, "heading": heading, "title": heading,
+        "source": source, "width": (metrics or {}).get("width"),
+        "height": (metrics or {}).get("height"),
+        "bytes": img_path.stat().st_size, "sha256": digest,
+    }
+    if metrics is None:
+        entry.update({"quality": "unknown", "flags": []})
+        entry["attach"] = attach or "confirm"
+        return entry
+    q = visual.classify(metrics)
+    flags = [name for name in ("blank", "text_wall", "text_like") if q.get(name)]
+    entry.update({
+        "quality": q["quality"], "flags": flags,
+        "edge": metrics["edge"], "focus": metrics["focus"],
+        "color": metrics["color"], "background": metrics["background"],
+        "attach": attach or q["attach"],
+    })
+    return entry
+
+
+def extract_pdf(pdf_path: str, output_dir: Path, stem: str = "source",
+                page_crops: str = "auto") -> Dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     media_dir = Path(output_dir) / "media"
     media_dir.mkdir(exist_ok=True)
@@ -209,10 +327,9 @@ def extract_pdf(pdf_path: str, output_dir: Path, stem: str = "source") -> Dict[s
               f"handwritten PDF); the extracted text will be empty", file=sys.stderr)
     text_file.write_text(text_content)
 
-    images = []
-    figures = []
+    images, figures = [], []
     seen_hashes = set()
-    dropped = 0
+    dropped = crops = 0
     fitz = _fitz()
     if fitz is not None:
         try:
@@ -220,70 +337,90 @@ def extract_pdf(pdf_path: str, output_dir: Path, stem: str = "source") -> Dict[s
             # where the caller's JSON lives. See the note at the top of this file.
             with _quiet():
                 doc = fitz.open(pdf_path)
-                for page_num in range(len(doc)):
-                    page = doc[page_num]
-                    images_list = page.get_images(full=True)
-                    for img_idx, img in enumerate(images_list):
-                        xref = img[0]
-                        pix = fitz.Pixmap(doc, xref)
-                        if pix.n < 5:
-                            img_path = media_dir / f"fig_p{page_num}_{img_idx}.png"
-                            pix.save(str(media_dir / img_path.name))
-                            width, height = pix.width, pix.height
-                        else:
-                            pix1 = fitz.Pixmap(fitz.csRGB, pix)
-                            img_path = media_dir / f"fig_p{page_num}_{img_idx}.png"
-                            pix1.save(str(media_dir / img_path.name))
-                            width, height = pix1.width, pix1.height
-                            pix1 = None
+                try:
+                    for page_num in range(len(doc)):
+                        page = doc[page_num]
+                        page_no = page_num + 1
+                        blocks = _text_blocks(page)
+                        heading = _page_title(page)
+                        source = f"{Path(pdf_path).name} p.{page_no}"
+                        images_list = page.get_images(full=True)
+                        for img_idx, img in enumerate(images_list):
+                            try:
+                                xref = img[0]
+                                bbox = tuple(page.get_image_bbox(img))
+                                pix = fitz.Pixmap(doc, xref)
+                                if pix.n >= 5:
+                                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                                img_path = media_dir / f"fig_p{page_no}_{img_idx}.png"
+                                pix.save(str(img_path))
+                                width, height = pix.width, pix.height
+                                size = img_path.stat().st_size
+                                if (width < MIN_PX or height < MIN_PX
+                                        or size < MIN_BYTES):
+                                    img_path.unlink(missing_ok=True)
+                                    dropped += 1
+                                    continue
+                                cap, cap_box = _caption(blocks, bbox)
+                                entry = _figure_entry(
+                                    img_path, page_no, "embedded", bbox, cap,
+                                    cap_box, _nearby_text(blocks, bbox, cap_box),
+                                    heading, source, seen_hashes)
+                                if entry is None:
+                                    dropped += 1
+                                    continue
+                                images.append(str(img_path))
+                                figures.append(entry)
+                            except Exception as e:
+                                print(f"extract_pdf.py: figure skip {pdf_path} "
+                                      f"p.{page_no}: {e}", file=sys.stderr)
 
-                        # Drop decorative images before scoring; a tiny logo or
-                        # blank page fill is not a card figure.
-                        size = img_path.stat().st_size
-                        if width < MIN_PX or height < MIN_PX or size < MIN_BYTES:
-                            img_path.unlink(missing_ok=True)
-                            dropped += 1
+                        if page_crops == "off" or crops >= MAX_PAGE_CROPS:
                             continue
-                        digest = hashlib.sha256(img_path.read_bytes()).hexdigest()
-                        if digest in seen_hashes:
-                            img_path.unlink(missing_ok=True)
-                            dropped += 1
+                        draw_box = _drawing_bbox(page)
+                        cap, cap_box = _caption(
+                            blocks, (page.rect.x0, page.rect.y0,
+                                     page.rect.x1, page.rect.y1))
+                        slide_like = (page.rect.width > page.rect.height
+                                      and len(page.get_text().strip()) < 2200)
+                        cap_like = bool(cap and CAPTION_RE.match(cap))
+                        want = (page_crops == "all" and (draw_box or cap_like)) or \
+                               (slide_like and draw_box) or \
+                               (cap_like and bool(draw_box) and not images_list)
+                        if not want:
                             continue
-                        seen_hashes.add(digest)
-
-                        entry = {
-                            "file": f"media/{img_path.name}",
-                            "page": page_num + 1,
-                            "width": width,
-                            "height": height,
-                            "bytes": size,
-                            "caption": _figure_caption(page),
-                            "title": _page_title(page),
-                            "sha256": digest,
-                        }
-                        # Keep text-like tables; only truly blank images go.
-                        metrics = visual.analyze(img_path)
-                        if metrics is None:
-                            entry["quality"] = "unknown"
-                            entry["flags"] = []
+                        if draw_box:
+                            x0, y0, x1, y1 = draw_box
+                        elif cap_box:
+                            x0, y0, x1, y1 = (0, 0, page.rect.width, cap_box[1] - 4)
                         else:
-                            q = visual.classify(metrics)
-                            flags = []
-                            if q["blank"]:
-                                flags.append("blank")
-                            if q["text_like"]:
-                                flags.append("text-like")
-                            entry.update({
-                                "quality": q["quality"],
-                                "edge": metrics["edge"],
-                                "focus": metrics["focus"],
-                                "color": metrics["color"],
-                                "background": metrics["background"],
-                                "flags": flags,
-                            })
-                        images.append(str(img_path))
-                        figures.append(entry)
-                doc.close()
+                            continue
+                        rect = fitz.Rect(max(0, x0), max(0, y0),
+                                         min(page.rect.width, x1),
+                                         min(page.rect.height, y1))
+                        if rect.width < 80 or rect.height < 60:
+                            continue
+                        try:
+                            pix = page.get_pixmap(clip=rect, dpi=PAGE_CROP_DPI)
+                            kind = "slide-crop" if slide_like else "page-crop"
+                            crop_path = media_dir / f"{kind}_p{page_no}_{crops}.png"
+                            pix.save(str(crop_path))
+                            entry = _figure_entry(
+                                crop_path, page_no, kind,
+                                (rect.x0, rect.y0, rect.x1, rect.y1), cap, cap_box,
+                                _nearby_text(blocks, (rect.x0, rect.y0,
+                                                      rect.x1, rect.y1), cap_box),
+                                heading, source, seen_hashes, attach="confirm")
+                            if entry is None:
+                                continue
+                            images.append(str(crop_path))
+                            figures.append(entry)
+                            crops += 1
+                        except Exception as e:
+                            print(f"extract_pdf.py: page crop skip {pdf_path} "
+                                  f"p.{page_no}: {e}", file=sys.stderr)
+                finally:
+                    doc.close()
         except Exception as e:
             print(f"Image extraction warning: {e}", file=sys.stderr)
     if dropped:
@@ -317,6 +454,26 @@ def extract_text(text_path: str, output_dir: Path, stem: str = "source") -> Dict
     }
 
 
+def _web_src(img) -> str:
+    src = img.get("data-src") or img.get("src")
+    if str(src or "").startswith("data:"):
+        src = img.get("data-original") or img.get("data-src") or src
+    if not src and img.get("srcset"):
+        src = str(img["srcset"]).split(",", 1)[0].strip().split(" ", 1)[0]
+    return str(src or "").strip()
+
+
+def _web_ext(content_type: str, image_url: str) -> str:
+    ext = {
+        "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
+        "image/gif": ".gif", "image/bmp": ".bmp",
+    }.get((content_type or "").lower())
+    if ext:
+        return ext
+    suffix = Path(urlsplit(image_url).path).suffix.lower()
+    return suffix if suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"} else ""
+
+
 def extract_url(url: str, output_dir: Path, stem: str = "source") -> Dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     media_dir = Path(output_dir) / "media"
@@ -334,33 +491,72 @@ def extract_url(url: str, output_dir: Path, stem: str = "source") -> Dict[str, A
     output_file = Path(output_dir) / f"{stem}.md"
     output_file.write_text(md)
 
-    images = []
+    images, figures = [], []
+    seen_hashes = set()
     try:
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, 'html.parser')
-        for i, img in enumerate(soup.find_all('img')):
-            src = img.get('src') or img.get('data-src')
-            if src:
-                img_url = src if src.startswith('http') else url.rsplit('/', 1)[0] + '/' + src
-                img_result = run_cmd(["curl", "-sL", "--max-time", "10", img_url])
-                if img_result.returncode == 0 and img_result.stdout:
-                    img_path = Path(output_dir) / "media" / f"web_img_{i}.png"
-                    Path(output_dir / "media").mkdir(exist_ok=True)
-                    Path(img_path).write_bytes(img_result.stdout)
-                    images.append(str(img_path))
-    except Exception:
-        pass
+        soup = BeautifulSoup(html, "html.parser")
+        for i, img in enumerate(soup.find_all("img")):
+            src = _web_src(img)
+            if not src or src.startswith(("data:", "javascript:")):
+                continue
+            image_url = urljoin(url, src)
+            try:
+                req = Request(image_url, headers={"User-Agent": "anki-gen/1.4.1"})
+                with urlopen(req, timeout=15) as response:
+                    data = response.read(2_000_001)
+                    content_type = response.headers.get_content_type()
+            except Exception as e:
+                print(f"extract_pdf.py: web image skip {image_url}: {e}",
+                      file=sys.stderr)
+                continue
+            if len(data) > 2_000_000:
+                print(f"extract_pdf.py: web image over 2 MB skipped: {image_url}",
+                      file=sys.stderr)
+                continue
+            if len(data) < 2000:                 # icons, spacers, tracking pixels
+                continue
+            ext = _web_ext(content_type, image_url)
+            if not ext:                         # SVG/icons are not Anki images
+                continue
+            img_path = media_dir / f"web_img_{i}{ext}"
+            img_path.write_bytes(data)
+            figure = img.find_parent("figure")
+            caption = ""
+            if figure:
+                node = figure.find("figcaption")
+                caption = node.get_text(" ", strip=True) if node else ""
+            caption = (caption or img.get("alt") or img.get("title") or "").strip()
+            heading = ""
+            node = img.find_previous(lambda t: t.name in ("h1", "h2", "h3", "h4"))
+            if node:
+                heading = node.get_text(" ", strip=True)
+            parent = img.parent
+            nearby = (parent.get_text(" ", strip=True) if parent else "")[:500]
+            entry = _figure_entry(
+                img_path, 0, "web", None, caption, None, nearby, heading,
+                url, seen_hashes, attach="confirm")
+            if entry is None:
+                continue
+            entry["source_url"] = image_url
+            images.append(str(img_path))
+            figures.append(entry)
+    except Exception as e:
+        print(f"extract_pdf.py: web figure extraction failed: {e}", file=sys.stderr)
 
+    (Path(output_dir) / "figures.json").write_text(json.dumps(figures, indent=2) + "\n")
     return {
         "content": md,
         "images": images,
+        "figures": figures,
         "source_type": "url",
         "source_path": url
     }
 
 
 def extract_directory(dir_path: str, output_dir: Path, date_filter: str = None,
-                      recursive: bool = True, stem: str = "source") -> Dict[str, Any]:
+                      recursive: bool = True, stem: str = "source",
+                      page_crops: str = "auto") -> Dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     media_dir = Path(output_dir) / "media"
     media_dir.mkdir(exist_ok=True)
@@ -393,7 +589,8 @@ def extract_directory(dir_path: str, output_dir: Path, date_filter: str = None,
 
         try:
             if file_path.suffix.lower() == '.pdf':
-                result = extract_pdf(str(file_path), output_dir / file_path.stem)
+                result = extract_pdf(str(file_path), output_dir / file_path.stem,
+                                     page_crops=page_crops)
             elif file_path.suffix.lower() == '.pptx':
                 from extract_slides import extract_pptx
                 result = extract_pptx(str(file_path), output_dir / file_path.stem,
@@ -436,6 +633,13 @@ def parse_date_filter(date_str: str) -> datetime:
         date_part = date_str[6:].strip()
         return parse_flexible_date(date_part, now)
 
+    m = re.search(r"\blast\s+(\d+)\s*(day|week|month)s?\b", date_str)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        return now - (timedelta(days=n) if unit == "day" else
+                      timedelta(weeks=n) if unit == "week" else
+                      timedelta(days=30 * n))
     if "last week" in date_str:
         return now - timedelta(weeks=1)
     if "last month" in date_str:
@@ -487,7 +691,8 @@ def parse_flexible_date(date_str: str, now: datetime) -> datetime:
                 except ValueError:
                     pass
 
-    return now
+    raise ValueError(f"could not parse date filter: {date_str!r}; try "
+                     "'after sept 11', 'last week', or 'last 7 days'")
 
 
 def extract_pasted_content(stdin_content: str, output_dir: Path,
@@ -504,7 +709,7 @@ def extract_pasted_content(stdin_content: str, output_dir: Path,
 
 
 def extract_source(source: str, output_dir: Path, date_filter: str = None,
-                   stem: str = "source") -> Dict[str, Any]:
+                   stem: str = "source", page_crops: str = "auto") -> Dict[str, Any]:
     """Route one source to its extractor. Writes `<output_dir>/<stem>.md`."""
     output_dir = Path(output_dir)
     if source == "-":
@@ -512,16 +717,19 @@ def extract_source(source: str, output_dir: Path, date_filter: str = None,
     elif source.startswith(("http://", "https://")):
         return extract_url(source, output_dir, stem)
     elif Path(source).is_dir():
-        return extract_directory(source, output_dir, date_filter, True, stem)
+        return extract_directory(source, output_dir, date_filter, True, stem,
+                                 page_crops)
     elif Path(source).is_file():
         low = source.lower()
         if low.endswith(".pdf"):
-            return extract_pdf(source, output_dir, stem)
+            return extract_pdf(source, output_dir, stem, page_crops)
         elif low.endswith(".pptx"):
             from extract_slides import extract_pptx
             return extract_pptx(source, output_dir, stem)
         elif low.endswith((".txt", ".md", ".tex")):
             return extract_text(source, output_dir, stem)
+        elif low.endswith((".html", ".htm")):
+            return extract_url(Path(source).resolve().as_uri(), output_dir, stem)
         else:
             raise ValueError(f"Unsupported file type: {source}")
     else:
@@ -529,7 +737,7 @@ def extract_source(source: str, output_dir: Path, date_filter: str = None,
 
 
 def run_batch(sources: List[str], out_dir: Path, date_filter: str = None,
-              manifest_full: bool = False) -> Dict[str, Any]:
+              manifest_full: bool = False, page_crops: str = "auto") -> Dict[str, Any]:
     """Extract every source into its own `<out_dir>/<tag>/`, plus a manifest.
 
     One directory per source, not one shared directory: two lectures both export
@@ -551,7 +759,7 @@ def run_batch(sources: List[str], out_dir: Path, date_filter: str = None,
         sub = out_dir / tag
         entry: Dict[str, Any] = {"tag": tag, "source_path": src, "md": f"{tag}/{tag}.md"}
         try:
-            result = extract_source(src, sub, date_filter, tag)
+            result = extract_source(src, sub, date_filter, tag, page_crops)
             entry["source_type"] = result.get("source_type")
             entry["chars"] = len(str(result.get("content") or ""))
             # Count + a sample, not the full list. A 10-lecture batch produced 1,218
@@ -560,6 +768,11 @@ def run_batch(sources: List[str], out_dir: Path, date_filter: str = None,
             # files are on disk either way. `--manifest-full` restores the complete
             # list for anyone diagnosing extraction itself.
             imgs = [f"{tag}/media/{Path(p).name}" for p in result.get("images", [])]
+            if not str(result.get("content") or "").strip() and not imgs:
+                raise ValueError("no text or images extracted")
+            if not str(result.get("content") or "").strip():
+                entry["warning"] = ("no text layer; figures are available but "
+                                    "need image-vision to build cards")
             entry["images"] = len(imgs)
             if manifest_full:
                 entry["image_paths"] = imgs
@@ -622,6 +835,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="list every extracted image path in manifest.json instead of "
                          "a count plus a 3-name sample (batch only; only needed when "
                          "diagnosing extraction itself)")
+    ap.add_argument("--page-crops", choices=("auto", "all", "off"), default="auto",
+                    help="render vector/slide figures as page crops (default: auto, "
+                         "captioned pages and slide-like pages only)")
     args = ap.parse_args(argv)
 
     try:
@@ -632,7 +848,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                       file=sys.stderr)
                 return 2
             manifest = run_batch(args.paths, Path(args.out), args.date_filter,
-                                 args.manifest_full)
+                                 args.manifest_full, args.page_crops)
             for entry in manifest["sources"]:
                 files = entry.get("processed_files")
                 if files:
@@ -642,6 +858,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
         source = args.paths[0]
+        explicit_out = args.out is not None
         if args.out:
             output_dir = Path(args.out)
         elif len(args.paths) > 1:
@@ -656,11 +873,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             # Kept as the caller wrote it: stdin has no name to derive a directory from.
             result = extract_pasted_content(sys.stdin.read(), output_dir, tag)
         else:
-            # The pipeline calls this with a topic directory and expects a temp tree
-            # under the CURRENT WORKING DIRECTORY, so a fixed path like /tmp cannot
-            # produce a permission error mid-run.
-            output_dir = Path.cwd() / ".anki-gen-temp" / output_dir.name
-            result = extract_source(source, output_dir, args.date_filter, tag)
+            # A positional directory keeps the historical .anki-gen-temp layout;
+            # an explicit --out is the caller's path and is honoured as written.
+            if not explicit_out:
+                output_dir = Path.cwd() / ".anki-gen-temp" / output_dir.name
+            result = extract_source(source, output_dir, args.date_filter, tag,
+                                    args.page_crops)
 
         result["extracted_at"] = datetime.now().isoformat(timespec="seconds")
         result["md"] = str(output_dir / f"{tag}.md")

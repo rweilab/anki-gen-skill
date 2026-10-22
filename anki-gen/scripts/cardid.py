@@ -45,13 +45,15 @@ def load_cards(path) -> list[dict]:
 
 
 def card_hash(c: dict) -> str:
-    """A card's stable identity.
+    """A card's content identity: md5(front|back).
 
-    Prefers an explicit `hash` field, which is what the writer emits, and falls
-    back to md5 of `front|back` -- matching `--merge-existing`'s content key, so
-    the two notions of "this card already exists" cannot drift apart.
+    An explicit `hash` is ignored. `author.py finalize` used to write one, and the
+    review step edits text afterwards; trusting the stale field made a corrected
+    card keep its old GUID, so `--merge-existing` skipped the fix as "already
+    present". A stable explicit ID belongs to the deferred revision path, not to
+    the current content-addressed one.
     """
-    return c.get("hash") or hashlib.md5(
+    return hashlib.md5(
         f"{c.get('front', '')}|{c.get('back', '')}".encode()).hexdigest()
 
 

@@ -35,17 +35,20 @@ clothes"; a full solution is not a retrieval target.
 
 Figure extraction always happens; **bundling is off unless the user asked.**
 
-- `extract_pdf.py` writes `<tag>/media/fig_p<page>_<idx>.png` and `<tag>/figures.json` (page,
-  dimensions, bytes, caption, slide title). The manifest keeps a count + 3-name sample, so stdout
+- `extract_pdf.py [--page-crops auto|all|off]` writes `<tag>/media/fig_p<page>_<idx>.png` and `<tag>/figures.json` (page,
+  dimensions, bytes, caption, nearby text, heading, bbox, kind). Captioned textbook pages and
+  vector-only slide pages also get tight `page-crop`/`slide-crop` images; they are `confirm`
+  candidates, never auto-attached. The manifest keeps a count + 3-name sample, so stdout
   never carries hundreds of paths; `--manifest-full` restores them only for extraction diagnosis.
-- The model chooses from `media_index.py <workdir>` (compact: path, page, size, quality,
+- The model chooses from `media_index.py <workdir>` or `--cards cards.jsonl` (compact: path, page, size, quality,
   flags, title, caption) — **never vision**. High-quality figures are listed first;
   caption/slide-title/page match, or nothing.
 - Extracted raster figures are scored with the same visual metrics as video frames:
   tiny and exact-duplicate images are dropped; blank, text-like, and table images
   are kept and flagged so a small diagram is not lost. Ambiguous figures are confirmed
-  with `image-vision` only when they are actually being used for a card. Vector diagrams
-  are not extracted yet; document the gap instead of guessing.
+  with `image-vision` only when they are actually being used for a card. Vector
+  textbook/slide figures are rendered as tight page crops; a vector-only PPTX still needs
+  a PDF export.
 - Build with `--media --media-root <work>`; a text-only build carries no media at all.
 - Web images only on request: high-signal sources first (textbooks, OpenStax, university notes,
   Paul's Online Math Notes, Wikimedia, NASA/NOAA, publishers); attach none if the top candidate is

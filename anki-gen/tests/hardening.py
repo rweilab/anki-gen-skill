@@ -22,8 +22,10 @@ GOLDEN = ROOT / "tests" / "golden_cards.jsonl"
 
 sys.path.insert(0, str(SCRIPTS))
 from build_apkg import normalize_objects, study_order  # noqa: E402
+from cardid import card_hash  # noqa: E402
 from validate_cards import similar_answer_pairs  # noqa: E402
 from new_cards import C, CardError  # noqa: E402
+from parse_intent import parse_intent  # noqa: E402
 
 BASE = {
     "front": "Why does a vacancy increase a crystal's free energy?",
@@ -38,11 +40,14 @@ def run(cmd, env=None):
     return subprocess.run(cmd, capture_output=True, text=True, env=env)
 
 
-def validate(cards, scripts=SCRIPTS):
+def validate(cards, scripts=SCRIPTS, deep=False):
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "cards.json"
         p.write_text(json.dumps(cards))
-        r = run([sys.executable, str(scripts / "validate_cards.py"), str(p), "--json"])
+        cmd = [sys.executable, str(scripts / "validate_cards.py"), str(p), "--json"]
+        if deep:
+            cmd.append("--deep")
+        r = run(cmd)
         try:
             return json.loads(r.stdout), r
         except json.JSONDecodeError as e:
@@ -102,6 +107,76 @@ def main() -> int:
             < maintainers.index("4. speed")), "quality priority order changed"
     assert "quality contract in `MAINTAINERS.md`" in (ROOT / "AGENTS.md").read_text()
     print("ok    execution and quality guardrails present")
+
+    # Identity follows content, never a stale explicit hash.
+    stale = dict(BASE, hash="deadbeef")
+    edited = dict(stale, front="Why did the answer change after the fix?")
+    assert card_hash(stale) != "deadbeef", card_hash(stale)
+    assert card_hash(edited) != card_hash(stale), (card_hash(stale), card_hash(edited))
+    print("ok    stale explicit hash is ignored")
+
+    intent = parse_intent('make 30 cards --deck-name "My Deck" from Lec/')
+    assert intent["deck_name"] == "My Deck", intent
+    assert intent["max_cards"] == 30, intent
+    print("ok    intent keeps quoted deck names and card target")
+
+    # Rule 26 and markdown images are structural defects, not style choices.
+    pointer = dict(BASE, back="See the magnitude card for the numbers. **Why:** it catches units.")
+    data, _ = validate([pointer])
+    assert any("points at another card" in e for e in data["errors"]), data
+    code_pointer = dict(BASE, back="Use `see the card` as a literal example. **Why:** it is quoted.")
+    data, _ = validate([code_pointer])
+    assert not any("points at another card" in e for e in data["errors"]), data
+    md_image = dict(BASE, back="![cell](media/x.png) **Why:** a figure.")
+    data, _ = validate([md_image])
+    assert any("literal markdown image" in e for e in data["errors"]), data
+    code_image = dict(BASE, back="Use `![alt](x)` as a literal example. **Why:** quoted.")
+    data, _ = validate([code_image])
+    assert not any("literal markdown image" in e for e in data["errors"]), data
+
+    # Cloze must close; the build path has a second guard for the same shape.
+    unterminated = dict(BASE, front="The cell has {{c1::2 atoms and a long enough sentence.",
+                        cloze=True)
+    data, _ = validate([unterminated])
+    assert any("never closes" in e for e in data["errors"]), data
+    print("ok    pointer/markdown-image/unterminated-cloze guards")
+
+    # Glossary is info, not a warning that forces boilerplate.
+    sym = dict(BASE, front="How do $N_v$, $N_s$, and $Q_v$ relate at equilibrium?",
+               back="The ratio is a function of $Q_v$.", layer="L2")
+    data, _ = validate([sym])
+    assert not any("symbol-heavy" in w for w in data["warnings"]), data
+    assert any("symbol-heavy" in i for i in data["info"]), data
+
+    # Tier-zero coverage is a narrow warning, and table recall is not a formula.
+    formula_cards = [
+        dict(BASE, topic="Formula Topic", objects=[], tier_zero=False, front=f"Formula card {i}: why does $x_{i}$ hold?")
+        for i in range(3)
+    ]
+    data, _ = validate(formula_cards)
+    assert any("no tier-zero" in w for w in data["warnings"]), data
+    with_tz = formula_cards + [dict(BASE, topic="Formula Topic", objects=[],
+                                    front="What is the idea before the formulas?",
+                                    tier_zero=True)]
+    data, _ = validate(with_tz)
+    assert not any("no tier-zero" in w for w in data["warnings"]), data
+    table_cards = [
+        dict(BASE, topic="Table Topic", objects=[], tier_zero=False,
+             back="Use the printed table; **Why:** the ranking is a lookup.",
+             front=f"Which of the four structures ranks highest on property {i}?")
+        for i in range(3)
+    ]
+    data, _ = validate(table_cards)
+    assert not any("no tier-zero" in w for w in data["warnings"]), data
+    print("ok    glossary info and narrow tier-zero warning")
+
+    bloat = [dict(BASE, topic="Bloat", objects=[], tier_zero=False,
+                  front=f"Which structure property number {i} does the table list?",
+                  back=f"Use table row {i}; **Why:** it is a lookup.")
+             for i in range(16)]
+    data, _ = validate(bloat)
+    assert any("has 16 cards" in w for w in data["warnings"]), data
+    print("ok    topic bloat warning")
 
     # Soft order: source topic first, tier-zero, then L1/L2/advanced. Topic B is
     # first on purpose, so this also proves the order is not alphabetical.
@@ -230,8 +305,8 @@ def main() -> int:
         dict(BASE, topic=f"Subtopic {i}", objects=[],
              front=f"Why is subtopic number {i} distinct enough for its own topic?")
         for i in range(1, 9)], "warning", "topics")
-    case("near-duplicate fronts", lambda: [BASE, BASE],
-         "warning", "similar")
+    case("exact duplicate cards", lambda: [BASE, BASE],
+         "error", "exact duplicates")
     case("enzyme question missing enzyme", lambda: [dict(
         BASE, topic="Glycolysis", objects=[],
         front="Which enzyme splits fructose-1,6-bisphosphate into DHAP and G3P?",
@@ -285,6 +360,16 @@ def main() -> int:
     else:
         raise AssertionError("new_cards.C accepted a missing enzyme answer")
     print("ok    authoring helper rejects missing enzyme answer")
+    C(front=BASE["front"], back=BASE["back"], layer=BASE["layer"],
+      topic=BASE["topic"], deck="UNIQUE::TEST", source=BASE["source"])
+    try:
+        C(front=BASE["front"], back=BASE["back"], layer=BASE["layer"],
+          topic=BASE["topic"], deck="UNIQUE::TEST", source=BASE["source"])
+    except CardError as e:
+        assert "exact duplicate" in str(e), e
+    else:
+        raise AssertionError("new_cards.C accepted an exact duplicate")
+    print("ok    authoring helper rejects exact duplicates")
 
     print("ok    front-visible tag leak warning")
 
@@ -319,7 +404,7 @@ def main() -> int:
         mutate(mut / "validate_cards.py", mut / "validate_cards.py",
                [("for i, j, r in similar_answer_pairs(cards):",
                  "for i, j, r in []:")])
-        data, _ = validate(same_answer, mut)
+        data, _ = validate(same_answer, mut, deep=True)
         assert not any("answers" in w for w in data["warnings"]), data
         print("ok    sabotage detected: answer overlap")
 
@@ -345,6 +430,89 @@ def main() -> int:
         assert "5 notes" in r.stdout, r.stdout
         print("ok    golden build/import")
 
+        # A corrected card must not keep an old explicit hash and be skipped by
+        # merge. If this fails, the fix silently never reaches Anki.
+        stale_cards = [dict(BASE, hash="deadbeef", objects=[])]
+        stale_path = td / "stale.json"
+        stale_path.write_text(json.dumps(stale_cards))
+        first_apkg = td / "stale-first.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(stale_path),
+                 str(first_apkg), "--deck-name", "STALE::TEST"])
+        assert r.returncode == 0, r.stderr
+        stale_cards[0]["front"] = "Why did the corrected card change the deck?"
+        stale_path.write_text(json.dumps(stale_cards))
+        merged_apkg = td / "stale-merged.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(stale_path),
+                 str(merged_apkg), "--deck-name", "STALE::TEST",
+                 "--merge-existing", str(first_apkg)])
+        assert r.returncode == 0, r.stderr
+        with tempfile.TemporaryDirectory() as ex:
+            with zipfile.ZipFile(merged_apkg) as z:
+                z.extract("collection.anki2", ex)
+            con = sqlite3.connect(Path(ex) / "collection.anki2")
+            try:
+                count = con.execute("select count(*) from notes").fetchone()[0]
+            finally:
+                con.close()
+        assert count == 2, count
+        print("ok    edited card gets a new content identity")
+
+        invalid = [dict(BASE, objects=[], front="Calculate the runtime of nested loops.")]
+        invalid_path = td / "invalid.json"
+        invalid_path.write_text(json.dumps(invalid))
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(invalid_path),
+                 str(td / "invalid.apkg"), "--deck-name", "INVALID::TEST"])
+        assert r.returncode != 0 and not (td / "invalid.apkg").exists(), r.stderr
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(invalid_path),
+                 str(td / "invalid.apkg"), "--deck-name", "INVALID::TEST",
+                 "--allow-invalid"])
+        assert r.returncode == 0, r.stderr
+        print("ok    strict build by default with diagnosis escape")
+
+        # Cloze: one deletion is one card; two distinct deletions are two cards.
+        # The old check was inert, and its count comparison would have failed the
+        # valid one-deletion note.
+        cloze_cards = [
+            {"front": "A body-centred cell has {{c1::2}} atoms per unit cell.",
+             "back": "Eight corners at 1/8 plus one interior atom, in a long enough back.",
+             "layer": "L1", "topic": "Cloze", "cloze": True, "deck": "CLOZE::TEST",
+             "source": "Lec 1 p.1"},
+            {"front": "SC has {{c1::4}} atoms and BCC has {{c2::2}} atoms per cell.",
+             "back": "Count the corners, faces, and interior atoms in a long enough back.",
+             "layer": "L1", "topic": "Cloze", "cloze": True, "deck": "CLOZE::TEST",
+             "source": "Lec 1 p.2"},
+        ]
+        cloze_path = td / "cloze.json"
+        cloze_path.write_text(json.dumps(cloze_cards))
+        cloze_apkg = td / "cloze.apkg"
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(cloze_path),
+                 str(cloze_apkg), "--deck-name", "CLOZE::TEST"])
+        assert r.returncode == 0, r.stderr
+        r = run([sys.executable, str(SCRIPTS / "validate_apkg.py"), str(cloze_apkg)])
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "2 notes" in r.stdout, r.stdout
+
+        broken = td / "cloze-broken.apkg"
+        with zipfile.ZipFile(cloze_apkg) as z:
+            files = {n: z.read(n) for n in z.namelist()}
+        with tempfile.TemporaryDirectory() as ex:
+            (Path(ex) / "collection.anki2").write_bytes(files["collection.anki2"])
+            con = sqlite3.connect(Path(ex) / "collection.anki2")
+            try:
+                nid = con.execute(
+                    "select id from notes where flds like '%c2::%'").fetchone()[0]
+                con.execute("delete from cards where nid=?", (nid,))
+                con.commit()
+            finally:
+                con.close()
+            files["collection.anki2"] = (Path(ex) / "collection.anki2").read_bytes()
+        with zipfile.ZipFile(broken, "w", zipfile.ZIP_DEFLATED) as z:
+            for name, data in files.items():
+                z.writestr(name, data)
+        r = run([sys.executable, str(SCRIPTS / "validate_apkg.py"), str(broken)])
+        assert r.returncode != 0 and "cloze deletion" in (r.stdout + r.stderr), r.stdout
+        print("ok    cloze integrity (valid and sabotaged)")
+
         # Integration: the built order actually scatters topics, and the built
         # tags are the broad buckets rather than the source subtopics.
         build_cards = []
@@ -362,7 +530,7 @@ def main() -> int:
         build_path.write_text(json.dumps(build_cards))
         scatter_apkg = td / "scatter.apkg"
         r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(build_path),
-                 str(scatter_apkg), "--deck-name", "SCATTER::TEST"])
+                 str(scatter_apkg), "--deck-name", "SCATTER::TEST", "--allow-invalid"])
         assert r.returncode == 0, r.stderr
         with zipfile.ZipFile(scatter_apkg) as z:
             z.extract("collection.anki2", td / "scatter-extract")
@@ -396,7 +564,7 @@ def main() -> int:
         order_path.write_text(json.dumps(order_cards))
         order_apkg = td / "order.apkg"
         r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(order_path),
-                 str(order_apkg), "--deck-name", "ORDER::TEST"])
+                 str(order_apkg), "--deck-name", "ORDER::TEST", "--allow-invalid"])
         assert r.returncode == 0, r.stderr
         extract = td / "order-extract"
         with zipfile.ZipFile(order_apkg) as z:
@@ -433,7 +601,7 @@ def main() -> int:
         reuse_apkg = td / "reuse.apkg"
         r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(reuse_path),
                  str(reuse_apkg), "--deck-name", "REUSE::TEST", "--media",
-                 "--media-root", str(td)])
+                 "--media-root", str(td), "--allow-invalid"])
         assert r.returncode == 0, r.stderr
         extract = td / "reuse-extract"
         with zipfile.ZipFile(reuse_apkg) as z:
@@ -447,6 +615,20 @@ def main() -> int:
         assert len(media_entries) == 1, media_entries
         assert sum("<img" in f for f in fields) == 2, fields
         print("ok    shared media reused across cards")
+
+        missing_cards = [
+            dict(BASE, objects=[], media=[{"file": "media/missing-a.png"}]),
+            dict(BASE, objects=[], front="Which missing figure is listed second?",
+                 media=[{"file": "media/missing-b.png"}]),
+        ]
+        missing_path = td / "missing.json"
+        missing_path.write_text(json.dumps(missing_cards))
+        r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(missing_path),
+                 str(td / "missing.apkg"), "--deck-name", "MISS::TEST", "--media",
+                 "--media-root", str(td)])
+        assert r.returncode != 0, (r.stdout, r.stderr)
+        assert "missing-a.png" in r.stderr and "missing-b.png" in r.stderr, r.stderr
+        print("ok    missing media is reported together")
 
         # The tag leak must stop a strict build, not merely print a warning.
         leak_path = td / "leak.json"

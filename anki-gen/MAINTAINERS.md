@@ -39,9 +39,9 @@ commands, or kill the harness/own process. Stop only a known test child after a 
 exists, run autonomously to completion; ask only for destructive or missing
 inputs. See `AGENTS.md`.
 
-## Deferred: v1.4.2 deck revisions
+## Deferred: v1.5 deck revisions
 
-Do not implement this in v1.4. Notes only:
+Do not implement this in v1.4.x. Notes only:
 
 - An `.apkg` import merges by note GUID; it does not replace the collection.
   Existing notes can update while keeping scheduling/history; new notes are

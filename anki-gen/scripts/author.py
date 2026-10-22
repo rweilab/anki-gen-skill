@@ -9,7 +9,7 @@ a file that already exists. So write the shape first:
     scaffold concepts.jsonl  -> cards.jsonl   (one stub per concept, front/back blank)
     <fill each line>
     check cards.jsonl        -> one line: written vs stub
-    finalize cards.jsonl ... -> cards.json    (hashes filled, gates ready)
+    finalize cards.jsonl ... -> cards.json    (deck filled, content identity ready)
 
 `check` matters: the alternative is reading the deck back to see progress, which costs
 ~13k tokens for a 61-card deck the model already wrote.
@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cardid import card_hash, load_cards            # noqa: E402
+from cardid import load_cards                      # noqa: E402
 from new_cards import validate_card                 # noqa: E402
 
 LAYERS = {"L1", "L2", "L3", "Procedure"}
@@ -123,7 +123,9 @@ def finalize(args) -> int:
         return 2
     for c in cards:
         c["deck"] = c.get("deck") or args.deck
-        c["hash"] = card_hash(c)
+        # Identity is content-derived at build/merge time; a stored hash goes
+        # stale the moment a card is edited, so do not persist one.
+        c.pop("hash", None)
     write_rows(args.out, cards)
     print(f"finalize   {len(cards)} card(s) -> {args.out}")
     return 0

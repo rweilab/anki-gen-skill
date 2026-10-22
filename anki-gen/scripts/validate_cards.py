@@ -10,7 +10,7 @@ the deck still imported fine, it just looked broken on screen.
   4. forbidden fronts          computation demands (see FORBIDDEN below)
   5. empty / stub cards
   6. near-duplicate fronts
-  7. missing glossary          symbol card without a definitions section
+  7. glossary signal           symbol card without a definitions section (info)
   8. missing provenance        no `source`, or a source with no locator
 """
 import argparse
@@ -102,12 +102,19 @@ def is_computation_prompt(front: str) -> str | None:
     return None
 
 # Symbols whose meaning the exam expects you to be able to state.
-GLOSSARY_HINT = re.compile(
-    r"(glossary|legend|\bmeans\b|\bdenotes\b|\bequals\b|\bis a\b|\bare\b|=\s*[A-Za-z]|\bbecause\b|"
-    r"\*\*where\b|\*\*why\b|\*\*what\b|\*\*from\b|\*\*which\b)", re.I)
+STRUCT_GLOSSARY = re.compile(
+    r"\*\*(?:glossary|symbols|legend|notation)\b"
+    r"|^\s*[-*]?\s*\$?\\?[A-Za-z]_?\{?[A-Za-z0-9]*\}?\$?\s*=", re.I | re.M)
 
 TIER_ZERO = re.compile(r"tier\s*[- ]?zero|tier\s*0", re.I)
 CMP = re.compile(r'(lowest|highest|most|least|rank|among)\b', re.I)
+FORMULA = re.compile(r"\$[^$]+\$|\b(?:formula|equation)\b", re.I)
+CODE_SPAN = re.compile(r"`[^`]*`", re.S)
+MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+POINTER = re.compile(
+    r"\b(?:see|refer to|check)\b[^.?!\n]{0,40}\bcard\b"
+    r"|\b(?:the|this|that)\s+(?:next|previous|above|below|earlier|later)\s+card\b",
+    re.I)
 
 
 def findings(cards):
@@ -211,6 +218,11 @@ def findings(cards):
             add(i, "warn",
                 f"{label} -- source {src!r} carries no locator (no page, slide, "
                 "question or chapter number), so it cannot be pinpointed again.")
+        elif len(src) > 110:
+            add(i, "warn",
+                f"{label} -- source is {len(src)} chars; use the canonical short "
+                "label (e.g. 'DigiKey · RTOS 04 · Memory Management @ 01:32') and "
+                "keep the full URL in source_url")
         source_url = str(c.get("source_url") or "").strip()
         if source_url:
             if not re.match(r"^https?://\S+$", source_url, re.I):
@@ -264,7 +276,8 @@ def findings(cards):
         # FRONTS ONLY, deliberately: this check never runs on backs, and backs
         # legitimately mix $$ with $...$ (32 cards in one real deck did). Do not
         # "fix" that by extending this to backs.
-        raw_md = re.sub(r"\$\$.*?\$\$", "", front, flags=re.S)
+        raw_md = CODE_SPAN.sub("", front)
+        raw_md = re.sub(r"\$\$.*?\$\$", "", raw_md, flags=re.S)
         raw_md = re.sub(r"\$[^$]+\$", "", raw_md, flags=re.S)
         # parity, not presence: a matched **bold** is 2 markers; an unclosed one is odd
         if raw_md.count("**") % 2:
@@ -343,16 +356,69 @@ def findings(cards):
                         "so, give the second question its own card.")
                     break
 
-        # 7. glossary presence on symbol-bearing cards
+        # 7. glossary presence on symbol-bearing cards. Info, not warning: a
+        # forced glossary on every symbol card is over-scaffolding, which hurts
+        # an expert learner. The review checklist still asks for it.
         has_sym = len(set(SYM.findall(front) + SYM.findall(back))) >= 3
-        if has_sym and layer in {"L1", "L2"} and not GLOSSARY_HINT.search(back):
-            add(i, "warn",
+        if has_sym and layer in {"L1", "L2"} and not STRUCT_GLOSSARY.search(back):
+            add(i, "info",
                 f"{label} -- symbol-heavy card with no glossary/definition "
-                "in the back (slides say symbols get marks)")
+                "in the back; check it during review rather than adding boilerplate")
+
+        # 9. unterminated cloze deletion. Anki closes at the first '}}'; a card
+        # with no close at all renders the remainder as literal text. Braces
+        # inside a deletion are rejected by build_native.check_cloze_braces.
+        if is_cloze_flag:
+            for m in re.finditer(r"\{\{c(\d+)::", front):
+                j, depth = m.end(), 2
+                while j < len(front) and depth > 0:
+                    if front[j] == "{":
+                        depth += 1
+                    elif front[j] == "}":
+                        depth -= 1
+                    j += 1
+                if depth > 0:
+                    add(i, "err",
+                        f"{label} -- cloze deletion c{m.group(1)} never closes; "
+                        "the rest of the card would render literally")
+                    break
+
+        # 10. literal markdown images. extract_slides writes ![..](..) into its
+        # markdown; copying that into a card ships unrendered text because Anki
+        # renders no markdown. Use the media field instead.
+        for f, t in (("front", front), ("back", back)):
+            prose = CODE_SPAN.sub("", t)
+            if MARKDOWN_IMAGE.search(prose):
+                add(i, "err",
+                    f"{label} -- literal markdown image in {f}; use the card's "
+                    "media field (file/side/caption/source), not ![..](..)")
+
+        # 11. cross-card pointers. Each card is reviewed alone, in random order;
+        # a pointer to a sibling resolves to nothing where it is needed.
+        if POINTER.search(CODE_SPAN.sub("", back)):
+            add(i, "err",
+                f"{label} -- back points at another card; write the information "
+                "in this card instead (rule 26)")
 
     layers = Counter(c.get("layer") for c in cards)
     topics = Counter(c.get("topic") for c in cards)
     add(0, "info", f"{len(cards)} cards | layers {dict(layers)}")
+
+    # Rule 6: a formula-bearing topic needs one concept card before its formulas.
+    # Warning only, and only from three formula cards up: a two-card topic is often
+    # intentional, and the model must not add a card just to silence a checker.
+    formula_topics = Counter(
+        str(c.get("topic") or "")
+        for c in cards
+        if c.get("layer") in {"L1", "L2"}
+        and FORMULA.search(f"{c.get('front', '')}\n{c.get('back', '')}"))
+    tier_topics = {str(c.get("topic") or "") for c in cards
+                   if c.get("tier_zero") or TIER_ZERO.search(str(c.get("front", "")))}
+    for topic, count in sorted(formula_topics.items()):
+        if count >= 3 and topic not in tier_topics:
+            add(0, "warn",
+                f"topic {topic!r} has {count} formula cards and no tier-zero "
+                "concept card; consider one, but do not add it automatically")
     if len(cards) >= 8:
         singles = sorted(t for t, n in topics.items() if n == 1)
         if len(singles) >= max(3, len(topics) // 2):
@@ -363,6 +429,11 @@ def findings(cards):
             add(0, "warn", f"{len(topics)} topics for {len(cards)} cards; topic is the "
                           f"chapter/lecture heading, not a card or subtopic — do not "
                           f"artificially split one chapter")
+        for topic, count in sorted(topics.items()):
+            if count > 15:
+                add(0, "warn", f"topic {topic!r} has {count} cards; 4–15 is the "
+                               "healthy range — check for restatement before adding "
+                               "more (warning only, never an automatic cut)")
     # tier-zero may be flagged as a field, or (older cards) by front text
     tz = sum(1 for c in cards
              if c.get("tier_zero") or TIER_ZERO.search(str(c.get("front", ""))))
@@ -388,6 +459,31 @@ def findings(cards):
 
 
 DUPLICATE_FRONT_RATIO = 0.85
+
+
+def _norm_card(c: dict) -> tuple[str, str]:
+    front = " ".join(str(c.get("front", "")).split()).casefold()
+    back = " ".join(str(c.get("back", "")).split()).casefold()
+    return front, back
+
+
+def exact_duplicate_pairs(cards) -> list[tuple[int, int]]:
+    """1-based pairs whose normalized front+back are identical.
+
+    Deterministic and O(n). This is the only in-deck duplicate check on the
+    default path; near-duplicate/front-similarity heuristics are opt-in via
+    `--deep`, because on a real deck they produced contrast false positives and
+    cost more model attention than they saved.
+    """
+    seen: dict[tuple[str, str], int] = {}
+    out = []
+    for i, c in enumerate(cards, 1):
+        key = _norm_card(c)
+        if key in seen:
+            out.append((seen[key], i))
+        else:
+            seen[key] = i
+    return out
 
 
 def similar_front_pairs(cards) -> list[tuple[int, int, float]]:
@@ -491,13 +587,12 @@ def similar_answer_pairs(cards) -> list[tuple[int, int, float]]:
     return out
 
 
-def check_cards(cards):
+def check_cards(cards, deep: bool = False):
     """The CLI's (errors, warnings, info) view.
 
-    Identical strings, in the same order, to what this printed before the findings
-    split. Deck-level checks that are not per-card findings -- the duplicate-front
-    pairs -- are composed here, so that `findings()` stays a pure per-card view
-    and its other caller (triage.py) can use `similar_front_pairs()` directly.
+    Exact normalized duplicates are always errors. Soft front/answer similarity
+    is only computed with `deep=True`: it is useful for an explicit debloat pass
+    but was mostly contrast-family noise on a real deck.
     """
     fs = findings(cards)
     errs = [m for _, s, m in fs if s == "err"]
@@ -505,17 +600,20 @@ def check_cards(cards):
     warns = [m for _, s, m in fs if s == "warn" and not (m in seen or seen.add(m))]
     info = [m for _, s, m in fs if s == "info"]
 
-    # Annotated against BOTH cards: at review time either half of a competing pair
-    # is worth looking at, and triage wants both.
-    for i, j, r in similar_front_pairs(cards):
-        warns.append(f"cards {i} and {j} fronts {r:.0%} similar")
+    for i, j in exact_duplicate_pairs(cards):
+        errs.append(f"cards {i} and {j} are exact duplicates "
+                    "(same normalized front and back)")
+
     tag_findings = tag_leak_findings(cards)
     errs.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "err")
     warns.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "warn")
 
-    for i, j, r in similar_answer_pairs(cards):
-        warns.append(f"cards {i} and {j} answers {r:.0%} overlapping; "
-                     "merge or keep only if they are a contrast")
+    if deep:
+        for i, j, r in similar_front_pairs(cards):
+            warns.append(f"cards {i} and {j} fronts {r:.0%} similar")
+        for i, j, r in similar_answer_pairs(cards):
+            warns.append(f"cards {i} and {j} answers {r:.0%} overlapping; "
+                         "merge or keep only if they are a contrast")
     return errs, warns, info
 
 
@@ -523,10 +621,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cards_json")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--deep", action="store_true",
+                    help="also run soft front/answer similarity (opt-in debloat)")
     args = ap.parse_args()
 
     cards = load_cards(args.cards_json)
-    errs, warns, info = check_cards(cards)
+    errs, warns, info = check_cards(cards, deep=args.deep)
 
     if args.json:
         print(json.dumps({"valid": not errs, "errors": errs, "warnings": warns,

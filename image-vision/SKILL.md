@@ -42,12 +42,17 @@ domain and schema (a circuit is one example instance, never a hardcoded shape).
 ## Fast frame confirmation (video triage)
 
 For the shallow "is this still a usable diagram?" pass, use
-`scripts/vision_check.py frame1.png frame2.png ... --max N`. It:
+`scripts/vision_check.py frame1.png frame2.png ... --max N` (add
+`--mode figure --caption "..."` for a textbook/slide crop). It:
 
-- resolves a free-tier flash-lite model and falls back if the default alias is gone;
-- retries 503/429 briefly and caches results by image SHA;
-- stops after a 429/quota error and prints one JSON line per image plus a
-  `checked/usable/kinds/errors/cached/stopped` summary.
+- resolves a free-tier flash-lite model from `GEMINI_VISION_MODEL`, `--model`, or a
+  cached model-list discovery; it fails closed rather than using a paid/high-quota model;
+- uses `GEMINI_API_VERSION` (default `v1beta`), a per-image timeout, a global
+  `--max-seconds` deadline, and a work-local `--report` that is flushed per image;
+- retries only transient 503/network errors briefly; a 429/quota stops immediately
+  with `stopped: rate_limited`, leaving the cache and partial report intact;
+- caches by image SHA + mode + prompt version and prints one JSON line per image plus
+  a `checked/usable/kinds/errors/cached/stopped` summary.
 
 This is not a substitute for the full pipeline below. Use it only for ambiguous
 video frames, one call per unique frame, and keep the budget small. The main

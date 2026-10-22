@@ -51,7 +51,9 @@ def check_cloze_braces(front: str) -> None:
                 depth -= 1
             j += 1
         if depth > 0:
-            continue
+            raise ValueError(
+                f"cloze deletion c{m.group(1)} is not closed with '}}'; Anki "
+                "would render the rest of the card as literal text")
         body = front[m.end():j - 2]
         if "{" in body or "}" in body:
             raise ValueError(
@@ -129,6 +131,21 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
     # New cards are read in add order, so this is the deck's default study order.
     cards = build_apkg.study_order(cards)
     cards = build_apkg.normalize_objects(cards)
+
+    if enable_media:
+        missing = []
+        for c in cards:
+            for m in media.items(c):
+                try:
+                    if not media.resolve(media_root or ".", m["file"]).is_file():
+                        missing.append(m["file"])
+                except ValueError as e:
+                    missing.append(str(e))
+        if missing:
+            shown = ", ".join(sorted(set(missing))[:8])
+            raise ValueError(f"media file(s) not found: {shown}"
+                             + (f" (+{len(missing) - 8} more)"
+                                if len(missing) > 8 else ""))
 
     with tempfile.TemporaryDirectory() as td:
         scratch = Path(td) / "build.anki2"
