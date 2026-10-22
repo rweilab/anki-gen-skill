@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ def run(cmd, cwd):
 def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
+        os.environ["ANKI_GEN_DATA_HOME"] = str(td / "xdg")
         media = td / "local recording.mp4"
         r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                  "-f", "lavfi", "-i", "color=c=black:s=160x120:d=1",
@@ -99,7 +101,9 @@ def main() -> int:
                  "--out-apkg", str(apkg), "--strict"], td)
         assert r.returncode == 0, (r.stdout, r.stderr)
         assert apkg.is_file() and "validate   1 note" in r.stdout, (r.stdout, r.stderr)
-        print("ok    pipeline build+validate")
+        assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
+        assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
+        print("ok    pipeline build+validate+context")
 
         merged_apkg = td / "merged.apkg"
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),

@@ -2,7 +2,9 @@
 
 This file is for setting the skill up once. The model does not need it during a normal run.
 
-Maintainers: read `AGENTS.md` for the dev workflow and `MAINTAINERS.md` before architectural or token-efficiency changes. Neither is loaded by `SKILL.md` during a normal run. Tests: `bash scripts/smoke.sh` now includes negative fixtures, a golden deck, sabotage/mutation probes from `tests/hardening.py`, offline video fixtures from `tests/video_hardening.py`, adversarial PPTX fixtures from `tests/slides_hardening.py`, and local-media/pipeline fixtures. On failure it prints the line, work directory, relevant hints, and logs; use `KEEP_WORK=1` to keep the fixture and `SMOKE_DEBUG=1` for a trace.
+Maintainers: read `AGENTS.md` for the dev workflow and `MAINTAINERS.md` before architectural or token-efficiency changes. Neither is loaded by `SKILL.md` during a normal run. Tests: `bash scripts/smoke.sh` now includes negative fixtures, a golden deck, sabotage/mutation probes from `tests/hardening.py`, offline video fixtures from `tests/video_hardening.py`, adversarial PPTX fixtures from `tests/slides_hardening.py`, local-media/pipeline fixtures, and
+AnkiConnect revision/dossier fixtures from `tests/revision_hardening.py` and
+`tests/context_hardening.py`. On failure it prints the line, work directory, relevant hints, and logs; use `KEEP_WORK=1` to keep the fixture and `SMOKE_DEBUG=1` for a trace.
 
 **Python 3.10+ is required** (the `anki` package). On Homebrew Python,
 `pip install --user` without `--break-system-packages` is blocked (PEP 668);
@@ -95,6 +97,15 @@ Per image ≤1600 px / ≤1 MB, ≤2 per card; over-cap files are downscaled (Pi
 skipped if they are still over. Review serves
 raster formats (png/jpeg/webp/gif) and samples image cards as a bounded cross-section. Wrong
 images go in the review comment.
+
+## Revising an imported deck
+
+New decks are `.apkg` files and need no AnkiConnect. Revisions of an already-imported deck use
+AnkiConnect only: open Anki with the add-on, then `python3 scripts/revision.py attach --deck
+"NAME"` (or `audit`, `plan`, `apply`). If AnkiConnect is unreachable these commands exit nonzero
+with a setup message; they never fall back to raw SQLite, the `anki` library, or MCP. The compact
+dossier lives under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`, not in Anki notes/media,
+and can be moved with `revision.py context export|import`. Full workflow: `references/revision.md`.
 
 ## Handing the skill to someone else
 

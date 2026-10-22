@@ -247,6 +247,14 @@ def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
             "build": summary[-500:]}
 
 
+def stage_context(out: Path, cards_path: Path, deck_name: str,
+                  profile: str = "") -> dict:
+    """Persist the compact dossier before stage 14 deletes the work tree."""
+    from deck_context import pack
+    return pack(out, {"deck_name": deck_name, "profile": profile},
+                cards_path=cards_path)
+
+
 def stage_vision(out: Path, max_n: int, max_seconds: float,
                  timeout: float) -> dict:
     """One bounded vision pass over canonical frames; report is work-local."""
@@ -361,6 +369,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-missing-artifacts", action="store_true",
                     help="build without intake.md/scope_gate.md/authoring_ledger.md "
                          "(draft or diagnosis only)")
+    ap.add_argument("--no-context", action="store_true",
+                    help="do not persist the deck dossier after a successful build")
+    ap.add_argument("--anki-profile", default="",
+                    help="Anki profile name to record in the deck dossier")
     ap.add_argument("--per-topic", type=int, default=1)
     ap.add_argument("--max", dest="max_total", type=int, default=12)
     ap.add_argument("--gates-only", action="store_true",
@@ -476,6 +488,13 @@ def main(argv: list[str] | None = None) -> int:
                 if b.get("build"):
                     lines.append(f"build-info {b['build']}")
                 lines.append(f"validate   {b['validation']}")
+                if not args.no_context:
+                    try:
+                        c = stage_context(out, Path(args.cards), args.deck_name, args.anki_profile)
+                        lines.append(f"context    {c['cards']} card(s) -> {c['path']}")
+                    except Exception as e:
+                        print(f"pipeline.py: warn: deck context not persisted: {e}",
+                              file=sys.stderr)
             else:
                 lines.append(f"build      FAILED: {b['error']}")
                 return 1

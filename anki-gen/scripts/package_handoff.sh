@@ -47,8 +47,9 @@ for f in anki-gen/SKILL.md image-vision/SKILL.md \
          anki-gen/scripts/visual.py anki-gen/scripts/ytdlp.py \
          anki-gen/scripts/extract_slides.py anki-gen/scripts/media_transcribe.py \
          anki-gen/scripts/preflight.py anki-gen/scripts/pipeline.py \
-         anki-gen/scripts/platform_paths.py \
-         anki-gen/references/slides.md \
+         anki-gen/scripts/platform_paths.py anki-gen/scripts/anki_connect.py \
+         anki-gen/scripts/deck_context.py anki-gen/scripts/revision.py \
+         anki-gen/references/slides.md anki-gen/references/revision.md \
          anki-gen/scripts/handoff/install.sh anki-gen/HANDOFF.md \
          anki-gen/AGENTS.md install.sh INSTALL.md VERSION; do
   if [ ! -f "$STAGE/$f" ]; then

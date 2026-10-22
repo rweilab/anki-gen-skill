@@ -15,8 +15,9 @@ entry point differs (`/anki-gen` vs description match); the pipeline is identica
 **Supporting files.** `references/card-writing.md` (read before stage 7), `references/prompts.md`
 (stages 5/7/8/13), `references/review.md` (stages 9/10), `references/lessons.md` (when changing a
 script), `references/optional.md` (programming decks, known gaps, media, deck audit),
-`references/video.md` (video sources), `references/slides.md` (PowerPoint). Each is read
-once at its stage, not every step. They ship with the skill; if `references/` is missing, work
+`references/video.md` (video sources), `references/slides.md` (PowerPoint),
+`references/revision.md` (attaching/revising an imported deck). Each is read once at its
+stage, not every step. They ship with the skill; if `references/` is missing, work
 from the rules alone (they are the contract).
 
 **Token discipline.** Batch 10–15 cards per topic after a one-line-per-card ledger; read only the
@@ -337,6 +338,11 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     Video source: `source` is the full `<channel> - ... - <title> @ mm:ss`
                     line; `source_url` is the plain timestamp URL (series includes the playlist).
                     Read $WORK/intake.md for images yes/no and the video range; do not re-ask.
+                    While the source is still open, write a short $WORK/curated.json for
+                    the persistent dossier: per-topic takeaways, course notation/style,
+                    learner preferences, deck-shape decisions, and future work. Do not
+                    re-read the corpus at the end to summarize it; context packing is
+                    deterministic. Details: `references/revision.md`.
 8. VERIFY (static) → validate_cards.py $WORK/cards.jsonl — escapes, delimiters, leaked markup,
                     computation fronts, duplicates, front-visible tag leaks, answer overlap,
                     missing glossary/provenance. Layer 2 is
@@ -368,7 +374,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     deletes it and the .apkg is one-shot.
                     A missing evidence file is a hard stop; `--allow-missing-artifacts` is
                     for a draft only. Static validation is automatic; `--allow-invalid` is
-                    diagnosis only.
+                    diagnosis only. A successful build also packs the persistent deck
+                    dossier under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`
+                    before cleanup; `--no-context` opts out.
 12. VALIDATE      → validate_apkg.py out.apkg — the only step that sees a deck which imports
                     cleanly but is unreadable.
 13. DEBLOAT (ROI) → roi_report.py $WORK/cards.jsonl, then the deblating pass (prompt in `references/prompts.md`).
@@ -376,8 +384,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     automatically.
                     After *every* content change; step-10 feedback is measured and outranks
                     the report's surface heuristics. In the main process, not a subagent.
-14. CLEANUP       → run after the .apkg validates. The .apkg is the ONLY new file left in the
-                    caller's directory. (1) Stop the review server; verify nothing listens.
+14. CLEANUP       → run after the .apkg validates. The dossier written from `context pack`
+                    is intentionally persistent and lives outside the caller's directory.
+                    The .apkg is the ONLY new file left in the caller's directory. (1) Stop the review server; verify nothing listens.
                     (2) Read review_handoff.md before deleting; if a fresh review session has
                     not read it, copy it beside the promoted source. Delete
                     .anki-gen-temp/<topic>/ in full — cards.json/.jsonl, deck script,
@@ -400,6 +409,21 @@ script (or the `cards.jsonl`/`.json` it emits) and is produced by re-running it 
 the JSON, never edit cards inside Anki during the run and call that fixed. Hand-edits are silently
 lost on the next run; the `.apkg` is never the source of truth. After delivery, a pure wording fix
 in Anki may keep scheduling history, but it must be mirrored in the source before any rebuild.
+
+## Revising an imported deck
+
+A new deck is an `.apkg`. Once it is imported, revisions use AnkiConnect only — never raw
+SQLite, the `anki` library, or MCP. If AnkiConnect is not running, `attach`, `audit`, `plan`,
+and `apply` fail with a setup message and nonzero exit; new `.apkg` builds still work offline.
+
+The caller states intent in plaintext (“cull the easiest cards”, “keep the anchors”, “make this
+more visual”, “suspend, don't delete”). `revision.py plan` resolves cards by topic/front/tags/
+score/family and writes a human + machine plan; `apply` waits for explicit destructive choices.
+Manual Anki edits win by default, field-only updates preserve scheduling/revlog, and destructive
+applies are backed up first. Score 1 is calibration (“known / too easy”), not automatic
+rejection. The dossier (`context pack`, automatic after `--build`) keeps distilled takeaways,
+notation, learner preferences, decisions, source anchors, media metadata, and revision logs.
+Details and commands: `references/revision.md`. The review page UI is unchanged.
 
 ## Reporting
 The report is the last thing the caller reads; for a beginner it is the whole experience.
@@ -434,6 +458,7 @@ explanation. If `references/` is missing, work from the rules alone.
 | `references/survey.md` | stage 2 | what to propose, learner-context files, deck-name ask |
 | `references/review.md` | stages 9/10 and the review handoff | triage budget, score meanings, generalise/re-scope |
 | `references/output.md` | at the end | cleanup, deck naming, GUID identity, merge |
+| `references/revision.md` | when revising an imported deck | AnkiConnect, dossier, attach/audit/plan/apply, conflicts, destructive choices |
 | `references/video.md` | when the source is a video | transcripts, playlists, frame cues, auto-picking, legal |
 | `references/optional.md` | when relevant | programming decks, known gaps, media, deck audit |
 | `references/lessons.md` | when changing a script | regression lessons |

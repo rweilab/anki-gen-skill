@@ -41,6 +41,9 @@ inputs. See `AGENTS.md`.
 
 ## Deferred: v1.5 deck revisions
 
+**v1.5 status:** implemented in `scripts/deck_context.py`, `scripts/revision.py`, and
+`scripts/anki_connect.py`. The notes below remain the rationale and the boundaries.
+
 Do not implement this in v1.4.x. Notes only:
 
 - An `.apkg` import merges by note GUID; it does not replace the collection.

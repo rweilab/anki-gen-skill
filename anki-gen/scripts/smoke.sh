@@ -359,6 +359,12 @@ pass "local media hardening"
 python3 "$ROOT/tests/pipeline_hardening.py" || fail "pipeline hardening"
 pass "pipeline hardening"
 
+python3 "$ROOT/tests/context_hardening.py" || fail "context hardening"
+pass "context hardening"
+
+python3 "$ROOT/tests/revision_hardening.py" || fail "revision hardening"
+pass "revision hardening"
+
 # The zip ships scripts/handoff/install.sh; keep it identical to the repo copy.
 ROOT_INSTALL="$(dirname "$ROOT")/install.sh"
 if [ -f "$ROOT_INSTALL" ]; then

@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.0** — Imported-deck revision and persistent context
 - **v1.4.2** — Image/alternate-source ingest and review calibration
 - **v1.4.1** — Local video/audio and answer-aligned cards
 - **v1.4** — Visual source refinement
@@ -11,6 +12,54 @@ Newest first. Keep the index to one line per release; details live below.
 - **v1.2** — Review fidelity, guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
+
+## v1.5.0 — Imported-deck revision and persistent context
+
+### Added
+- `scripts/anki_connect.py`: a stdlib AnkiConnect client with a short health check, bounded
+  transient retries, read-only snapshot actions, and the live write actions revision needs.
+  `attach`, `audit`, `plan`, and `apply` fail with a clear setup message and nonzero exit when
+  AnkiConnect is unreachable. New `.apkg` generation stays offline.
+- `scripts/deck_context.py`: a persistent deck dossier under
+  `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-key>/`. Deterministic packing keeps
+  topic takeaways, course notation/style, learner preferences, deck-shape decisions, future
+  work, card records (`rev_id`, `anki_note_id`, `guid`, `content_hash`, last review score),
+  source anchors/hashes, media-candidate metadata, adaptive previews, and revision logs. Full source,
+  full media, the Anki DB, scheduling copies, and hidden reasoning are not stored.
+- Adaptive media previews for unused high/medium candidates: about 640 px general, 768–1024 px
+  for label-heavy diagrams, 320 px only for contact-sheet recognition. Previews are indexes;
+  originals are re-extracted before attachment, and a missing source needs an explicit
+  low-res fallback.
+- `scripts/revision.py` with `attach`, `audit`, `plan`, `apply`, and `context
+  pack|export|import|validate`. Plaintext intent resolves cards by topic/front/tag/score/
+  leech/family; plans are written as human `revision_plan.md` and machine
+  `revision_plan.json` without exposing note IDs.
+- Three-way conflict handling (dossier base vs live Anki note vs proposal). Manual Anki edits
+  win by default and are reported; `--overwrite-conflicts` is explicit.
+- Scheduling-safe apply: field-only updates verify note/card IDs, scheduling fields, and
+  revlog counts. Merge keeps the survivor's history, split keeps the existing card's history,
+  new cards start new, and cloze ordinal changes require explicit approval.
+- Explicit destructive groups: every cull/merge group asks Delete permanently / Suspend /
+  Keep, with no default. Destructive applies write `backup.json` first; sync is opt-in and
+  happens only after verification.
+- `pipeline.py --build` packs the dossier automatically before cleanup; `--no-context` opts
+  out. Old decks without a dossier can be reconstructed read-only from AnkiConnect fields and
+  tags (`confidence: reconstructed`).
+- `references/revision.md` documents the revision workflow, intent vocabulary, identity model,
+  conflicts, destructive choices, scheduling policy, and context portability.
+- `tests/context_hardening.py` and `tests/revision_hardening.py` cover AnkiConnect-unavailable,
+  read-only attach/audit, ambiguity, plan/apply, scheduling preservation, user-edit conflicts,
+  delete/suspend/keep, merge/split, cloze ordinals, dossier roundtrip/export/import, adaptive
+  previews, and no-litter.
+
+### Changed
+- Stage 11 now leaves a durable dossier outside the caller's directory; stage 14 still deletes
+  `.anki-gen-temp` in full.
+- `VERSION` is `1.5.0`; the review web UI, its Easy button, and its summary text are unchanged.
+
+### Notes
+- AnkiConnect is the only live integration surface. No raw SQLite writes, `anki` library path,
+  MCP server, or second Anki integration was added.
 
 ## v1.4.2 — Image/alternate-source ingest and review calibration
 

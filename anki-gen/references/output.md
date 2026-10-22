@@ -3,7 +3,11 @@
 - `./<topic>.apkg` in cwd.
 - **Cleanup is part of the output contract.** After the build validates, the only new entry in the
   caller's directory is the `.apkg`. The work directory is deleted in full and the review server is
-  stopped; no source folder is left unless the caller named one.
+  stopped; no source folder is left unless the caller named one. The compact deck dossier is
+  persistent by design and lives under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`, outside
+  the caller's directory; it is not part of the scratch tree.
+- **Revising an imported deck is not a rebuild.** Attach/audit/revision use AnkiConnect and the
+  dossier; see `references/revision.md`. Do not fix a live deck by re-importing beside it.
 - **Deck naming is the caller's.** Pass through `--deck-name`; impose no convention (rule 23). It is
   **required** — a silent `"Default"` fallback once let a valid deck land somewhere nobody finds.
   Ask in the source survey. A `::` nests; Anki matches case-insensitively.
