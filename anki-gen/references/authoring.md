@@ -92,15 +92,26 @@ stages 5 and 6 leave artifacts, and why the deck belongs in a file.
 
 ## Media (opt-in)
 
-Default: no images; `media` is ignored. When the user asks for figures, list candidates with
-`media_index.py <workdir>` (or `--cards cards.jsonl` for a ranked 3-5 per card) and attach only
-when the caption, nearby text, or slide title clearly matches the card — never claim to have seen
-an image, and never guess. Slide and page crops are `confirm` candidates, not automatic attachments.
-Unclear means drop and report it.
-`side` defaults to `back`; use `front` when the image *is* the question. Cap: ≤1600 px / ≤1 MB
-per image, ≤2 per card; over-cap images are downscaled with Pillow (not dropped) and skipped only
-if still over. Every card with `media` is audited in review. Local-media citations use the
-recording name + timestamp and intentionally have no `source_url`.
+Default: no images; `media` is ignored. When the user asks for figures, use
+`media_index.py <workdir> --cards cards.jsonl --per-card 2` and attach only when the candidate
+shows the thing the front asks about. `--cards` ranks cards that still need media; use
+`--all-cards` to inspect existing choices. Same page, same topic, or a generic caption is not enough.
+Never claim to have seen an image, and never guess.
+
+A `confirm` crop or frame is **not attachable** without `image-vision` confirmation or explicit
+user approval. “More images” is not approval to lower the bar. Do not attach title/outline/agenda
+slides, incomplete crops, or whitespace-heavy frames. If no good image exists, leave the card
+without one and report how many cards had no acceptable candidate.
+
+If image-vision has no key or exhausts its one bounded retry, the caller may use the ≤6-image
+main-model fallback from `SKILL.md` only for images necessary to answer/attach a card. Label that
+read as unverified; never present it as image-vision-confirmed.
+
+`side` defaults to `back`; use `front` when the image *is* the question. A front that says “shown,”
+“this circuit,” or “the example” must carry the image on the front or inline the data. Cap:
+≤1600 px / ≤1 MB per image, ≤2 per card; over-cap images are downscaled with Pillow (not dropped)
+and skipped only if still over. Local-media citations use the recording name + timestamp and
+intentionally have no `source_url`.
 
 For video frames, read `references/video.md`: attach the marked `BEST` frame
 (high/medium confidence), and keep the video title/timestamp as the source.

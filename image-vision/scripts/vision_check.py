@@ -30,6 +30,7 @@ PROMPT_VERSION = "vision-check-2"
 DEFAULT_MODEL = "gemini-flash-lite-latest"
 API_VERSION = os.environ.get("GEMINI_API_VERSION", "v1beta")
 RETRY_DELAYS = (1, 2)
+DEFAULT_DELAY = 12.0          # 5 RPM, below the free-tier flash-lite burst limit
 MODEL_TTL = 7 * 24 * 3600
 CACHE = Path(os.environ.get("ANKI_GEN_CACHE_DIR", Path.home() / ".cache" / "anki-gen")) / "vision.jsonl"
 MODEL_CACHE = CACHE.parent / "vision-models.json"
@@ -207,8 +208,15 @@ def confirm(path: Path, key: str, cache: dict, cache_path: Path,
             remember(cache_path, row)
             return row, False
         except HTTPError as e:
-            if e.code == 429 and not retry_429:
-                raise RateLimited("429 rate limit; stopping") from e
+            if e.code == 429:
+                message = (f"429 rate limit for {model}; Gemini free-tier RPM/RPD "
+                           "may be exhausted. Check the dashboard, use a flash-lite "
+                           "model, lower --max, or retry later")
+                if not retry_429 or attempt + 1 >= attempts:
+                    raise RateLimited(message) from e
+                # One bounded retry at a slower rate, then stop. Never loop.
+                time.sleep(max(delay * 2, DEFAULT_DELAY))
+                continue
             if e.code == 404:
                 try:
                     model = resolve_model(key, force=True)
@@ -216,7 +224,7 @@ def confirm(path: Path, key: str, cache: dict, cache_path: Path,
                     raise
                 if attempt + 1 < attempts:
                     continue
-            if e.code in (429, 503) and attempt + 1 < attempts:
+            if e.code == 503 and attempt + 1 < attempts:
                 time.sleep(delay)
                 continue
             raise
@@ -242,14 +250,14 @@ def main() -> int:
                     help="flash-lite model; default env/discovery")
     ap.add_argument("--timeout", type=float, default=20,
                     help="seconds per image request")
-    ap.add_argument("--max-seconds", type=float, default=180,
+    ap.add_argument("--max-seconds", type=float, default=600,
                     help="global deadline; stop with a partial report")
-    ap.add_argument("--delay", type=float, default=0.5,
-                    help="pause between uncached calls")
+    ap.add_argument("--delay", type=float, default=DEFAULT_DELAY,
+                    help="pause between uncached calls; 12s ~= 5 RPM")
     ap.add_argument("--retries", type=int, default=2,
                     help="retries for transient 503/network errors")
     ap.add_argument("--retry-429", action="store_true",
-                    help="retry a 429 once instead of stopping")
+                    help="retry a 429 once at a doubled delay, then stop")
     ap.add_argument("--stop-after-errors", type=int, default=2)
     args = ap.parse_args()
     key = load_key()

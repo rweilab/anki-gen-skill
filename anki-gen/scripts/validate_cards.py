@@ -35,6 +35,9 @@ FORBIDDEN_FRONT = re.compile(
 )
 
 CTRL = re.compile(r"[\x07\x08\x09\x0b\x0c\x0d][A-Za-z]")
+FRONT_REF = re.compile(
+    r"\b(the|this|that)\s+(slide|circuit|figure|diagram|graph|example)|"
+    r"slide's example|shown\s+(above|below)", re.I)
 SYM = re.compile(r"\\?[A-Za-z]_\{?[A-Za-z0-9]+\}?|\\[A-Za-z]+")
 
 
@@ -209,6 +212,13 @@ def findings(cards):
             if len(media_list) > 2:
                 add(i, "warn", f"{label} -- {len(media_list)} media entries (max 2); "
                               "the extra ones will be skipped at build")
+            has_front = any(isinstance(m, dict)
+                            and str(m.get("side") or "back").lower() == "front"
+                            for m in media_list)
+            if FRONT_REF.search(str(c.get("front", ""))) and not has_front:
+                add(i, "warn",
+                    f"{label} -- front refers to an image/example but has no front "
+                    "media; put the image on the front or inline the data")
 
         # 8. provenance. build_native.py renders `source` as the card footer;
         # `source_ref` is an older spelling of the same field and still works.
@@ -347,6 +357,16 @@ def findings(cards):
         if has_deletion and not is_cloze_flag:
             add(i, "err", f"{label} -- front contains cloze syntax but card is not "
                           "flagged cloze; it would render literally as a Basic note")
+        if is_cloze_flag:
+            blanks = list(re.finditer(r"\{\{c\d+::", front))
+            if len(blanks) >= 2:
+                for blank in blanks:
+                    before = front[max(0, blank.start() - 50):blank.start()]
+                    if not re.search(r"[:=]\s*$", before):
+                        add(i, "warn",
+                            f"{label} -- multi-blank cloze needs a label before "
+                            "each blank (e.g. 'Tolerance:', 'Power:', 'Typical use:')")
+                        break
 
         # F2: a cloze front should have ONE retrieval target -- the blank. A second
         # question means every sibling card grades two things at once ("... {{c1::x}}

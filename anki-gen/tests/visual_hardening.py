@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+import media_index  # noqa: E402
 import platform_paths  # noqa: E402
 import visual  # noqa: E402
 import ytdlp  # noqa: E402
@@ -199,7 +200,15 @@ def main() -> int:
         ranked = json.loads(r.stdout)
         assert ranked[0]["candidates"][0]["page"] == 1, ranked[0]
         assert ranked[1]["candidates"][0]["page"] == 2, ranked[1]
-        print("ok    card-driven figure ranking")
+        crop_card = {"front": "Which cell is shown in the vector figure?",
+                     "back": "The vector diagram.", "layer": "L2",
+                     "topic": "Unit Cells", "deck": "X",
+                     "source": "two.pdf p.2",
+                     "media": [{"file": crops[0]["file"], "side": "back",
+                                "caption": "Vector diagram"}]}
+        risks = media_index.audit_cards([crop_card], two_out)
+        assert any(r["risk"] == "confirm crop without vision" for r in risks), risks
+        print("ok    card-driven figure ranking and confirm-crop risk")
 
         # Vision metadata from the work report joins the same index.
         one = embedded[0]
@@ -280,6 +289,7 @@ def main() -> int:
     assert vision_check.pick_model(
         ["models/gemini-2.5-flash", "models/gemini-flash-lite-latest"]
     ) == "gemini-flash-lite-latest"
+    assert vision_check.DEFAULT_DELAY == 12.0
     assert vision_check.parse_json_text('```json\n{"kind": "diagram"}\n```')["kind"] == "diagram"
 
     from PIL import Image
@@ -302,6 +312,40 @@ def main() -> int:
                 png, "key", vision_check.load_cache(cache), cache)
             assert cached and len(calls) == 1
         print("ok    vision_check cache")
+
+        calls.clear()
+
+        def quota_once(model, key, path, *a, **kw):
+            calls.append(model)
+            if len(calls) == 1:
+                raise HTTPError("u", 429, "quota", {}, None)
+            return {"kind": "diagram", "usable_as_card_image": True}
+
+        with mock.patch.object(vision_check, "request", side_effect=quota_once), \
+             mock.patch.object(vision_check.time, "sleep") as slept:
+            row, _ = vision_check.confirm(
+                png, "key", {}, td / "cache429.jsonl", retry_429=True,
+                model="gemini-3.1-flash-lite")
+        assert len(calls) == 2 and slept.call_count == 1, (calls, slept.call_count)
+        assert row["result"]["usable_as_card_image"]
+        print("ok    vision_check one 429 retry then continue")
+
+        calls.clear()
+
+        def always_429(model, key, path, *a, **kw):
+            calls.append(model)
+            raise HTTPError("u", 429, "quota", {}, None)
+
+        with mock.patch.object(vision_check, "request", side_effect=always_429):
+            try:
+                vision_check.confirm(png, "key", {}, td / "cache429b.jsonl",
+                                     model="gemini-3.1-flash-lite")
+            except vision_check.RateLimited as e:
+                assert "429 rate limit" in str(e), e
+            else:
+                raise AssertionError("429 did not raise without --retry-429")
+        assert len(calls) == 1, calls
+        print("ok    vision_check stops immediately on 429 by default")
 
         def flaky(model, key, path, *a, **kw):
             calls.append(model)
@@ -343,7 +387,7 @@ def main() -> int:
         with mock.patch.object(vision_check, "load_key", return_value="key"), \
              mock.patch.object(vision_check, "confirm", side_effect=fake_confirm), \
              mock.patch.object(sys, "argv",
-                               ["vision_check.py", str(png), str(second), "--max", "1", "--report", str(td / "report1")]):
+                               ["vision_check.py", str(png), str(second), "--max", "1", "--delay", "0", "--report", str(td / "report1")]):
             vision_check.main()
         assert len(calls) == 1, calls
         print("ok    vision_check --max budget")

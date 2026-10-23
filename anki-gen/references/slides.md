@@ -13,7 +13,7 @@ A diagram made only of PowerPoint shapes is **not rendered**. Cite the slide, or
 through `extract_pdf.py`; never use LibreOffice/`soffice`/Office. Ask for a PDF when full visual
 fidelity matters. For PDF lecture decks, `extract_pdf.py` also writes tight `slide-crop`
 candidates (caption/title/nearby-text association, `confirm` only); use
-`media_index.py <work> --cards cards.jsonl` to rank them.
+`media_index.py <work> --cards cards.jsonl --per-card 2` to rank them.
 
 Do not download a random PPTX to replace missing video frames. Use slides when they are the real
 source or the user provides them; otherwise cite the video/slide and skip the image.

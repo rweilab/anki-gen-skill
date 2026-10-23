@@ -40,6 +40,13 @@ VISUAL_WORDS = (
 CUE = re.compile(
     rf"\b({VISUAL_WORDS}|this slide|as you can see|here'?s the|shown here)\b", re.I)
 STRONG_CUE = re.compile(rf"\b({VISUAL_WORDS})\b", re.I)
+TITLE_LIKE = re.compile(
+    r"\b(outline|agenda|slide set|lecture\s*\d|introduction|overview|"
+    r"chapter\s*\d|course\s+title|fundamentals of circuits)\b", re.I)
+
+
+def title_like(*texts: str) -> bool:
+    return any(TITLE_LIKE.search(str(text or "")) for text in texts)
 
 
 def run(cmd, timeout=300):
@@ -160,7 +167,11 @@ def probe(video: Path, vid: str, at: float, work: Path):
 def make_row(vid: str, title: str, at: float, path: Path, metrics: dict,
              q: dict, words: int, cue: dict, cue_id: int,
              source_label: str, source_url: str, work: Path,
-             ocr_sample: str = "") -> dict:
+             ocr_sample: str = "", manual: bool = False) -> dict:
+    is_title = title_like(ocr_sample, cue.get("text", ""))
+    if is_title and not manual:
+        q = {**q, "quality": "low", "confidence": "low", "attach": "skip",
+             "needs_vision": False, "reason": "title/outline slide"}
     return {
         "id": f"vf-{vid}-{int(at):06d}",
         "video_id": vid, "time": at, "timecode": fmt(at),
@@ -177,6 +188,7 @@ def make_row(vid: str, title: str, at: float, path: Path, metrics: dict,
         "color": metrics["color"], "background": metrics["background"],
         "dhash": metrics["dhash"], "shash": metrics.get("shash", 0),
         "ocr_sample": ocr_sample[:240],
+        "title_like": is_title,
         "local_kind": local_kind(ocr_sample, q),
         "best": False, "cue_id": cue_id,
     }
@@ -422,7 +434,8 @@ def main() -> int:
             q = {**q, "quality": "high", "confidence": "manual",
                  "attach": "direct", "needs_vision": False, "reason": "manual"}
             row = make_row(args.video_id, args.title, at, path, metrics, q, words,
-                           cue, None, label, args.source_url, work, sample)
+                           cue, None, label, args.source_url, work, sample,
+                           manual=True)
             row["id"] = f"vf-manual-{args.video_id}-{int(at):06d}"
             row["best"] = True
             rows = [row]

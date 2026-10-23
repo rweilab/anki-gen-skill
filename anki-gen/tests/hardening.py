@@ -98,7 +98,7 @@ def main() -> int:
     print("ok    positive control and derived-source policy")
 
     skill = (ROOT / "SKILL.md").read_text()
-    for phrase in ("Never use main-model vision",
+    for phrase in ("Main-model vision is a last-resort",
                    "Never spawn a child `opencode` process",
                    "Do not probe for LibreOffice",
                    "Never open, copy, query, or inspect the live collection DB"):
@@ -287,6 +287,16 @@ def main() -> int:
          "warning", "object tags")
     case("duplicate object case", lambda: [dict(BASE, objects=["RtOs", "rtos"])],
          "warning", "duplicate object")
+    case("front refers to unseen image",
+         lambda: [dict(BASE, objects=[], front="For the circuit shown, what is the current?")],
+         "warning", "front refers")
+    case("multi-blank cloze without labels",
+         lambda: [dict(BASE, objects=[], front="{{c1::5}} and {{c2::7}}", cloze=True)],
+         "warning", "multi-blank")
+    front_media, _ = validate([dict(
+        BASE, front="For the circuit shown, what is the current?",
+        media=[{"file": "figure.png", "side": "front"}])])
+    assert not any("front refers" in w for w in front_media["warnings"]), front_media
     case("bad layer", lambda: [dict(BASE, layer="L9")],
          "error", "bad layer")
     case("empty back", lambda: [dict(BASE, back="")],

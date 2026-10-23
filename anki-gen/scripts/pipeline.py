@@ -27,22 +27,53 @@ Usage
     pipeline.py --sources "https://youtube.com/playlist?list=..." --work "$WORK" \
         --images yes --vision auto --vision-max 12
 
-Deliberately no `--resume` and no chunking: this is one pass over one target. A corpus
-too large for one context is the job of the checkpointing work, not of this script.
+Media sources are processed one at a time with progress and `pipeline_state.json`;
+`--resume` skips completed sources. A corpus too large for one context still belongs in
+separate runs, not one giant context.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
-import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from cardid import load_cards                       # noqa: E402
 from preflight import check as preflight            # noqa: E402
+
+STATE_FILE = "pipeline_state.json"
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _load_state(out: Path) -> dict:
+    try:
+        return json.loads((out / STATE_FILE).read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_state(out: Path, state: dict) -> None:
+    state["updated_at"] = _now()
+    path = out / STATE_FILE
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    tmp.replace(path)
+
+
+def _mark(out: Path, stage: str, status: str, **fields) -> None:
+    state = _load_state(out)
+    state["stage"] = stage
+    state["status"] = status
+    state.update(fields)
+    _write_state(out, state)
 
 
 def _short(path: Path, root: Path) -> str:
@@ -84,105 +115,128 @@ def _media_images(sources: list[str], mode: str) -> str:
 def stage_media(sources: list[str], out: Path, images: str, model: str,
                 language: str, force: bool, whole_playlist: bool = False,
                 items: str = "", title: str = "", device: str = "cpu",
-                initial_prompt: str | None = None) -> dict:
-    """Transcribe local/URL media and frames in one extraction command per source."""
+                initial_prompt: str | None = None,
+                resume: bool = False) -> dict:
+    """Transcribe local/URL media one source at a time with progress and resume."""
     from media_transcribe import is_media, media_files
-    local_files = []
-    for s in sources:
-        p = Path(s[7:] if s.startswith("file://") else s)
-        if p.is_file() and is_media(p):
-            local_files.append(p)
-        elif p.is_dir():
-            local_files.extend(media_files(str(p)))
-    cleanup = None
-    remote = [s for s in sources
-              if not Path(s[7:] if s.startswith("file://") else s).exists()]
-    if len(local_files) > 1:
-        cleanup = tempfile.TemporaryDirectory(dir=out)
-        batch = Path(cleanup.name)
-        used = {}
-        for p in local_files:
-            name = p.name
-            if name in used:
-                used[name] += 1
-                name = f"{p.stem}-{used[name]}{p.suffix}"
-            else:
-                used[name] = 1
-            link = batch / name
-            link.symlink_to(p.resolve())
-            side = p.with_suffix(".vtt")
-            if side.is_file():
-                (batch / f"{link.stem}.vtt").symlink_to(side.resolve())
-            side = p.with_suffix(".srt")
-            if side.is_file():
-                (batch / f"{link.stem}.srt").symlink_to(side.resolve())
-        sources = [str(batch)] + remote
+    units = []
+    for source in sources:
+        path = Path(source[7:] if source.startswith("file://") else source)
+        if path.is_dir():
+            units.extend(str(p.resolve()) for p in media_files(str(path)))
+        elif path.is_file() and is_media(path):
+            units.append(str(path.resolve()))
+        else:
+            units.append(source)
+    state = _load_state(out)
+    media = state.setdefault("media", {})
+    all_videos, all_failures = [], []
+    chunks = failed = 0
+    for index, source in enumerate(units, 1):
+        key = source
+        prior = media.get(key) or {}
+        if resume and prior.get("status") == "done":
+            all_videos.extend(prior.get("videos") or [])
+            all_failures.extend(prior.get("failures") or [])
+            chunks += int(prior.get("chunks") or 0)
+            print(f"[media {index}/{len(units)}] resume skip {Path(source).name}",
+                  flush=True)
+            continue
+        media[key] = {"status": "running", "started_at": _now(),
+                      "index": index, "total": len(units)}
+        state["stage"] = "media"
+        state["status"] = "running"
+        state["source"] = key
+        state["source_index"] = index
+        state["source_total"] = len(units)
+        _write_state(out, state)
+        print(f"[media {index}/{len(units)}] start {Path(source).name}",
+              flush=True)
+        log = out / "logs" / f"media-{index:02d}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [sys.executable, str(Path(__file__).with_name("extract_video.py")),
+               source, "--work", str(out), "--images", images,
+               "--model", model, "--language", language, "--device", device]
+        if whole_playlist:
+            cmd.append("--whole-playlist")
+        if items:
+            cmd += ["--items", items]
+        if title and len(units) == 1:
+            cmd += ["--title", title]
+        if initial_prompt:
+            cmd += ["--initial-prompt", initial_prompt]
+        if force:
+            cmd.append("--force-transcribe")
+        with log.open("w") as handle:
+            r = subprocess.run(cmd, stdout=handle, stderr=subprocess.STDOUT,
+                               text=True)
+        if r.returncode != 0:
+            failed += 1
+            media[key] = {"status": "failed", "finished_at": _now(),
+                          "log": str(log), "error": _tail(log)}
+            print(f"[media {index}/{len(units)}] failed; log {log}", flush=True)
+            continue
+        try:
+            meta = json.loads((out / "video_meta.json").read_text())
+            videos = [json.loads(line) for line in
+                      (out / "videos.jsonl").read_text().splitlines()
+                      if line.strip()]
+        except (OSError, json.JSONDecodeError):
+            failed += 1
+            media[key] = {"status": "failed", "finished_at": _now(),
+                          "log": str(log), "error": "missing video output"}
+            print(f"[media {index}/{len(units)}] failed; no video output",
+                  flush=True)
+            continue
+        media[key] = {"status": "done", "finished_at": _now(), "log": str(log),
+                      "videos": videos, "chunks": int(meta.get("chunks") or 0),
+                      "failures": list(meta.get("failures") or [])}
+        all_videos.extend(videos)
+        all_failures.extend(meta.get("failures") or [])
+        chunks += int(meta.get("chunks") or 0)
+        print(f"[media {index}/{len(units)}] done {len(videos)} video(s)",
+              flush=True)
+        _write_state(out, state)
+    if all_videos:
+        (out / "videos.jsonl").write_text("".join(
+            json.dumps(v, ensure_ascii=False) + "\n" for v in all_videos))
+        (out / "video_meta.json").write_text(json.dumps(
+            {"videos": all_videos, "chunks": chunks,
+             "failures": all_failures}, indent=2) + "\n")
+        toc = ["# Video source map", ""]
+        for video in all_videos:
+            toc += [f"## {video.get('title', video.get('id', ''))}",
+                    f"- id: {video.get('id', '')}",
+                    f"- {video.get('source_label', '')} @ 00:00"]
+            if video.get("source_url"):
+                toc.append(f"- {video['source_url']}")
+            toc += [f"- cues: {video.get('cues', 0)}", ""]
+        if all_failures:
+            toc.append("## Skipped")
+            toc += [f"- {f.get('id', '')} — {f.get('reason', '')} — "
+                    f"{f.get('title', '')}" for f in all_failures]
+            toc.append("")
+        (out / "video_toc.md").write_text("\n".join(toc))
+        try:
+            from extract_video import write_combined_transcripts
+            write_combined_transcripts(out, all_videos)
+        except Exception as e:
+            print(f"pipeline.py: could not merge transcripts: {e}",
+                  file=sys.stderr)
+    state = _load_state(out)
+    state["stage"] = "media"
+    state["status"] = "done" if not failed else "failed"
+    state["media_failed"] = failed
+    _write_state(out, state)
+    return {"videos": len(all_videos), "chunks": chunks, "failed": failed}
+
+
+def _tail(path: Path, limit: int = 300) -> str:
     try:
-        chunks = failed = 0
-        all_videos: list[dict] = []
-        all_failures: list[dict] = []
-        for source in sources:
-            cmd = [sys.executable, str(Path(__file__).with_name("extract_video.py")),
-                   source, "--work", str(out), "--images", images,
-                   "--model", model, "--language", language, "--device", device]
-            if whole_playlist:
-                cmd.append("--whole-playlist")
-            if items:
-                cmd += ["--items", items]
-            if title:
-                cmd += ["--title", title]
-            if initial_prompt:
-                cmd += ["--initial-prompt", initial_prompt]
-            if force:
-                cmd.append("--force-transcribe")
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                failed += 1
-                print(f"pipeline.py: media failed for {source}: {r.stderr[-300:]}",
-                      file=sys.stderr)
-                continue
-            try:
-                meta = json.loads((out / "video_meta.json").read_text())
-                chunks += int(meta.get("chunks") or 0)
-                all_failures.extend(meta.get("failures") or [])
-                all_videos.extend(
-                    json.loads(line) for line in
-                    (out / "videos.jsonl").read_text().splitlines() if line.strip())
-            except (OSError, json.JSONDecodeError):
-                failed += 1
-        # Each child writes its own videos.jsonl / video_toc.md / video_meta.json.
-        # With more than one source those files held only the last child. Merge
-        # what succeeded so the source map and citations stay complete.
-        if len(sources) > 1:
-            (out / "videos.jsonl").write_text("".join(
-                json.dumps(v, ensure_ascii=False) + "\n" for v in all_videos))
-            toc = ["# Video source map", ""]
-            for v in all_videos:
-                toc += [f"## {v.get('title', v.get('id', ''))}",
-                        f"- id: {v.get('id', '')}",
-                        f"- {v.get('source_label', '')} @ 00:00"]
-                if v.get("source_url"):
-                    toc.append(f"- {v['source_url']}")
-                toc += [f"- cues: {v.get('cues', 0)}", ""]
-            if all_failures:
-                toc.append("## Skipped")
-                toc += [f"- {f.get('id', '')} — {f.get('reason', '')} — "
-                        f"{f.get('title', '')}" for f in all_failures]
-                toc.append("")
-            (out / "video_toc.md").write_text("\n".join(toc))
-            (out / "video_meta.json").write_text(json.dumps(
-                {"videos": all_videos, "chunks": chunks,
-                 "failures": all_failures}, indent=2) + "\n")
-            try:
-                from extract_video import write_combined_transcripts
-                write_combined_transcripts(out, all_videos)
-            except Exception as e:
-                print(f"pipeline.py: could not merge transcripts: {e}",
-                      file=sys.stderr)
-        return {"videos": len(all_videos), "chunks": chunks, "failed": failed}
-    finally:
-        if cleanup:
-            cleanup.cleanup()
+        return path.read_text()[-limit:].strip()
+    except OSError:
+        return ""
+
 
 
 def stage_extract(sources: list[str], out: Path, manifest_full: bool,
@@ -198,10 +252,23 @@ def stage_extract(sources: list[str], out: Path, manifest_full: bool,
             "chars": chars, "figures": figs, "manifest": manifest}
 
 
+def _roi_risks(text: str) -> tuple[list[int], int]:
+    split_cards: list[int] = []
+    restatements = 0
+    if "SPLIT CANDIDATES" in text:
+        section = text.split("SPLIT CANDIDATES", 1)[1].split("\n\n", 1)[0]
+        split_cards = [int(n) for n in re.findall(r"^\s+card\s+(\d+)", section, re.M)]
+    match = re.search(r"RESTATEMENT FLAGS\s+—\s+(\d+)", text)
+    if match:
+        restatements = int(match.group(1))
+    return split_cards, restatements
+
+
 def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> dict:
     """Validate, triage and ROI on the written deck. Consumes the FILE, returns counts."""
     from validate_cards import check_cards
     from triage import select, build_plan
+    from media_index import audit_cards
     import roi_report
 
     cards = load_cards(cards_path)
@@ -230,10 +297,14 @@ def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> 
     finally:
         sys.argv = saved_argv
     roi_path.write_text(buf.getvalue())
+    split_cards, restatements = _roi_risks(buf.getvalue())
+    media_risks = audit_cards(cards, out)
 
     return {"cards": len(cards), "errors": len(errs), "warnings": len(warns),
             "selected": len(entries), "total": len(cards),
-            "plan": plan_path, "roi": roi_path}
+            "plan": plan_path, "roi": roi_path,
+            "roi_split": split_cards, "roi_restatements": restatements,
+            "media_risks": media_risks}
 
 
 def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
@@ -394,6 +465,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max", dest="max_total", type=int, default=12)
     ap.add_argument("--gates-only", action="store_true",
                     help="skip extraction; just validate/triage/ROI the --cards deck")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip media sources already marked done in pipeline_state.json")
+    ap.add_argument("--status", action="store_true",
+                    help="print the last pipeline state and exit")
+    ap.add_argument("--allow-media-risk", action="store_true",
+                    help="build despite media risks (diagnosis only)")
     ap.add_argument("--vision", choices=("off", "auto"), default="off",
                     help="opt-in bounded vision pass over canonical frames")
     ap.add_argument("--vision-max", type=int, default=12)
@@ -421,6 +498,11 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     root = Path.cwd()
     lines: list[str] = []
+    if args.status:
+        state = _load_state(out)
+        print(json.dumps(state, indent=2) if state else "no pipeline state")
+        return 0
+    _mark(out, "run", "running")
 
     if args.gates_only and not args.cards:
         print("pipeline.py: --gates-only requires --cards", file=sys.stderr)
@@ -437,13 +519,15 @@ def main(argv: list[str] | None = None) -> int:
                               _media_images(media_sources, args.images),
                               args.model, args.language, args.force_transcribe,
                               args.whole_playlist, args.items, args.title,
-                              args.device, args.initial_prompt)
+                              args.device, args.initial_prompt,
+                              resume=args.resume)
             lines.append(f"media      {med['videos']} source(s), {med['chunks']} chunks"
                          + (f", {med['failed']} FAILED" if med['failed'] else ""))
             if med["failed"] and not med["videos"]:
                 print("\n".join(lines))
                 return 1
         if doc_sources:
+            _mark(out, "extract", "running", sources=doc_sources)
             ex = stage_extract(doc_sources, out, args.manifest_full,
                                args.date_filter, args.page_crops)
             if not ex["sources"]:
@@ -460,6 +544,8 @@ def main(argv: list[str] | None = None) -> int:
             for s in ex["manifest"]["sources"]:
                 if s.get("warning"):
                     lines.append(f"           ! {s['tag']}: {s['warning']}")
+            _mark(out, "extract", "done", sources=len(ex["manifest"]["sources"]),
+                  failed=ex["failed"])
         if args.vision == "auto":
             v = stage_vision(out, args.vision_max, args.vision_seconds,
                              args.vision_timeout)
@@ -473,16 +559,38 @@ def main(argv: list[str] | None = None) -> int:
 
     g = None
     if args.cards:
+        _mark(out, "gates", "running")
         g = stage_gates(Path(args.cards), out, args.per_topic, args.max_total)
+        _mark(out, "gates", "done", cards=g["cards"], errors=g["errors"],
+              warnings=g["warnings"], media_risks=len(g["media_risks"]),
+              roi_split=len(g["roi_split"]))
         lines.append(f"gates      {g['cards']} card(s): {g['errors']} error(s), "
                      f"{g['warnings']} warning(s)")
         lines.append(f"triage     {g['selected']} of {g['total']} selected -> "
                      f"{_short(g['plan'], root)}")
         lines.append(f"roi        {_short(g['roi'], root)}")
+        if g["roi_split"]:
+            shown = ", ".join(str(card) for card in g["roi_split"][:8])
+            lines.append(f"roi-split  {len(g['roi_split'])} candidate(s): {shown}")
+        if g["media_risks"]:
+            shown = "; ".join(
+                f"card {risk['card']} {risk['risk']}"
+                for risk in g["media_risks"][:8])
+            lines.append(f"media      {len(g['media_risks'])} risk(s): {shown}")
         lines.append(evidence_line(load_cards(Path(args.cards)), out))
+        review_logs = list(out.glob("review_feedback*.jsonl"))
+        review = "review log present (sample only)" if review_logs else "review not run"
+        status = "NOT READY" if g["errors"] else "NOT CERTIFIED"
+        lines.append(f"quality    static {g['errors']} error(s); "
+                     f"media {len(g['media_risks'])} risk(s); "
+                     f"roi {len(g['roi_split'])} split(s); {review}; {status}")
         if args.deck_name:
             lines.append(f"deck-name  {args.deck_name}")
         if args.build:
+            if g["media_risks"] and not args.allow_media_risk:
+                print("pipeline.py: refusing --build: media risks remain. Fix "
+                      "them or pass --allow-media-risk for diagnosis.", file=sys.stderr)
+                return 1
             if not args.deck_name:
                 print("pipeline.py: --build requires --deck-name", file=sys.stderr)
                 return 2
@@ -498,10 +606,12 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             target = (Path(args.out_apkg) if args.out_apkg else
                       Path.cwd() / f"{Path(args.cards).stem}.apkg")
+            _mark(out, "build", "running", target=str(target))
             b = stage_build(Path(args.cards), out, args.deck_name,
                             target, args.media, args.media_root, args.strict,
                             args.merge_existing)
             if b["ok"]:
+                _mark(out, "build", "done", target=b["apkg"])
                 lines.append(f"build      {b['apkg']}")
                 if b.get("build"):
                     lines.append(f"build-info {b['build']}")
@@ -514,6 +624,7 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"pipeline.py: warn: deck context not persisted: {e}",
                               file=sys.stderr)
             else:
+                _mark(out, "build", "failed", error=b["error"])
                 lines.append(f"build      FAILED: {b['error']}")
                 return 1
 

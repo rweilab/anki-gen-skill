@@ -55,8 +55,21 @@ For the shallow "is this still a usable diagram?" pass, use
   a `checked/usable/kinds/errors/cached/stopped` summary.
 
 This is not a substitute for the full pipeline below. Use it only for ambiguous
-video frames, one call per unique frame, and keep the budget small. The main
-model must not read the images itself.
+video frames, one call per unique frame, and keep the budget small.
+
+**Free-tier pacing.** The dashboard's peak/limit columns are not remaining quota:
+RPM = requests/minute, TPM = tokens/minute, RPD = requests/day. The lite text
+models currently show hundreds of requests/day (500 RPD on the models this skill
+uses), while mainline Flash can be ~20/day; never fall back to a non-lite model
+for bulk work. A 15 RPM cap is easy to burst, so `vision_check.py` defaults to a
+12-second gap between uncached calls (~5 RPM). Keep `--delay` configurable because
+limits change. On 429 it stops; `--retry-429` allows one retry at a doubled delay,
+then stops — no loop.
+
+**No key.** If neither `GEMINI_API_KEY` nor `~/.config/anki-gen/gemini.key` exists,
+stop. Do not silently use another provider from this skill. The calling skill may
+choose its own bounded main-model vision fallback, under its own policy; record
+that result as unverified.
 
 ## The pipeline
 

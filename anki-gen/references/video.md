@@ -101,7 +101,9 @@ The picker is two-stage:
   expensive, low-yield calls this pipeline exists to avoid.
 
 `image-vision` is card-driven and sparing: confirm only a frame you are about to
-attach, only when it is `confirm`/`needs_vision`. Use
+attach, only when it is `confirm`/`needs_vision`. If it has no key or its one
+bounded retry fails, the ≤6-image main-model fallback from `SKILL.md` is allowed
+only for necessary frames and must be labeled unverified. Use
 `image-vision/scripts/vision_check.py --max N` for the fast accept/reject pass;
 it resolves the model, retries 503/429 briefly, caches by SHA, and stops on a
 quota error. One call per unique frame. Use the full `image-vision` pipeline for
@@ -109,11 +111,14 @@ labels, relationships, handwriting, and ambiguous figures only. For long dense
 series, process by chapter/topic and confirm only the candidates needed by
 cards; there is no fixed per-video confirmation count.
 
-Attach frames only when they illustrate the card. Each media entry carries
-`source` and the frame's `source_url`; those become the one-line footer, so do
-not repeat the full source in the card text. The image caption stays separate.
-A canonical diagram may be attached to several related cards; media reuse is
-expected, not duplication.
+Attach frames only when they illustrate the card. Title/outline/agenda slides are
+not images: `frames.py` marks them `skip`, and a frame whose caption is only
+"Lecture: ..." needs a real recaption or removal. A `confirm` frame needs
+`image-vision` or explicit approval; "more pictures" is not approval. If no good
+frame exists, leave the card without one. Each media entry carries `source` and
+the frame's `source_url`; those become the one-line footer, so do not repeat the
+full source in the card text. A canonical diagram may be attached to several
+related cards; media reuse is expected, not duplication.
 Review serves image cards as a bounded cross-section; a wrong frame is a review
 comment.
 

@@ -86,6 +86,13 @@ page/sector/register/MIPS-style jargon before using it. History is only useful w
 why the standard or number exists. Use `source: "derived"` for self-contained math; cite
 source-dependent claims, and never invent a citation to satisfy the field.
 
+**Self-contained fronts.** If the front says “shown,” “this circuit,” “the slide,” or “the
+example,” put the image on the front or inline the data. A back image does not count.
+
+**Cloze context.** Every deletion needs a label and context. For a multi-field row, label each
+blank: `Tolerance: {{c1::...}}; Power: {{c2::...}}; Typical use: {{c3::...}}`. A bare value is not
+a cloze.
+
 **For formulas:** use Basic for the whole formula (rule 15). If a genuine enumeration needs cloze,
 blank one item only — never the whole formula or a single computed answer.
 
@@ -248,6 +255,10 @@ position, or front; if the same generic paragraph repeats on sibling cards; if i
 page/sector/register/MIPS without explaining it; or if the history does not explain why the
 standard/number exists. A bare value is better than padding. Citations are for source-dependent
 claims, not `2^3 = 8`.
+
+**Card audit.** Flag any front that says “shown/the slide/the example” without front media or
+inline data, and any multi-blank cloze without labels. These are family-level defects: fix the
+pattern, not one card.
 
 ### Output
 

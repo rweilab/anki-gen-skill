@@ -17,7 +17,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from extract_video import (chunks, entries, get_vtt, index, parse_items, parse_vtt,
                            source_label, video_url)  # noqa: E402
-from frames import late_best  # noqa: E402
+from frames import late_best, title_like  # noqa: E402
 import media_transcribe as mt  # noqa: E402
 import extract_video  # noqa: E402
 import ytdlp  # noqa: E402
@@ -37,6 +37,10 @@ The timing diagram has two clocks.
 
 
 def main() -> int:
+    assert title_like("ECE-UY 2004 Fundamentals of Circuits / Slide Set #4a")
+    assert title_like("Outline", "Agenda")
+    assert not title_like("Resistor Types — General Purpose")
+    print("ok    title/outline frame classification")
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         vtt = td / "sample.vtt"

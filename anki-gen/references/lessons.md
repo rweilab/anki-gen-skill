@@ -76,7 +76,7 @@ because these are the failures that are invisible until they bite.
   could not hold — a re-scope rewrites card text, so a reworded rejected card carried a new hash and
   slipped the filter — while adding a file and a silent stale-list failure mode. `cardid.py` keeps
   `card_hash` and `last_row_per_card`.
-- **The deck audit is opt-in; the web review is unconditional** — never offered as a question.
+- **The deck audit is opt-in.** The web review runs by default on first generation; later changes ask whether to reopen it.
 - **Three gates no longer block a beginner** — the source survey proceeds on stated assumptions, the
   deck audit is skipped, and the trim list moves into the report.
 - **Cleanup is explicit and default-delete.** Stage 14 is a checklist: the `.apkg` is the only new

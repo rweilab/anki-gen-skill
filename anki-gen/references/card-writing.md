@@ -90,6 +90,15 @@ whole answer is the deletion.
    in what form? Write `{{c4::4R/√3 ≈ 2.31R}}`, or name the form (*edge length a, in terms of R*).
    Apply to units, precision, and which quantity is meant.
 
+4. **Every deletion needs a label and context.** A bare value is not a cloze. Name the role in the
+   sentence, especially in a multi-field row:
+
+   `Metal film — Tolerance: {{c1::0.01–5%}}; Power: {{c2::0.05–3 W}}; Typical use: {{c3::precision}}.`
+
+   Anki creates one card per deletion; each must still be answerable from the same labels and
+   surrounding sentence. Bad: `Metal film — {{c1::0.01–5%}}` with no “Tolerance” label. Do not
+   cloze a whole definition or a computed answer.
+
 **Constraint 3 holds for every free front, not just cloze blanks** — it is about the *retrieval
 target*. A compound front is fine, but every clause must state what kind of answer it wants.
 **Comparison/ranking fronts must embed the decision data** (a table, raw digits, or `$math$`) so
@@ -228,6 +237,17 @@ Ch 2 · Lec 04 Q11 / slide 95
   the card stands alone, cite the lecture and chapter underneath.
 - **Never invent URLs.** No fabricated YouTube links with confident timestamps — if you have not
   opened it, do not cite it. Omit rather than guess.
+
+### Fronts must stand alone
+
+If a front says **“shown,” “this circuit,” “the figure,” “the example,” or “the slide,”** the
+image must be on the **front**, or the needed data must be in the front text. A back image does not
+make the front answerable: the learner sees the front first, with no back image. This is also why
+“mesh 1 of the slide’s example” is not a valid front.
+
+A method-intro card that only asks “what does X find first / what law does it apply?” is usually a
+table-of-contents card. Rewrite it around why the method reduces unknowns, or fold it into the
+topic’s Procedure card.
 
 ### The back answers the front before it explains it
 

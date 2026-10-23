@@ -75,6 +75,10 @@ answer to the feedback log. **Each card shows why it was selected** ("flagged: n
 checked against the deck's hashes on startup; a stale plan **aborts**. Without `--plan` the server
 renders every card — the fallback, not the flow.
 
+**Before opening the port:** first generation runs the review by default. When the user is asking
+for changes or adjustments, ask whether to reopen it; do not assume. If they decline, say the deck
+was not manually reviewed and report static checks only.
+
 **Around it:** start in the background, say one short sentence — what the page is and to come back
 when done — then give the URL **alone on its own line** (paste-able whole; the server prints it
 bare). The sentence is not padding: it is the only thing that tells someone who has never seen this
@@ -92,6 +96,12 @@ Then generalise and re-scope, stop the server, verify nothing is listening. Stop
 | 3 | Hard | struggled, got there | keep — this is where the learning is |
 | 4 | Beyond me | what the comment says | the agent decides — no reason dropdown |
 | 5 | Reject | should not exist | **drop it from the source of truth** |
+
+**Read clusters, not just cards.** Repeated 1s on similar questions mean the retrieval target is too
+easy or duplicated: merge the cluster into a harder L3 contrast/boundary card or drop the trivial
+siblings, and spend the budget on the harder adjacent material. Do not add more cards of the kind
+already scoring 1. Repeated 5s with “what slide?” or “not shown” mean the front is not
+self-contained; fix the front/image, do not lower the difficulty bar.
 
 **Image cards.** Every card with `media` is a media candidate. The sample is a bounded
 cross-section — `max(3, min(8, ceil(sqrt(image_cards))))`, spread across topics and never trimmed

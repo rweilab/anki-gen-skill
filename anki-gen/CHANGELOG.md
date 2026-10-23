@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.1** — Always-loaded quality gate, stricter media/video selection, and pipeline quality status
 - **v1.5.0** — Revise imported decks in Anki via AnkiConnect, with a persistent dossier and revert
 - **v1.4.2** — Recover alternate images/captions and calibrate review with score-1 evidence
 - **v1.4.1** — Local audio/video, PDF/slide/web images, and answer-first card validation
@@ -12,6 +13,60 @@ Newest first. Keep the index to one line per release; details live below.
 - **v1.2** — Review fidelity, validator guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
+
+## v1.5.1 — Quality gate and media hardening
+
+### Added
+- An always-loaded **quality kernel** at the top of `SKILL.md`: self-contained fronts, the media
+  bar, cloze context, why quality, review status, and the rule that validation is not quality
+  certification.
+- A pipeline **quality status** line and media/ROI risk summary. The status is `NOT CERTIFIED`
+  after static checks and names media risks, ROI split candidates, and whether a review log exists.
+- `media_index.py` media-risk auditing: title/outline frames, unconfirmed `confirm` crops, generic
+  captions, and front references to unseen images.
+- Pipeline progress and resumable media: per-source `[media i/n]` lines, per-source logs,
+  `pipeline_state.json`, `--status`, and `--resume`.
+- A bounded main-model vision fallback: only when image-vision has no key or its one retry fails,
+  the image is necessary to answer/attach a card, and the batch is at most 6 images. The result is
+  labeled unverified.
+- Focused regression tests for title/outline frames, confirm-crop risk, self-contained fronts,
+  labeled cloze, pipeline state/resume, and the media-risk build block.
+
+### Changed
+- `frames.py` marks title/outline/agenda slides as non-direct; `media_index.py` penalizes
+  unconfirmed crops, title frames, and weak caption matches, skips cards that already have media
+  by default, and caps flat-index output at 40.
+- `pipeline.py --build` refuses objective media risks unless `--allow-media-risk` is passed.
+- `vision_check.py` paces uncached calls at ~5 RPM by default (12-second gap); `--retry-429`
+  permits one retry at a doubled delay, then stops. The 429 message names the free-tier RPM/RPD
+  cause. `--max-seconds` now defaults to 600 for paced batches.
+- `validate_cards.py` warns when a front refers to an unseen image/example and when a multi-blank
+  cloze lacks labels.
+- The web review runs by default on first generation. Later adjustment runs ask whether to reopen
+  it; a declined review is reported as not manually reviewed.
+- Score-1 clusters are treated as rescope evidence: merge into a harder L3 contrast/boundary card
+  or drop trivial siblings instead of adding more of the same.
+
+### Fixed
+- Media selection no longer treats title slides, outline frames, incomplete crops, or
+  whitespace-heavy frames as ready-to-attach.
+- Cloze cards require labeled context, not bare values.
+- A passing validator no longer implies a quality deck; the pipeline states what was and was not
+  checked.
+- A long media run now leaves a progress/state trail and resumes completed sources instead of
+  disappearing behind a silent timeout.
+
+### Removed
+- The old `stage_media` temp-directory/symlink batch path; media is now processed one source at a
+  time with the same work tree.
+- The unconditional "web review is never offered" rule.
+- The default unbounded `media_index` flat dump and the old 3–5-candidates-per-card guidance.
+- The implicit recommendation of unconfirmed `confirm` crops as attachable media.
+- The 0.5-second default burst pacing that caused RPM 429s; pacing is now ~5 RPM with one explicit bounded retry.
+
+### Notes
+- No current deck was retroactively repaired. The changes target future runs.
+- Review UI text, CSS, JS, Easy button, and summary remain unchanged.
 
 ## v1.5.0 — Imported-deck revision and persistent context
 

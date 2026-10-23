@@ -56,7 +56,7 @@ def _vision_fields(vision: dict[str, dict], path) -> dict:
             "vision_labels": result.get("labels", [])}
 
 
-def _rows(root: Path) -> list[dict]:
+def _rows(root: Path, *, include_risky: bool = False) -> list[dict]:
     rows = []
     vision = _vision(root)
     for f in sorted(root.rglob("figures.json")):
@@ -80,6 +80,7 @@ def _rows(root: Path) -> list[dict]:
                 "source": g.get("source") or "",
                 "source_url": g.get("source_url") or "",
                 "attach": g.get("attach") or "",
+                "title_like": False,
                 **_vision_fields(vision, g.get("file")),
             })
     for f in sorted(root.rglob("frames.jsonl")):
@@ -104,9 +105,14 @@ def _rows(root: Path) -> list[dict]:
                 "source_url": r.get("source_url") or "",
                 "attach": r.get("attach") or "",
                 "canonical": bool(r.get("canonical")),
+                "title_like": bool(r.get("title_like")),
+                "ocr_sample": r.get("ocr_sample", ""),
                 **_vision_fields(vision, r.get("file")),
             })
-    return rows
+    if include_risky:
+        return rows
+    return [row for row in rows
+            if row.get("attach") != "skip" and not row.get("title_like")]
 
 
 def _rank(row: dict) -> tuple:
@@ -134,8 +140,9 @@ def _score(card: dict, row: dict) -> tuple[float, list[str]]:
                      ("caption", "title", "nearby_text", "source"))
     cw, rw = _words(ctext), _words(rtext)
     overlap = len(cw & rw) / max(1, len(cw))
+    matches = len(cw & rw)
     if overlap >= 0.08:
-        reasons.append(f"{len(cw & rw)} matching word(s)")
+        reasons.append(f"{matches} matching word(s)")
     quality = {"high": 3, "medium": 2, "low": 1}.get(row["quality"], 0)
     if row.get("vision_kind") == "diagram":
         quality += 3
@@ -149,6 +156,15 @@ def _score(card: dict, row: dict) -> tuple[float, list[str]]:
     if row.get("canonical"):
         quality += 1
         reasons.append("canonical frame")
+    if matches < 2:
+        quality -= 2
+        reasons.append("weak caption match")
+    if row.get("title_like"):
+        quality -= 6
+        reasons.append("title/outline")
+    if row.get("attach") == "confirm" and not row.get("vision_usable"):
+        quality -= 6
+        reasons.append("needs vision")
     return loc * 4 + overlap * 3 + quality, reasons
 
 
@@ -161,18 +177,55 @@ def _line(row: dict) -> str:
     vis = f'  vision={vision}' if vision else ""
     shows = f'  {row.get("vision_shows", "")[:50]}' if row.get("vision_shows") else ""
     return (f'{row["path"]}  {loc}  {dim}  {kb:.0f}KB  {row["quality"]}  '
-            f'{",".join(row["flags"])}  {row["title"][:50]}  '
-            f'{row["caption"][:60]}{vis}{shows}')
+            f'{row.get("attach", "")}  {",".join(row["flags"])}  '
+            f'{row["title"][:50]}  {row["caption"][:60]}{vis}{shows}')
+
+
+def audit_cards(cards: list[dict], root) -> list[dict]:
+    """Return media choices that are obviously unsafe to attach."""
+    root = Path(root)
+    rows = _rows(root, include_risky=True)
+    by_path = {row["path"]: row for row in rows}
+    risks = []
+    for n, card in enumerate(cards, 1):
+        front = str(card.get("front") or "")
+        media = card.get("media") or []
+        has_front = any(isinstance(m, dict)
+                        and str(m.get("side") or "back").lower() == "front"
+                        for m in media)
+        if (re.search(r"\b(the|this|that)\s+(slide|circuit|figure|diagram|graph|example)|"
+                      r"slide's example|shown\s+(above|below)", front, re.I)
+                and not has_front):
+            risks.append({"card": n, "file": "", "risk": "front reference without front media"})
+        for item in media:
+            path = str(item.get("file") if isinstance(item, dict) else item)
+            row = by_path.get(path)
+            if row is None:
+                continue
+            if row.get("title_like"):
+                risks.append({"card": n, "file": path, "risk": "title/outline image"})
+            if row.get("attach") == "confirm" and not row.get("vision_usable"):
+                risks.append({"card": n, "file": path, "risk": "confirm crop without vision"})
+            if row.get("attach") == "skip":
+                risks.append({"card": n, "file": path, "risk": "candidate marked skip"})
+            caption = str(item.get("caption") if isinstance(item, dict) else "")
+            if re.search(r"\b(lecture|outline|agenda|intro|title|overview)\b",
+                         caption, re.I):
+                risks.append({"card": n, "file": path, "risk": "generic caption"})
+    return risks
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compact figure/frame index.")
     ap.add_argument("root")
-    ap.add_argument("--limit", type=int, default=0, help="0 = all")
+    ap.add_argument("--limit", type=int, default=40,
+                    help="flat-index cap; 0 = all")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--cards", default=None,
                     help="rank candidates per card instead of a flat index")
-    ap.add_argument("--per-card", type=int, default=3)
+    ap.add_argument("--per-card", type=int, default=2)
+    ap.add_argument("--all-cards", action="store_true",
+                    help="rank every card, including cards that already have media")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -180,13 +233,15 @@ def main() -> int:
         print(f"media_index.py: not a directory: {args.root}", file=sys.stderr)
         return 2
     rows = sorted(_rows(root), key=_rank)
-    if args.limit > 0:
+    if args.limit > 0 and not args.cards:
         rows = rows[:args.limit]
 
     if args.cards:
         cards = load_cards(args.cards)
         out = []
         for n, c in enumerate(cards, 1):
+            if c.get("media") and not args.all_cards:
+                continue
             ranked = []
             for row in rows:
                 score, reasons = _score(c, row)

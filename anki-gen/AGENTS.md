@@ -44,7 +44,8 @@ normal deck run.
 - **Do not run commands that can hang** (interactive servers, playback, unbounded
   downloads). Use short timeouts and bounded subprocess calls.
 - **Never sleep to wait out a rate limit or yt-dlp failure.** The yt-dlp wrapper
-  retries transient errors briefly; skip/report permanent ones.
+  retries transient errors briefly; skip/report permanent ones. Exception: `image-vision/scripts/vision_check.py`
+  proactively paces Gemini calls and may perform one bounded `--retry-429` sleep; never loop on 429.
 - **Do not kill the harness or your own process.** A test may stop only the known
   child process it started, after a timeout.
 - **Run autonomously to completion once a plan exists.** Ask only when blocked by

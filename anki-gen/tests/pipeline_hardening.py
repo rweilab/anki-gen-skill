@@ -47,7 +47,15 @@ def main() -> int:
                  "-i", str(media), "-vn", str(audio)], td)
         assert r.returncode == 0, r.stderr
         assert pipeline._media_images([str(audio)], "auto") == "no"
-        print("ok    pipeline local media branch and video image default")
+        state = json.loads(run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                                "--out", str(work), "--status"], td).stdout)
+        assert any(v.get("status") == "done" for v in state.get("media", {}).values()), state
+        resumed = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                       "--sources", str(media), "--out", str(work),
+                       "--images", "no", "--resume"], td)
+        assert resumed.returncode == 0, (resumed.stdout, resumed.stderr)
+        assert "resume skip" in resumed.stdout, resumed.stdout
+        print("ok    pipeline local media branch, state, and resume")
 
         second = td / "second.mp4"
         r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
@@ -110,7 +118,31 @@ def main() -> int:
         assert apkg.is_file() and "validate   1 note" in r.stdout, (r.stdout, r.stderr)
         assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
         assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
-        print("ok    pipeline build+validate+context")
+        assert "quality    static 0 error(s)" in r.stdout and "NOT CERTIFIED" in r.stdout, r.stdout
+        print("ok    pipeline build+validate+context and quality status")
+
+        risk_cards = td / "risk.jsonl"
+        risk_cards.write_text(json.dumps({
+            "front": "What does the title frame show?",
+            "back": "A title slide.", "layer": "L2", "topic": "Risk",
+            "deck": "RISK::TEST", "source": "Lec 1 p.1",
+            "media": [{"file": "media/title.png", "side": "back"}],
+        }) + "\n")
+        risk = td / "risk"
+        risk.mkdir()
+        for name in ("intake.md", "scope_gate.md", "authoring_ledger.md"):
+            (risk / name).write_text("evidence\n")
+        (risk / "frames.jsonl").write_text(json.dumps({
+            "file": "media/title.png", "best": True, "attach": "direct",
+            "title_like": True, "quality": "high", "caption": "Lecture: title",
+            "source": "Lec 1"}) + "\n")
+        blocked = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                       "--cards", str(risk_cards), "--out", str(risk),
+                       "--gates-only", "--build", "--deck-name", "RISK::TEST",
+                       "--out-apkg", str(td / "risk.apkg")], td)
+        assert blocked.returncode == 1 and "media risks remain" in blocked.stderr, (
+            blocked.stdout, blocked.stderr)
+        print("ok    pipeline blocks objective media risks")
 
         merged_apkg = td / "merged.apkg"
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),

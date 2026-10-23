@@ -21,13 +21,38 @@ chosen sources, learner context, and the stage's reference; phase-split large re
 outranks token, call, and speed savings; never withhold useful evidence, context, or reasoning to
 reduce cost. Details: `references/authoring.md`, `references/review.md`.
 
+## Quality kernel
+
+This applies to every deck, even when a reference was skipped. If a step cannot meet it, stop and
+fix the cause; do not lower the bar.
+
+- **Before writing:** read the relevant `card-writing.md` sections. Do not author from the source
+  alone.
+- **Fronts are self-contained:** if the front says “shown,” “this circuit,” “the example,” or “the
+  slide,” the image must be on the **front** or the data must be inline. A back image is not enough.
+- **Media:** use `media_index.py`; attach only `direct` or vision-confirmed candidates. No title,
+  outline, agenda, incomplete-crop, or whitespace-heavy image. “More images” does not lower the bar.
+  If no good image exists, leave the card without one and say so. If image-vision has no key or
+  exhausts its bounded retry, the ≤6-image main-model fallback above is allowed; label it unverified.
+- **Cloze:** every deletion needs a label and context. A multi-field row may use labeled blanks:
+  `Metal film — Tolerance: {{c1::...}}; Power: {{c2::...}}; Typical use: {{c3::...}}`.
+- **Why:** add a consequence, mechanism, mnemonic, or real use. Delete a why that restates the
+  value/position/front. One concept card owns shared explanation; bare value cards are allowed.
+- **Gates:** `validate_cards`/`validate_apkg` are syntax/import checks, not quality certification.
+  Review every warning and the pipeline quality status before calling a deck done.
+- **Review:** first generation runs the web review by default. For later changes, ask whether to
+  reopen it. If declined, say “not manually reviewed; static checks only.”
+
 **Execution.** Never spawn a child `opencode` process (including `opencode run` or
 `opencode debug`) or recursively invoke this skill; run the shipped scripts directly.
-Never use main-model vision: do not `read` images, frames, scans, screenshots, or
-contact sheets. Ambiguous frames go to the separate `image-vision` pass, once per
-unique frame and only when needed. Do not probe for LibreOffice, Office, desktop
-converters, or random system tools; use the declared extractors. After two failed
-tool probes, stop and report the limitation.
+Use the separate `image-vision` pass for images. **Main-model vision is a last-resort
+fallback, not a default:** use it only when the Gemini key is missing or the bounded
+429 retry failed, the image is necessary to answer or attach a card, and the batch is
+at most 6 images read one at a time. Label it unverified. Never use it for bulk media
+selection, contact sheets, or a gallery; if more than 6 images are necessary, stop and
+ask for a key. Do not probe for LibreOffice, Office, desktop converters, or random
+system tools; use the declared extractors. After two failed tool probes, stop and
+report the limitation.
 
 ## How much to ask, and how much to say
 
@@ -75,12 +100,13 @@ ten-minute one; "about three minutes" is wrong both ways. **Beginner extra:** th
 one clause more — the page scores each card 1–5 and shows why each was picked. Never narrate a
 stage number, work-file name, or script name; the `.apkg` path in the report is separate.
 
-### The web review runs by default
+### The web review
 
-It always runs by default and is never offered as a question. A browser page beats a TUI for
-judging a card, and a beginner is exactly who should not take the tool's word for it. Honour an
-explicit "no review" — but never *ask*. Hand over one short sentence, then the URL alone on its
-own line.
+On the first generation, run the review by default. A browser page beats a TUI for judging a card,
+and a beginner is exactly who should not take the tool's word for it. When the user is asking for
+changes or adjustments, ask whether to reopen the review; do not assume. If they decline, say the
+deck was not manually reviewed and report static checks only. Hand over one short sentence, then
+the URL alone on its own line.
 
 ### The four interaction points
 
@@ -91,7 +117,7 @@ Blocking is.
 |---|---|---|
 | Source survey (stage 2) | propose and wait | proceed on stated assumptions; list them |
 | Deck audit (stage 3) | run only if asked | **skip** — opt-in only |
-| Web review (stage 10) | run | **run** — never skipped, never offered |
+| Web review (stage 10) | first build: run; later changes: ask | first build: run; later changes: ask |
 | Trim list (stage 13) | propose, get approval | **state it in the report**, apply only if they say so |
 
 ### State assumptions; never make silent ones
@@ -296,6 +322,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     galleries. Read frames.md, not the whole candidate list. Use
                     `frames.py --sweep 00:00-02:30 --every 10` for a missed chapter; do
                     not sleep or poll yt-dlp; the scripts retry briefly and report skipped videos.
+                    Long media runs print `[media i/n]` progress and write
+                    `$WORK/pipeline_state.json`; if interrupted, rerun with `--resume`
+                    and `--status` to see the last source.
                     `pipeline.py --vision auto --vision-max 12` is the opt-in bounded
                     pass over canonical frames; it writes vision.jsonl.
 5. CLASSIFY       → atomic concepts {layer, topic, objects, type, source} from content.
@@ -328,13 +357,13 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     per card makes a post-review fix a one-line edit, not a 61-card rewrite;
                     every downstream script reads either form.
                     Media is opt-in and main-model-vision-free: entries are `{file, side,
-                    caption, source}` with `<tag>/media/<file>` paths. Attach only when the
-                    user asked, from a caption/slide-title/page match or a high-signal
-                    source; `media_index.py <work> --cards cards.jsonl` ranks the best
-                    3-5 per card by locator + caption/nearby text. Never auto-attach.
-                    Unclear → drop and list it. Slide/page crops are `confirm`; video frames: attach high/medium
-                    confidence frames; low-confidence frames stay in `frames.md`. A shared
-                    diagram may be attached to several related cards; reuse is expected.
+                    caption, source}` with `<tag>/media/<file>` paths. Use
+                    `media_index.py <work> --cards cards.jsonl --per-card 2`; attach only
+                    candidates that show the thing the front asks about. Never auto-attach.
+                    `confirm` crops/frames need image-vision or explicit approval; title,
+                    outline, incomplete-crop, and whitespace-heavy images are out. If no good
+                    image exists, leave the card without one and report it. A shared diagram
+                    may be attached to several related cards; reuse is expected.
                     Read the detail in `references/authoring.md` and `references/video.md`.
                     Video source: `source` is the full `<channel> - ... - <title> @ mm:ss`
                     line; `source_url` is the plain timestamp URL (series includes the playlist).
@@ -350,7 +379,8 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
 9. TRIAGE         → read `references/review.md` first, then
                     triage.py $WORK/cards.jsonl -o $WORK/review_plan.json — picks a small
                     cross-section, not the deck. Always run, any deck size.
-10. REVIEW (web)  → read $WORK/intake.md (learner/review preference) and
+10. REVIEW (web)  → first generation runs it by default; when the user asks for
+                    changes, ask whether to reopen it. Read $WORK/intake.md and
                     `references/review.md`. review_server.py --cards $WORK/cards.jsonl
                     --plan $WORK/review_plan.json --media-root "$WORK" --out
                     $WORK/review_feedback.jsonl --done-file $WORK/review_done.
@@ -363,7 +393,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     never `pkill -f`.
 11. BUILD         → prefer pipeline.py --cards $WORK/cards.jsonl --gates-only --build
                     --deck-name "Name" --out-apkg ./<deck>.apkg (build + validate in
-                    one call). `--work`/`--out` is the work directory; a `.apkg`
+                    one call). Read the `quality` line: media risks/ROI splits/review status.
+                    The build refuses objective media risks unless `--allow-media-risk`.
+                    `--work`/`--out` is the work directory; a `.apkg`
                     there is rejected, because the deck belongs in `--out-apkg`. Direct build_apkg.py is the diagnosis path, in the
                     CALLER'S CWD (never the work dir). Needs `anki`.
                     Static validation is the default; `--allow-invalid` is diagnosis
@@ -441,6 +473,10 @@ it happens, report results after. Never quote card text into the conversation �
 review page is for. Name cards by `topic` and number so the caller can run `roi_report.py --show N`.
 The **Assumed** line is not optional when you skipped a question to reduce friction: it is the only
 thing between a fast default and a silently wrong deck.
+
+**Quality status is mandatory.** `0 errors` is not “done.” Report the pipeline quality line
+(media risks, ROI splits, review status) and say whether the deck was manually reviewed. If review
+was declined, say “not manually reviewed; static checks only.”
 
 ## Supporting files
 
