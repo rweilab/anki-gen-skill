@@ -135,6 +135,34 @@ more volume, less dense"); **the variable glossary** (rule 5); **a boundary** (w
 common error). Prefer sentences over fragments. If a student who skipped the lecture could not
 follow the back, it is too thin.
 
+**A why must do work.** Pass this test before writing it:
+
+1. Does it name a consequence, mechanism, mnemonic, or real use? If it only restates the value,
+   position, quadrant, or front, delete it.
+2. Does it separate this card from its siblings? A paragraph repeated on every value card is a
+   concept card, not a why. Put the shared explanation on one tier-zero/anchor card and leave the
+   individual values bare.
+3. Does it explain jargon before using it? If you say page, sector, register, MIPS, 8086, or
+   three-phase, define it in plain English or leave it out.
+4. Is history doing explanatory work? Keep it only when it explains why the standard or number
+   exists; do not append a history line to every card.
+5. Would you keep this line if you were the learner? If not, delete it. A bare `2^3 -> 8` is better
+   than a padded restatement.
+
+Good hooks are concrete: `2^10 ≈ 10^3` within 2.4%; `2^6 = 64` gives Base64 its alphabet;
+`2^16` is the 64 KiB segment size; `2^32` is the IPv4 address space; `2^3` is one octal digit
+(`chmod 755`). Bad hooks are positional restatements: “45 degrees past vertical, the upward
+component is still 0.707” or “512-byte sectors are common.” Those explain nothing.
+
+Do not write:
+
+- the same **“Concept: \(2^n\) counts the states…”** paragraph on every power card;
+- **“Where it shows up: 45 degrees past vertical…”** or any left/right/quadrant restatement;
+- **“512-byte sectors and 9-bit status fields are common”** — “is common” is not a consequence;
+- a citation on **\(2^3 = 8\)** or **\(\sin 30^\circ = 1/2\)** just to satisfy the source field;
+- a history line unless it explains why the standard/number exists. The 8086 belongs on 64 KiB
+  and 1 MiB because 20 address lines explain those sizes; it does not belong on every power card.
+
 ### The recallability test — no front may demand a computed answer
 
 **Before writing any card: could a student answer this honestly from memory after one careful
@@ -178,10 +206,11 @@ Cards test **understanding, recognition, boundaries** — never mechanical compu
 
 ### Every card carries a provenance footer
 
-Every card cites its source with a locator — a repeatedly-failing card must say where to read
-around it, and "the lecture" lets the learner find nothing. It goes in `source`; the builder
-renders it as a quiet footer. `validate_cards.py` **errors** when it is missing, and warns when it
-has no page, slide, question or chapter.
+Source-dependent claims cite where they came from with a locator; a repeatedly-failing card must
+say where to read around it, and "the lecture" lets the learner find nothing. It goes in `source`;
+the builder renders it as a quiet footer. `validate_cards.py` **errors** when `source` is missing,
+unless it is the explicit `derived` marker, and warns when a real source has no page, slide,
+question, or chapter.
 
 ```
 Ch 4 · Lec 10 Q7
@@ -189,6 +218,11 @@ Ch 3 · Lec 08 Q2–3 / HW 1 Q3
 Ch 2 · Lec 04 Q11 / slide 95
 ```
 
+- **`source: "derived"` is for self-contained math and definitions.** `2^3 = 8` or
+  `sin 30° = 1/2` does not need a textbook citation. Use the marker; the footer is omitted.
+  Never invent a citation just to satisfy the field.
+- **Cite source-dependent claims.** Course notation, values that could vary by source, figures,
+  historical specifics, and worked examples still need a locator.
 - **Only cite what the learner can open.** "The slides state…" points at a deck they are not
   looking at while reviewing. Cite the *problem*, not the artifact: put the numbers on the front so
   the card stands alone, cite the lecture and chapter underneath.
@@ -242,7 +276,7 @@ recur across topics; zero is normal.** Do not tag a term that is already explici
 good chunk of a wide survey deck. The tag is not a hint line: if naming it would answer the
 front, it does not belong there. The build drops topic/subtopic duplicates, one-topic tags, and
 one-offs, so a long list of small tags becomes a few useful buckets. Tags land flat, no namespace;
-topics keep capitalisation, objects are lowercased. The layer code is **not** a tag — it stays a
+all generated tags are lowercase (the Topic field keeps its display capitalisation). The layer code is **not** a tag — it stays a
 field for `triage.py`/`roi_report.py`. Object tags are also how "related notes" works: rule 26
 forbids a back pointing at another card, and a bucket query is the precise, never-stale version.
 

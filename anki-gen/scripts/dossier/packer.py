@@ -18,6 +18,8 @@ from .model import (FILE_SCHEMAS, MEDIA_KEYS, SOURCE_KEYS,
 from .previews import make as make_preview
 from .store import DossierStore, write_json, write_jsonl, write_text
 
+DERIVED_SOURCES = {"derived", "universal"}
+
 
 
 
@@ -248,7 +250,8 @@ def _topics(rows: list[dict], existing: list[dict], curated: dict) -> list[dict]
         srcs = []
         for row in group:
             source = row.get("source") or row.get("source_url")
-            if source and source not in srcs:
+            if (source and str(source).strip().lower() not in DERIVED_SOURCES
+                    and source not in srcs):
                 srcs.append(source)
         item = {
             "topic": topic,

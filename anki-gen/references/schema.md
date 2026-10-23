@@ -6,12 +6,14 @@ This is the card schema written down. `validate_cards.py` enforces the required 
 layer enum directly and is the authority when they disagree.
 
 **Required on every card: `front`, `back`, `layer`, `topic`, `deck`, `source`.** An empty or
-missing one is an **error**, including `deck`. **`cloze: true`** is required on any card with
-`{{cN::}}`; **`tier_zero: true`** marks the topic's concept card before its formula cards.
+missing one is an **error**, including `deck`; self-contained math/definitions use
+`source: "derived"`. **`cloze: true`** is required on any card with `{{cN::}}`;
+**`tier_zero: true`** marks the topic's concept card before its formula cards.
 
 - **`source` is the field.** `source_ref` is a deprecated alias `build_native.py` still falls back
   to; nothing new should write it. Both are searched and rendered, so a card with only `source_ref`
-  still builds — it is just invisible to every grep for `source`.
+  still builds — it is just invisible to every grep for `source`. Use `source: "derived"` for
+  self-contained math/definitions; that marker omits the footer and needs no locator.
 - **`source_url`** is optional plain text, never a hyperlink; omit it for local recordings.
   It is the copyable URL (`https://...&t=SECONDS`), while `source` carries the human
   label (`DigiKey · RTOS 04 · Memory Management @ 01:32`; full title stays in the
@@ -21,7 +23,8 @@ missing one is an **error**, including `deck`. **`cloze: true`** is required on 
   normal**. Both are front-visible (the topic is printed; tags are metadata), so never encode
   the answer: a Bernoulli-substitution card is `topic: "First-Order ODEs"`, not
   `objects: ["bernoulli"]`. Do not tag the topic or a term already explicit in the card; see
-  `references/card-writing.md`.
+  `references/card-writing.md`. Generated tags are lowercase; the Topic field keeps its display
+  capitalization.
 - **`stratum`** is optional and deck-authored ("Shape B", "Hess's law"); `triage.py` reports
   coverage per stratum without interpreting it. The tool cannot know what a deck ought to contain —
   only its author can say what its kinds are.

@@ -2,14 +2,14 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
-- **v1.5.0** — Imported-deck revision and persistent context
-- **v1.4.2** — Image/alternate-source ingest and review calibration
-- **v1.4.1** — Local video/audio and answer-aligned cards
-- **v1.4** — Visual source refinement
-- **v1.3.2** — Foundation-first new-card order
-- **v1.3.1** — One-command install and review polish
-- **v1.3** — Video sources and shipping
-- **v1.2** — Review fidelity, guards, and token discipline
+- **v1.5.0** — Revise imported decks in Anki via AnkiConnect, with a persistent dossier and revert
+- **v1.4.2** — Recover alternate images/captions and calibrate review with score-1 evidence
+- **v1.4.1** — Local audio/video, PDF/slide/web images, and answer-first card validation
+- **v1.4** — Rank visual candidates across PDFs/video and reuse shared media safely
+- **v1.3.2** — Order new cards foundation-first within each topic
+- **v1.3.1** — One-command installer plus review finish/close UX
+- **v1.3** — YouTube/playlist transcripts, video frames, and handoff packaging
+- **v1.2** — Review fidelity, validator guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
 
@@ -33,12 +33,19 @@ Newest first. Keep the index to one line per release; details live below.
 - Explicit snapshot retention: `snapshots --sizes` reports per-snapshot and directory usage and
   warns above 256 MB or 16 snapshots by default; `--delete` and `--prune --keep N` require
   `--yes`. Nothing is deleted automatically, and the latest apply snapshot needs `--force`.
+- Supported bulk revision: `revision.py update` applies structured field/tag edits by `rev_id`
+  with snapshot, backup, and scheduling verification; `revision.py tags --lowercase` normalizes
+  deck tags without collection-wide cleanup.
 - Adaptive media previews for unused high/medium candidates: about 640 px general, 768–1024 px
   for label-heavy diagrams, 320 px only for contact-sheet recognition. Previews index the
   source; originals are re-extracted before attachment.
 - Video sources now default to frame extraction (`--images auto`); audio-only inputs skip it.
 - Local transcription feeds faster-whisper a decoded WAV array, avoiding the PyAV
   `metadata_errors` incompatibility, and loads cached models with `local_files_only`.
+- Generated tags are lowercase and case-insensitively deduplicated; the displayed `Topic` field
+  keeps its capitalization.
+- Self-contained math/definitions may use `source: "derived"`, which keeps provenance metadata but
+  omits the citation footer. Source-dependent claims still need a locator.
 - `pipeline.py --build` packs the dossier automatically before cleanup; `--no-context` opts out.
   Old decks without a dossier can be reconstructed read-only from live fields and tags.
 
@@ -67,6 +74,9 @@ Newest first. Keep the index to one line per release; details live below.
 - `cardid.py --help` now prints usage instead of treating the flag as a filename.
 - A stuck review server is stopped with `POST /finish`; guidance no longer invites a
   self-matching `pkill -f`.
+- Back/why guidance now rejects positional restatements, repeated boilerplate, unexplained jargon,
+  and citations on obvious math; shared explanations belong on one concept card, with concrete
+  good/bad examples from real deck edits.
 
 ### Notes
 - AnkiConnect is the only live integration surface. No raw SQLite writes, `anki` library path,

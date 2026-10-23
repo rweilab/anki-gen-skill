@@ -151,6 +151,18 @@ class FakeAnki:
                         self.cards.pop(int(cid), None)
                         self.reviews.pop(int(cid), None)
             return None
+        if action in ("addTags", "removeTags"):
+            tags = str(params.get("tags") or "").split()
+            for raw in params.get("notes") or []:
+                item = self.notes.get(int(raw))
+                if not item:
+                    continue
+                if action == "addTags":
+                    item["tags"] = list(dict.fromkeys(list(item["tags"]) + tags))
+                else:
+                    drop = set(tags)
+                    item["tags"] = [t for t in item["tags"] if t not in drop]
+            return None
         if action == "suspend":
             for raw in params.get("cards") or []:
                 card = self.cards.get(int(raw))
@@ -471,6 +483,34 @@ def main() -> int:
             r = rev(["snapshots", "--deck", "REVERT::DECK", "--json"], url, env)
             assert len(json.loads(r.stdout)) == 1
             print("ok    snapshot sizes, explicit delete/prune, and guards")
+
+            r = rev(["tags", "--deck", "REVERT::DECK", "--lowercase",
+                     "--json"], url, env)
+            tagged = json.loads(r.stdout)
+            assert tagged["verified"] and tagged["notes"] == 1, tagged
+            revert_note = next(n for n in fake.notes.values()
+                               if "Why is revert tested?" in
+                               n["fields"].get("Front", {}).get("value", ""))
+            assert revert_note["tags"] == ["revert"], revert_note["tags"]
+
+            rev_row = json.loads((rev_root / "cards.jsonl").read_text().splitlines()[0])
+            before_cards = {cid: dict(fake.cards[cid]) for cid in revert_note["cards"]}
+            edits = td / "edits.json"
+            edits.write_text(json.dumps({"schema": 1, "edits": [{
+                "rev_id": rev_row["rev_id"],
+                "fields": {"Back": "<p>Bulk-edited back.</p>"},
+                "tags": ["Bulk_Tag"],
+            }]}))
+            r = rev(["update", "--deck", "REVERT::DECK", "--file", str(edits),
+                     "--browser-closed", "--json"], url, env)
+            updated = json.loads(r.stdout)
+            assert updated["verified"] and updated["notes"] == 1, updated
+            assert revert_note["tags"] == ["bulk_tag"], revert_note["tags"]
+            assert "Bulk-edited back" in revert_note["fields"]["Back"]["value"]
+            for cid, old in before_cards.items():
+                for key in ("due", "interval", "reps", "lapses", "queue", "type"):
+                    assert fake.cards[cid][key] == old[key], (cid, key)
+            print("ok    supported bulk tag/field updates preserve scheduling")
 
             # 5. Field update preserves note/card IDs, scheduling, and revlog.
             sched_note = next(n for n in fake.notes.values()

@@ -107,8 +107,9 @@ If AnkiConnect is unreachable these commands exit nonzero with a setup message; 
 back to raw SQLite, the `anki` library, or MCP. The compact
 dossier lives under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-uuid>/`, not in Anki
 notes/media, and can be moved with `revision.py context export|import`. Every apply takes an
-AnkiConnect snapshot; `revision.py revert --deck "NAME" --last --yes` undoes it. Full workflow:
-`references/revision.md`.
+AnkiConnect snapshot; `revision.py revert --deck "NAME" --last --yes` undoes it. Bulk field/tag
+edits use `revision.py update` or `revision.py tags --lowercase`, both with snapshot and scheduling
+verification. Full workflow: `references/revision.md`.
 
 ## Handing the skill to someone else
 

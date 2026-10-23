@@ -25,6 +25,7 @@ from cardid import card_hash  # noqa: E402
 from validate_cards import similar_answer_pairs  # noqa: E402
 from new_cards import C, CardError  # noqa: E402
 from parse_intent import parse_intent  # noqa: E402
+from render import with_source  # noqa: E402
 
 BASE = {
     "front": "Why does a vacancy increase a crystal's free energy?",
@@ -91,7 +92,10 @@ def main() -> int:
     # A known-good card must pass.
     good, _ = validate([BASE])
     assert good["valid"] is True, good
-    print("ok    positive control")
+    derived, _ = validate([dict(BASE, source="derived")])
+    assert derived["valid"] is True, derived
+    assert with_source("<p>x</p>", "derived") == "<p>x</p>"
+    print("ok    positive control and derived-source policy")
 
     skill = (ROOT / "SKILL.md").read_text()
     for phrase in ("Never use main-model vision",
@@ -281,6 +285,8 @@ def main() -> int:
          "error", "objects")
     case("too many objects", lambda: [dict(BASE, objects=["a", "b", "c"])],
          "warning", "object tags")
+    case("duplicate object case", lambda: [dict(BASE, objects=["RtOs", "rtos"])],
+         "warning", "duplicate object")
     case("bad layer", lambda: [dict(BASE, layer="L9")],
          "error", "bad layer")
     case("empty back", lambda: [dict(BASE, back="")],
@@ -547,6 +553,8 @@ def main() -> int:
         tags_text = " ".join(row[1] for row in rows)
         assert "rtos" in tags_text and "critical_section" in tags_text, tags_text
         assert "heap" not in tags_text and "queue" not in tags_text, tags_text
+        assert tags_text == tags_text.lower(), tags_text
+        assert "alpha" in tags_text and "Alpha" not in tags_text, tags_text
         seen = {t: False for t in ("Alpha", "Beta", "Gamma")}
         last, run_len = None, 0
         for front in fronts:

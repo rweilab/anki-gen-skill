@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import load_cards   # noqa: E402
-from render import to_html   # noqa: E402
+from render import DERIVED_SOURCES, to_html   # noqa: E402
 
 # Scoped to FRONTS. A back legitimately says "set them equal and solve" as a method
 # step, or "convert before you compute". Rejecting those was a false positive that
@@ -36,6 +36,11 @@ FORBIDDEN_FRONT = re.compile(
 
 CTRL = re.compile(r"[\x07\x08\x09\x0b\x0c\x0d][A-Za-z]")
 SYM = re.compile(r"\\?[A-Za-z]_\{?[A-Za-z0-9]+\}?|\\[A-Za-z]+")
+
+
+def _tag_key(value) -> str:
+    return str(value).strip().lower().replace(" ", "_").replace("&", "and")
+
 
 # ---------------------------------------------------------------------------
 # IMPLICIT COMPUTATION DEMAND
@@ -159,19 +164,21 @@ def findings(cards):
             add(i, "err", f"{label} -- 'objects' is a string, not a list; "
                           f'it must be a JSON array, e.g. "objects": ["fcc", "cu"]')
         if isinstance(objects, list):
-            seen_o = []
+            seen_o = {}
             for o in objects:
+                key = _tag_key(o)
                 if not str(o).strip():
                     add(i, "err", f"{label} -- empty entry in 'objects'")
-                elif str(o).strip().lower().replace(" ", "_") == topic.lower().replace(" ", "_").replace("&", "and"):
+                elif key == _tag_key(topic):
                     # Anki folds tags case-insensitively, so this one is silently
                     # dropped at build time: the topic already carries the name.
                     add(i, "warn", f"{label} -- object {str(o)!r} is the topic tag; "
                                    f"Anki will fold the two together and drop it")
-                elif str(o).strip() in seen_o:
-                    add(i, "warn", f"{label} -- duplicate object {str(o)!r}")
+                elif key in seen_o:
+                    add(i, "warn", f"{label} -- duplicate object {str(o)!r} "
+                                   f"(same as {seen_o[key]!r} after lowercase)")
                 else:
-                    seen_o.append(str(o).strip())
+                    seen_o[key] = str(o).strip()
             if len(objects) > 2:
                 add(i, "warn", f"{label} -- {len(objects)} object tags "
                               f"(max 2): {objects!r}; keep the ones the card is "
@@ -212,8 +219,11 @@ def findings(cards):
         src = str(c.get("source") or c.get("source_ref") or "").strip()
         if not src:
             add(i, "err",
-                f"{label} -- no source. Every card must cite where it came from: "
-                "lecture + page/slide, homework question, or textbook chapter.")
+                f"{label} -- no source. Use a locator (lecture + page/slide, "
+                "homework question, textbook chapter) or `source: \"derived\"` "
+                "for self-contained math/definitions.")
+        elif src.lower() in DERIVED_SOURCES:
+            pass
         elif not re.search(r"\d", src):
             add(i, "warn",
                 f"{label} -- source {src!r} carries no locator (no page, slide, "
@@ -535,7 +545,7 @@ def tag_leak_findings(cards):
     spans = {}
     for c in cards:
         for obj in (c.get("objects") or []):
-            spans.setdefault(str(obj), set()).add(str(c.get("topic", "")))
+            spans.setdefault(_tag_key(obj), set()).add(str(c.get("topic", "")))
     out = []
     for i, c in enumerate(cards, 1):
         front = _tag_words(str(c.get("front", "")))
@@ -545,7 +555,8 @@ def tag_leak_findings(cards):
         if topic:
             tags.append(("topic", topic))
         for obj in (c.get("objects") or []):
-            if spans.get(str(obj)) and len(spans[str(obj)]) > 1:
+            key = _tag_key(obj)
+            if spans.get(key) and len(spans[key]) > 1:
                 continue
             tags.append(("object", str(obj)))
         for kind, tag in tags:

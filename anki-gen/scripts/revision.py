@@ -21,6 +21,7 @@ from revision_ops import attach as attach_ops  # noqa: E402
 from revision_ops import audit as audit_ops  # noqa: E402
 from revision_ops import plan as plan_ops  # noqa: E402
 from revision_ops import apply as apply_ops  # noqa: E402
+from revision_ops import edit as edit_ops  # noqa: E402
 from revision_ops import revert as revert_ops  # noqa: E402
 from revision_ops import snapshot as snapshot_ops  # noqa: E402
 from revision_ops.common import PlanError, client  # noqa: E402
@@ -216,6 +217,47 @@ def cmd_snapshots(args) -> int:
     return 0
 
 
+def cmd_update(args) -> int:
+    ac = client(args.url)
+    try:
+        result = edit_ops.update(ac, args.deck, args.file,
+                                 browser_closed=args.browser_closed,
+                                 dry_run=args.dry_run)
+    except PlanError as e:
+        print(f"revision.py: {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2))
+    elif result.get("dry_run"):
+        print(f"update dry-run: {result['notes']} note(s), "
+              f"{result['fields']} field edit(s), {result['tags']} tag edit(s)")
+    else:
+        print(f"updated    {result['notes']} note(s); verification "
+              f"{'ok' if result['verified'] else 'FAILED'} -> {result['dir']}")
+        print(f"           snapshot {result['snapshot_id']}")
+    return 0 if result.get("verified", True) else 1
+
+
+def cmd_tags(args) -> int:
+    ac = client(args.url)
+    try:
+        result = edit_ops.lowercase_tags(ac, args.deck, dry_run=args.dry_run)
+    except PlanError as e:
+        print(f"revision.py: {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2))
+    elif result.get("dry_run"):
+        print(f"tag dry-run: {result['notes']} note(s)")
+    elif not result.get("notes"):
+        print("tags       already lowercase")
+    else:
+        print(f"tags       {result['notes']} note(s) lowercased; verification "
+              f"{'ok' if result['verified'] else 'FAILED'} -> {result['dir']}")
+        print(f"           snapshot {result['snapshot_id']}")
+    return 0 if result.get("verified", True) else 1
+
+
 def cmd_context(args) -> int:
     if args.context_cmd == "pack":
         result = dc.pack(args.work, {"deck_name": args.deck,
@@ -334,6 +376,21 @@ def main(argv: list[str] | None = None) -> int:
                     default=snapshot_ops.DEFAULT_WARN_COUNT)
     sn.add_argument("--json", action="store_true")
     sn.set_defaults(func=cmd_snapshots)
+
+    up = sub.add_parser("update")
+    up.add_argument("--deck", required=True)
+    up.add_argument("--file", required=True)
+    up.add_argument("--browser-closed", action="store_true")
+    up.add_argument("--dry-run", action="store_true")
+    up.add_argument("--json", action="store_true")
+    up.set_defaults(func=cmd_update)
+
+    tg = sub.add_parser("tags")
+    tg.add_argument("--deck", required=True)
+    tg.add_argument("--lowercase", action="store_true", required=True)
+    tg.add_argument("--dry-run", action="store_true")
+    tg.add_argument("--json", action="store_true")
+    tg.set_defaults(func=cmd_tags)
 
     c = sub.add_parser("context")
     cs = c.add_subparsers(dest="context_cmd", required=True)

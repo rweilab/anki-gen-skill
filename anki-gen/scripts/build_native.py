@@ -78,10 +78,13 @@ META ='<div class="meta">{{Topic}}</div>'
 # triage/roi and filtering by kind keep working; it just stops being the label.
 #
 def _tag(t):
-    """Canonical Anki tag form: no spaces, & spelled out. Topics keep their
-    capitalisation because they read as chapter names; objects are lowercased
-    so they are distinguishable in the sidebar and consistent to type."""
-    return str(t).replace(" ", "_").replace("&", "and")
+    """Canonical Anki tag form: lowercase, no spaces, & spelled out.
+
+    The Topic field keeps its display capitalisation; only the tag is folded.
+    Anki itself is case-insensitive, so lowercasing prevents mixed-case
+    variants from accumulating in the sidebar.
+    """
+    return str(t).lower().replace(" ", "_").replace("&", "and")
 
 
 def _retype(base: dict, *, name: str, field_names, qfmt, afmt) -> dict:
@@ -258,7 +261,7 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
             # the opposite of what a tag is for. Tags are also the ONLY way to
             # pull up "every card about FCC"; they stand in for cross-links
             # (rule 26 forbids a back pointing at another card).
-            tags = [_tag(c["topic"])] + [_tag(o).lower() for o in (c.get("objects") or [])]
+            tags = [_tag(c["topic"])] + [_tag(o) for o in (c.get("objects") or [])]
             tags = list(dict.fromkeys(tags))  # dedupe, keep order
             media_field = ",".join(media_names)
             if c.get("cloze"):

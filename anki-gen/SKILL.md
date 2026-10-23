@@ -157,10 +157,14 @@ here are prose, and prose is a bet: three rounds moved no measured number.
     already know. `[roi_report costliest; review feedback]` → **Retrieval success is the currency**
 15. **Cloze is for enumerations that are separately examinable**, never prose, concept cards, or
     one whole formula. `[build_native.check_cloze_braces]` → **Use cloze for enumerations**
-16. **Backs explain; they do not restate the front.** `[prose]` → **Backs explain**
-17. **Every card carries a citation with a locator.** Cite what the learner can open — numbers on
-    the front, citation in the footer — and never invent a URL or timestamp.
-    `[validate_cards source checks]` → **Every card carries a provenance footer**
+16. **Backs explain; they do not restate the front.** A why must name a consequence, mechanism,
+    mnemonic, or real use; delete it if it only restates the value or position. Shared explanation
+    lives on one concept card, not every sibling. A bare value card is allowed. `[prose]`
+    → **Backs explain**
+17. **Source-dependent claims cite a locator; self-contained math uses `source: "derived"`.**
+    Never invent a citation to satisfy the field. Cite what the learner can open, with numbers on
+    the front and the locator in the footer. `[validate_cards source checks]`
+    → **Every card carries a provenance footer**
 18. **Housekeeping lives in fields, not on the front.** Topic and object tags are already
     displayed above the question; prefixing makes a card read like a form. `[prose]`
     → **Housekeeping lives in fields**
@@ -197,7 +201,8 @@ here are prose, and prose is a bet: three rounds moved no measured number.
     broad cross-topic buckets (`concurrency`, `memory`, `rtos`); **zero is normal**. Tags are
     front-visible: never put the answer, method, theorem, or named technique in `topic` or
     `objects`. Do not tag the topic, a subtopic, or a term already explicit in the card; the
-    build drops those. `[validate_cards topic-is-layer-code; objects-count; tag-leak]`
+    build drops those. Generated tags are lowercase; the Topic field keeps its display
+    capitalization. `[validate_cards topic-is-layer-code; objects-count; tag-leak]`
     → **The topic is a chapter name**
 
 ## Layers
@@ -413,7 +418,10 @@ Open Anki first, run `python3 scripts/anki_connect.py`, and stop to fix setup if
 Never open, copy, query, or inspect the live collection DB, even read-only. Ask whether to
 **update the deck already in Anki** (keeps history) or **regenerate a `.apkg`** (fresh import).
 `references/revision.md` has the commands, conflicts, destructive choices, snapshots,
-one-command revert, and how to find cards in Anki. Score 1 is calibration (“known / too
+one-command revert, and how to find cards in Anki. Route the request: tags → `revision.py tags
+--lowercase`; bulk backs/fronts → `revision.py update --file edits.json`; cull/merge/split →
+`plan`/`apply`. Never hand-roll AnkiConnect, write a `/tmp` script, or use global tag actions; if
+the supported path is missing, add it to the skill first. Score 1 is calibration (“known / too
 easy”), never automatic rejection. The review page UI is unchanged.
 
 ## Reporting

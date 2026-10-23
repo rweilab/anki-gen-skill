@@ -149,6 +149,21 @@ class AnkiConnect:
     def delete_notes(self, note_ids):
         return self.request("deleteNotes", notes=[int(i) for i in note_ids])
 
+    def add_tags(self, note_ids, tags):
+        tags = " ".join(str(t) for t in tags if str(t).strip())
+        if tags:
+            return self.request("addTags", notes=[int(i) for i in note_ids],
+                                tags=tags)
+
+    def remove_tags(self, note_ids, tags):
+        tags = " ".join(str(t) for t in tags if str(t).strip())
+        if tags:
+            return self.request("removeTags", notes=[int(i) for i in note_ids],
+                                tags=tags)
+
+    def get_tags(self) -> list[str]:
+        return list(self.request("getTags") or [])
+
     def suspend(self, card_ids):
         return self.request("suspend", cards=[int(i) for i in card_ids])
 

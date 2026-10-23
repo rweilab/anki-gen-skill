@@ -79,6 +79,13 @@ technique in `topic` or `objects` (e.g. no `bernoulli` on “which substitution?
 name that target; then add the mechanism/why. Do not start with the reaction or a restatement of
 the front.
 
+**Why test.** A why must name a consequence, mechanism, mnemonic, or real use. Delete it if it
+only restates the value, position, or front. Do not repeat the same concept paragraph on every
+value card: one anchor card owns the shared explanation, and a bare value card is allowed. Define
+page/sector/register/MIPS-style jargon before using it. History is only useful when it explains
+why the standard or number exists. Use `source: "derived"` for self-contained math; cite
+source-dependent claims, and never invent a citation to satisfy the field.
+
 **For formulas:** use Basic for the whole formula (rule 15). If a genuine enumeration needs cloze,
 blank one item only — never the whole formula or a single computed answer.
 
@@ -235,6 +242,12 @@ not a result. Run the pass by hand after every content change:
 
 Stale cross-references ("the next card" that was merged away) and dangling fragments (orphaned bold
 lead-ins, notes-to-self left in a back). Bugs, not judgement calls — fix even in a deck nobody trims.
+
+**Why audit.** Read every back's Why/Real world/History line and delete it if it restates the value,
+position, or front; if the same generic paragraph repeats on sibling cards; if it name-drops a
+page/sector/register/MIPS without explaining it; or if the history does not explain why the
+standard/number exists. A bare value is better than padding. Citations are for source-dependent
+claims, not `2^3 = 8`.
 
 ### Output
 

@@ -289,12 +289,18 @@ def to_html(text: str) -> str:
     return _restore_math(_md_to_html(tmpl), found)
 
 
+DERIVED_SOURCES = {"derived", "universal"}
+
+
 def with_source(back_html: str, source: str, source_url: str = "") -> str:
     """Append a provenance footer beneath a card's answer.
 
     The source stays readable; a video URL is a second, copyable plain-text line
-    (not a hyperlink), so it works the same in Anki and the review page.
+    (not a hyperlink), so it works the same in Anki and the review page. A
+    self-contained derivation uses `source: "derived"` and gets no footer.
     """
+    if str(source or "").strip().lower() in DERIVED_SOURCES:
+        source = ""
     if not source and not source_url:
         return back_html
     body = _esc(source)
