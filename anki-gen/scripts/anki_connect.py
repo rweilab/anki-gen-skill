@@ -16,13 +16,26 @@ import json
 import os
 import socket
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DEFAULT_URL = "http://127.0.0.1:8765"
-SETUP = ("anki-gen: AnkiConnect is not reachable at {url}. Open Anki with the "
-         "AnkiConnect add-on, then retry.")
+ADDON_CODE = "2055492159"
+# The upstream add-on changed its schema in late 2026 and broke many clients.
+# Pin a known-good commit instead of installing whatever master contains.
+PINNED_COMMIT = "de6e6e1b8aaf4ae195eb1d1ff6db5409b99b2a3e"
+REQUIRED_ACTIONS = (
+    "version", "findNotes", "findCards", "notesInfo", "cardsInfo",
+    "updateNoteFields", "addNotes", "deleteNotes",
+    "suspend", "unsuspend", "exportPackage", "importPackage",
+    "getMediaDirPath",
+)
+SETUP = ("anki-gen: AnkiConnect is not reachable at {url}. Open Anki Desktop, "
+         "enable the AnkiConnect add-on (code " + ADDON_CODE + "), wait for the "
+         "main window, then retry. Do not inspect or edit collection.anki2.")
 
 
 class AnkiConnectError(RuntimeError):
@@ -78,9 +91,28 @@ class AnkiConnect:
                 raise
             raise AnkiConnectUnavailable(SETUP.format(url=self.url)) from e
 
+    def ensure_compatible(self, actions=REQUIRED_ACTIONS) -> None:
+        """Fail early when this AnkiConnect build lacks an action we need."""
+        try:
+            result = self.request("apiReflect", scopes=["actions"],
+                                  actions=list(actions))
+        except AnkiConnectError:
+            return                       # older builds have no apiReflect
+        known = set((result or {}).get("actions") or [])
+        missing = [action for action in actions if action not in known]
+        if missing:
+            raise AnkiConnectUnavailable(
+                "anki-gen: this AnkiConnect build is missing "
+                f"{', '.join(missing)}. Install the pinned add-on with "
+                "`python3 scripts/anki_connect.py --install --yes`, then "
+                "restart Anki.")
+
     # -- read-only -----------------------------------------------------
     def find_notes(self, query: str) -> list[int]:
         return list(self.request("findNotes", query=query) or [])
+
+    def find_cards(self, query: str) -> list[int]:
+        return list(self.request("findCards", query=query) or [])
 
     def notes_info(self, note_ids) -> list[dict]:
         return list(self.request("notesInfo", notes=[int(i) for i in note_ids]) or [])
@@ -130,6 +162,17 @@ class AnkiConnect:
         return self.request("setDueDate", cards=[int(i) for i in card_ids],
                             days=str(days))
 
+    def get_media_dir_path(self) -> str:
+        return str(self.request("getMediaDirPath") or "")
+
+    def export_package(self, deck: str, path: str | Path,
+                       include_sched: bool = True) -> bool:
+        return bool(self.request("exportPackage", deck=deck, path=str(path),
+                                 includeSched=bool(include_sched)))
+
+    def import_package(self, path: str | Path) -> bool:
+        return bool(self.request("importPackage", path=str(path)))
+
     def store_media_file(self, filename: str, path: str | Path | None = None,
                          data: bytes | None = None) -> str:
         params: dict = {"filename": filename}
@@ -149,13 +192,91 @@ class AnkiConnect:
         return self.request("sync")
 
 
+def addons_dir() -> Path:
+    """Locate Anki's add-ons directory on Linux, macOS, Windows, or Flatpak."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        bases = [home / "Library" / "Application Support" / "Anki2"]
+    elif sys.platform.startswith("win"):
+        bases = [Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
+                 / "Anki2"]
+    else:
+        bases = [Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
+                 / "Anki2",
+                 home / ".var" / "app" / "net.ankiweb.Anki" / "data" / "Anki2"]
+    for base in bases:
+        if (base / "addons21").is_dir():
+            return base / "addons21"
+    return bases[0] / "addons21"
+
+
+def install(source: str | None = None, addons: str | Path | None = None) -> Path:
+    """Install a pinned AnkiConnect plugin without touching the collection."""
+    dest = Path(addons).expanduser() if addons else addons_dir() / ADDON_CODE
+    archive = Path(source).expanduser() if source else None
+    tmp = None
+    try:
+        if archive is None:
+            fd, name = tempfile.mkstemp(suffix=".zip")
+            os.close(fd)
+            tmp = Path(name)
+            url = (f"https://github.com/FooSoft/anki-connect/archive/"
+                   f"{PINNED_COMMIT}.zip")
+            with urlopen(url, timeout=60) as response:
+                tmp.write_bytes(response.read())
+            archive = tmp
+        with zipfile.ZipFile(archive) as z:
+            prefix = next((name.split("plugin/", 1)[0] + "plugin/"
+                           for name in z.namelist()
+                           if name.endswith("/plugin/__init__.py")), "")
+            if not prefix:
+                raise ValueError("archive does not contain an AnkiConnect plugin")
+            dest.mkdir(parents=True, exist_ok=True)
+            for name in z.namelist():
+                if not name.startswith(prefix):
+                    continue
+                rel = name[len(prefix):]
+                if not rel or rel.endswith("/") or ".." in Path(rel).parts:
+                    continue
+                target = dest / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(z.read(name))
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
+    return dest
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Check the local AnkiConnect bridge.")
     ap.add_argument("--url", default=None)
+    ap.add_argument("--install", action="store_true",
+                    help="install the pinned AnkiConnect add-on")
+    ap.add_argument("--yes", action="store_true",
+                    help="confirm add-on installation")
+    ap.add_argument("--source", default=None,
+                    help="local AnkiConnect plugin zip")
+    ap.add_argument("--addons-dir", default=None,
+                    help="override Anki's addons21 directory")
     args = ap.parse_args(argv)
+    if args.install:
+        if not args.yes:
+            print("anki_connect.py: installation needs --yes after user consent",
+                  file=sys.stderr)
+            return 2
+        try:
+            dest = install(args.source, args.addons_dir)
+        except Exception as e:
+            print(f"anki_connect.py: install failed: {e}", file=sys.stderr)
+            return 2
+        print(f"installed AnkiConnect {ADDON_CODE} -> {dest}")
+        print("restart Anki, then run: python3 scripts/anki_connect.py")
+        return 0
     try:
-        version = AnkiConnect(args.url).ensure_available()
+        ac = AnkiConnect(args.url)
+        version = ac.ensure_available()
+        ac.ensure_compatible()
     except AnkiConnectError as e:
         print(str(e), file=sys.stderr)
         return 2

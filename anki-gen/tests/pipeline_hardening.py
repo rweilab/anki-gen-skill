@@ -40,7 +40,14 @@ def main() -> int:
         assert r.returncode == 0, (r.stdout, r.stderr)
         assert "media      1 source" in r.stdout, r.stdout
         assert (work / "videos.jsonl").is_file(), r.stdout
-        print("ok    pipeline local media branch")
+        assert pipeline._media_images([str(media)], "auto") == "yes"
+        assert pipeline._media_images([str(media)], "no") == "no"
+        audio = td / "audio.m4a"
+        r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                 "-i", str(media), "-vn", str(audio)], td)
+        assert r.returncode == 0, r.stderr
+        assert pipeline._media_images([str(audio)], "auto") == "no"
+        print("ok    pipeline local media branch and video image default")
 
         second = td / "second.mp4"
         r = run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",

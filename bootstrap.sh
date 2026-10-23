@@ -5,6 +5,8 @@
 #   3. run install.sh, which copies the skills, moves old discoverable backups
 #      out of ~/.claude/skills, and calls setup.sh (including faster-whisper
 #      for local video/audio; models download on first transcription)
+# AnkiConnect is a separate add-on inside Anki Desktop and is installed later,
+# only when revising an imported deck.
 # setup.sh is the only script that installs packages; install.sh --no-setup
 # skips it. Both are plain bash and can be read before running this.
 set -euo pipefail

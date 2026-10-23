@@ -14,7 +14,6 @@ hard import for every caller of this module, including `build_native`.
 """
 import argparse
 import hashlib
-import json
 import random
 import re
 import sys

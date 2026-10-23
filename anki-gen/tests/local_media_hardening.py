@@ -87,6 +87,17 @@ def main() -> int:
         subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                         "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
                         "-ar", "16000", "-ac", "1", str(sample)], check=True)
+        arr = mt._audio_array(sample)
+        assert arr.dtype.name == "float32" and len(arr) > 0, arr
+        assert float(abs(arr).max()) <= 1.0, arr
+
+        model_cache = td / "models" / "models--Systran--faster-whisper-base.en" / "snapshots" / "x"
+        model_cache.mkdir(parents=True)
+        with mock.patch.object(mt, "CACHE", td):
+            assert mt._model_cached("base.en") is True
+            assert mt._model_cached("small.en") is False
+        print("ok    local WAV decode and model cache detection")
+
         cache = td / "bench.json"
         calls = []
         def fake_run(audio, model_name, language, prompt, device):

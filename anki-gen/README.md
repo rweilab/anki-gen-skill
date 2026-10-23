@@ -101,11 +101,14 @@ images go in the review comment.
 ## Revising an imported deck
 
 New decks are `.apkg` files and need no AnkiConnect. Revisions of an already-imported deck use
-AnkiConnect only: open Anki with the add-on, then `python3 scripts/revision.py attach --deck
-"NAME"` (or `audit`, `plan`, `apply`). If AnkiConnect is unreachable these commands exit nonzero
-with a setup message; they never fall back to raw SQLite, the `anki` library, or MCP. The compact
-dossier lives under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`, not in Anki notes/media,
-and can be moved with `revision.py context export|import`. Full workflow: `references/revision.md`.
+AnkiConnect only: open Anki first and check `python3 scripts/anki_connect.py` (the pinned add-on
+can be installed with `--install --yes`). Never inspect the live collection DB, even read-only.
+If AnkiConnect is unreachable these commands exit nonzero with a setup message; they never fall
+back to raw SQLite, the `anki` library, or MCP. The compact
+dossier lives under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-uuid>/`, not in Anki
+notes/media, and can be moved with `revision.py context export|import`. Every apply takes an
+AnkiConnect snapshot; `revision.py revert --deck "NAME" --last --yes` undoes it. Full workflow:
+`references/revision.md`.
 
 ## Handing the skill to someone else
 

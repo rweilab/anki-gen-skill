@@ -19,23 +19,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+import anki_connect  # noqa: E402
 import deck_context as dc  # noqa: E402
 import render  # noqa: E402
 
-READ_ACTIONS = {"version", "findNotes", "notesInfo", "cardsInfo",
-                "getReviewsOfCards", "cardReviews", "deckNamesAndIds",
-                "retrieveMediaFile", "getMediaFilesNames"}
+READ_ACTIONS = {"version", "apiReflect", "findNotes", "findCards", "notesInfo",
+                "cardsInfo", "getReviewsOfCards", "cardReviews",
+                "deckNamesAndIds", "retrieveMediaFile", "getMediaFilesNames"}
 
 
 class FakeAnki:
     def __init__(self):
-        self.decks = {"SCHOOL::RTOS": 1, "AMB::DECK": 2}
+        self.decks = {"SCHOOL::RTOS": 1, "AMB::DECK": 2, "REVERT::DECK": 3}
         self.next_note = 1000
         self.next_card = 2000
         self.notes: dict[int, dict] = {}
         self.cards: dict[int, dict] = {}
         self.reviews: dict[int, list] = {}
         self.media: dict[str, bytes] = {}
+        self.media_dir = Path(tempfile.gettempdir())
         self.calls: list[str] = []
 
     def writes(self) -> list[str]:
@@ -73,14 +75,42 @@ class FakeAnki:
         self.calls.append(action)
         if action == "version":
             return 6
+        if action == "apiReflect":
+            return {"actions": list(params.get("actions") or [])}
+        if action == "getMediaDirPath":
+            return str(self.media_dir)
+        if action == "exportPackage":
+            target = Path(params.get("path") or "")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps({
+                "notes": self.notes, "cards": self.cards,
+                "reviews": self.reviews}))
+            return True
+        if action == "importPackage":
+            source = Path(params.get("path") or "")
+            if not source.is_absolute():
+                source = self.media_dir / source
+            data = json.loads(source.read_text())
+            for nid, note in data.get("notes", {}).items():
+                nid = int(nid)
+                if nid in self.notes:
+                    continue
+                note = json.loads(json.dumps(note))
+                self.notes[nid] = note
+                for cid in note.get("cards") or []:
+                    cid = int(cid)
+                    self.cards[cid] = data["cards"].get(str(cid), {})
+                    self.reviews[cid] = data.get("reviews", {}).get(str(cid), [])
+            return True
         if action == "deckNamesAndIds":
             return self.decks
-        if action == "findNotes":
+        if action in ("findNotes", "findCards"):
             import re
             m = re.search(r'deck:"([^"]*)"', str(params.get("query", "")))
             want = m.group(1) if m else ""
-            return sorted(nid for nid, n in self.notes.items()
-                          if not want or n["deckName"].casefold() == want.casefold())
+            store = self.notes if action == "findNotes" else self.cards
+            return sorted(key for key, row in store.items()
+                          if not want or row["deckName"].casefold() == want.casefold())
         if action in ("notesInfo", "cardsInfo"):
             key = "notes" if action == "notesInfo" else "cards"
             store = self.notes if key == "notes" else self.cards
@@ -290,9 +320,9 @@ def main() -> int:
             # 2. Attach maps note IDs and writes nothing to Anki.
             r = rev(["attach", "--deck", "SCHOOL::RTOS", "--json"], url, env)
             assert fake.writes() == [], fake.writes()
-            rows = [json.loads(x) for x in
-                    (Path(packed["path"]) / "cards.jsonl").read_text().splitlines()]
-            assert all(row["anki_note_id"] in fake.notes for row in rows), rows
+            states = [json.loads(x) for x in
+                      (Path(packed["path"]) / "anki_state.jsonl").read_text().splitlines()]
+            assert all(int(row["anki_note_id"]) in fake.notes for row in states), states
             assert json.loads(r.stdout)["matched"] == len(cards)
             print("ok    attach maps notes read-only")
 
@@ -331,6 +361,116 @@ def main() -> int:
             assert "ambiguous" in r.stderr.lower(), r.stderr
             assert len(fake.writes()) == before
             print("ok    attach asks on ambiguity")
+
+            # 4b. Snapshot + one-command revert for field updates and deletes.
+            rev_cards = [{"front": "Why is revert tested?",
+                          "back": "So one command can undo a revision. **Why:** trust.",
+                          "layer": "L2", "topic": "Revert", "objects": [],
+                          "deck": "REVERT::DECK", "source": "Lec 1 p.4",
+                          "review_score": 1}]
+            rev_work = make_work(td, "revert", rev_cards)
+            rev_pack = dc.pack(rev_work, {"deck_name": "REVERT::DECK"})
+            rev_root = Path(rev_pack["path"])
+            live_note(fake, rev_cards[0], deck="REVERT::DECK")
+            rev(["attach", "--deck", "REVERT::DECK"], url, env)
+            r = rev(["plan", "--deck", "REVERT::DECK", "--intent", "rewrite",
+                     "--update-front", "Why is revert tested?=Why is undo tested?",
+                     "--json"], url, env)
+            p1 = json.loads(r.stdout)["plan"]
+            rev(["apply", "--plan", p1, "--browser-closed"], url, env)
+            log_path = sorted((rev_root / "revisions").glob("*/apply_log.json"),
+                              key=lambda p: p.stat().st_mtime)[-1]
+            first_log = json.loads(log_path.read_text())
+            snap_meta = json.loads((rev_root / "snapshots" / first_log["snapshot_id"]
+                                    / "snapshot.json").read_text())
+            assert set(snap_meta) == {
+                "schema", "snapshot_id", "created_at", "deck_key", "deck",
+                "reason", "apkg", "note_count", "card_count", "apply_log",
+                "reverted_by"}, snap_meta
+            assert not {"notes", "cards", "revlog_counts"} & set(snap_meta)
+            assert snap_meta["note_count"] == 1 and snap_meta["card_count"] == 1, snap_meta
+            backup = json.loads((log_path.parent / "backup.json").read_text())
+            assert backup["updated_notes"] and not backup.get("reviews"), backup
+            assert len(backup["cards"]) == 1 and len(backup["state"]) == 1, backup
+            note = next(n for n in fake.notes.values()
+                        if "Why is undo tested?" in n["fields"].get("Front", {}).get("value", ""))
+            r = rev(["revert", "--deck", "REVERT::DECK", "--last", "--yes",
+                     "--browser-closed", "--json"], url, env)
+            out = json.loads(r.stdout)
+            assert out["verified"] and out["restored"] >= 1, out
+            assert "Why is revert tested?" in fake.notes[note["noteId"]]["fields"]["Front"]["value"]
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--json"], url, env)
+            assert len(json.loads(r.stdout)) >= 2
+            r = rev(["plan", "--deck", "REVERT::DECK", "--intent", "cull easiest",
+                     "--json"], url, env)
+            p2 = json.loads(r.stdout)["plan"]
+            data2 = json.loads(Path(p2).read_text())
+            gid2 = data2["destructive_groups"][0]["id"]
+            deleted_id = note["noteId"]
+            rev(["apply", "--plan", p2, "--choice", f"{gid2}=delete"], url, env)
+            assert deleted_id not in fake.notes
+            latest_log_path = sorted((rev_root / "revisions").glob("*/apply_log.json"),
+                                     key=lambda p: p.stat().st_mtime)[-1]
+            latest_log = json.loads(latest_log_path.read_text())
+            delete_backup = json.loads((latest_log_path.parent / "backup.json").read_text())
+            assert delete_backup["deleted_notes"], delete_backup
+            assert delete_backup["suspended_cards"] == [], delete_backup
+            r = rev(["revert", "--deck", "REVERT::DECK", "--last", "--yes",
+                     "--browser-closed", "--json"], url, env)
+            out = json.loads(r.stdout)
+            assert out["verified"], out
+            assert any("Why is revert tested?" in n["fields"].get("Front", {}).get("value", "")
+                       for n in fake.notes.values()), out
+            print("ok    slim snapshot, affected backup, and one-command revert")
+
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--sizes",
+                     "--warn-mb", "0", "--warn-count", "999", "--json"], url, env)
+            sized = json.loads(r.stdout)
+            assert sized["warn"] and sized["snapshot_count"] >= 2, sized
+            assert sized["path"] == str(rev_root.resolve()), sized
+            assert {"snapshots", "previews", "revisions", "resources"} <= set(sized["dirs"])
+            assert all("bytes" in row and "note_count" in row
+                       for row in sized["snapshots"]), sized
+            assert "--delete" in sized["delete_command"] and "--yes" in sized["delete_command"]
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--sizes",
+                     "--warn-mb", "999999", "--warn-count", "0"], url, env)
+            assert "warning:" in r.stderr and str(rev_root.resolve()) in r.stderr, r.stderr
+            assert "--delete" in r.stderr and "--prune" in r.stderr, r.stderr
+
+            rows = json.loads(rev(["snapshots", "--deck", "REVERT::DECK",
+                                   "--json"], url, env).stdout)
+            oldest = rows[0]["snapshot_id"]
+            assert oldest != latest_log["snapshot_id"], rows
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--delete",
+                     oldest, "--yes", "--json"], url, env)
+            deleted = json.loads(r.stdout)
+            assert deleted["bytes"] > 0 and not deleted["warning"], deleted
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--prune",
+                     "--keep", "0", "--yes"], url, env, expect=2)
+            assert "--force" in r.stderr, r.stderr
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--delete",
+                     latest_log["snapshot_id"], "--yes"], url, env, expect=2)
+            assert "--force" in r.stderr, r.stderr
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--delete",
+                     "../escape", "--yes"], url, env, expect=2)
+            assert "plain directory name" in r.stderr, r.stderr
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--delete",
+                     latest_log["snapshot_id"]], url, env, expect=2)
+            assert "--yes" in r.stderr, r.stderr
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--delete",
+                     latest_log["snapshot_id"], "--yes", "--force", "--json"], url, env)
+            deleted = json.loads(r.stdout)
+            assert deleted["warning"] and deleted["bytes"] > 0, deleted
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--prune",
+                     "--keep", "99", "--yes", "--json"], url, env)
+            assert json.loads(r.stdout)["deleted"] == []
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--prune",
+                     "--keep", "1", "--yes", "--json"], url, env)
+            pruned = json.loads(r.stdout)
+            assert len(pruned["kept"]) == 1 and pruned["bytes"] > 0, pruned
+            r = rev(["snapshots", "--deck", "REVERT::DECK", "--json"], url, env)
+            assert len(json.loads(r.stdout)) == 1
+            print("ok    snapshot sizes, explicit delete/prune, and guards")
 
             # 5. Field update preserves note/card IDs, scheduling, and revlog.
             sched_note = next(n for n in fake.notes.values()
@@ -455,7 +595,7 @@ def main() -> int:
             r = rev(["context", "export", "--deck", "SCHOOL::RTOS",
                      "--out", str(archive)], url, env)
             assert archive.is_file()
-            r = rev(["context", "import", str(archive), "--no-attach"], url, env)
+            r = rev(["context", "import", str(archive)], url, env)
             assert "dossier" in r.stdout
             print("ok    context export/import")
 
@@ -464,6 +604,13 @@ def main() -> int:
                 text = (SCRIPTS / name).read_text()
                 assert "import anki" not in text and "sqlite3" not in text, name
             print("ok    revision uses AnkiConnect only")
+
+            plugin = td / "plugin.zip"
+            with __import__("zipfile").ZipFile(plugin, "w") as z:
+                z.writestr("anki-connect-test/plugin/__init__.py", "# test\n")
+            dest = anki_connect.install(str(plugin), td / "addons")
+            assert (dest / "__init__.py").read_text() == "# test\n", dest
+            print("ok    AnkiConnect pin installer copies only the plugin")
         finally:
             server.shutdown()
             server.server_close()

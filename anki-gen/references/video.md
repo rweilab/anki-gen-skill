@@ -4,7 +4,7 @@ Opt-in. Use when the user provides a YouTube video/playlist, a local recording, 
 
 ## Local recordings
 
-`extract_video.py "<file-or-directory>" --work "$WORK" [--images yes|no]`
+`extract_video.py "<file-or-directory>" --work "$WORK" [--images auto|yes|no]`
 accepts `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
 `.m4a`, `.mp3`, `.wav`, `.flac` (transcript only).
 
@@ -17,9 +17,11 @@ accepts `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
   model, and language.
 - Source labels are `<filename or title> @ mm:ss`; `source_url` is intentionally
   empty for local files. Never fabricate a URL.
-- Media never leaves the machine. The first run downloads a model; later runs are
-  offline. No cloud transcription.
-- Frames use `frames.py --video-file`; no download path. Audio-only inputs skip frames.
+- Media never leaves the machine. The first run downloads a model once into
+  `~/.cache/anki-gen/models`; later runs use `local_files_only` and never check
+  the Hub. No cloud transcription.
+- Frames use `frames.py --video-file`; no download path. Video sources default to
+  `--images auto`; audio-only inputs skip frames; `--images no` disables them.
 - `pipeline.py --sources <local-file-or-directory>` is the preferred one-call path.
 
 ## Questions, once
@@ -28,7 +30,7 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 
 - Local: which file/directory, title, language, and whether a sidecar caption exists?
 - YouTube: whole playlist, or videos x–z?
-- Pull still frames when a diagram appears? yes/no.
+- Pull still frames when a diagram appears? yes/no/auto (video defaults to auto).
   - yes: automatic scoring; ambiguous frames are confirmed through the separate
     `image-vision` skill when a key is available. The main model never reads a
     frame. A shared diagram may be reused on multiple cards;
@@ -38,7 +40,7 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 
 ## Transcripts
 
-`extract_video.py "<url-or-local-path>" --work "$WORK" [--whole-playlist] [--items 2-5] [--images yes|no]`
+`extract_video.py "<url-or-local-path>" --work "$WORK" [--whole-playlist] [--items 2-5] [--images auto|yes|no]`
 
 - Manual captions first; auto captions fallback with a warning.
 - No captions and local transcription unavailable → report the failure; do not

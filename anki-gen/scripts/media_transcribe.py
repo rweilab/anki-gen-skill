@@ -189,6 +189,15 @@ def extract_audio(media: Path, work: Path, seconds_limit: float | None = None) -
     return out
 
 
+def _model_cached(name: str) -> bool:
+    root = CACHE / "models"
+    for folder in root.glob(f"models--*--faster-whisper-{name}"):
+        snapshots = folder / "snapshots"
+        if snapshots.is_dir() and any(p.is_dir() for p in snapshots.iterdir()):
+            return True
+    return False
+
+
 def _load_model(name: str, device: str):
     try:
         from faster_whisper import WhisperModel
@@ -197,15 +206,37 @@ def _load_model(name: str, device: str):
             "local transcription needs faster-whisper; run setup.sh or "
             "pip install --user faster-whisper") from e
     CACHE.mkdir(parents=True, exist_ok=True)
+    cached = _model_cached(name)
+    if not cached:
+        print(f"media_transcribe.py: downloading Whisper model {name} once to "
+              f"{CACHE / 'models'}; later runs stay local", file=sys.stderr)
     return WhisperModel(name, device=device, compute_type="int8",
-                        download_root=str(CACHE / "models"))
+                        download_root=str(CACHE / "models"),
+                        local_files_only=cached)
+
+
+def _audio_array(path: Path):
+    """Decode our own 16 kHz mono WAV instead of letting faster-whisper use PyAV.
+
+    PyAV removed the metadata_errors keyword faster-whisper passes to av.open,
+    so feeding an ndarray keeps local transcription working across versions.
+    """
+    import wave
+
+    import numpy as np
+
+    with wave.open(str(path), "rb") as wav:
+        if wav.getnchannels() != 1 or wav.getsampwidth() != 2:
+            raise RuntimeError("transcription audio must be mono 16-bit WAV")
+        frames = wav.readframes(wav.getnframes())
+    return np.frombuffer(frames, dtype="<i2").astype("float32") / 32768.0
 
 
 def _run(audio: Path, model_name: str, language: str | None,
          initial_prompt: str | None, device: str) -> float:
     model = _load_model(model_name, device)
     segments, _ = model.transcribe(
-        str(audio), language=language, vad_filter=True,
+        _audio_array(audio), language=language, vad_filter=True,
         initial_prompt=initial_prompt)
     start = time.monotonic()
     for _ in segments:
@@ -263,7 +294,7 @@ def transcribe(media: Path, work: Path, model: str = "auto",
     chosen = choose_model(audio, language, model, device)
     loaded = _load_model(chosen, device)
     segments, _ = loaded.transcribe(
-        str(audio), language=language, vad_filter=True,
+        _audio_array(audio), language=language, vad_filter=True,
         initial_prompt=initial_prompt)
     cues = []
     for seg in segments:

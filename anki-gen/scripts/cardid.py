@@ -78,9 +78,12 @@ def last_row_per_card(rows: list[dict]) -> dict[str, dict]:
 
 if __name__ == "__main__":
     import sys
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        print("Usage: cardid.py <feedback.jsonl>")
+        raise SystemExit(0)
     if len(sys.argv) != 2:
-        print(json.dumps({"error": "Usage: cardid.py <feedback.jsonl>"}))
-        raise SystemExit(1)
+        print("Usage: cardid.py <feedback.jsonl>", file=sys.stderr)
+        raise SystemExit(2)
     rows = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()
             if line.strip()]
     print(json.dumps(last_row_per_card(rows), indent=2))

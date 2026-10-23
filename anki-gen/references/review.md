@@ -80,7 +80,8 @@ when done — then give the URL **alone on its own line** (paste-able whole; the
 bare). The sentence is not padding: it is the only thing that tells someone who has never seen this
 what they are about to open and what happens next. **Do not print card text into the chat** — that
 is what this replaces. Wait; the user says "done" whenever they stop, so read whatever is on disk.
-Then generalise and re-scope, stop the server, verify nothing is listening.
+Then generalise and re-scope, stop the server, verify nothing is listening. Stop it with
+`curl -s -X POST <url>/finish`; never `pkill -f`, which can match and kill its own shell.
 
 **The score scale:**
 

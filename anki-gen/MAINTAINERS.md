@@ -39,10 +39,29 @@ commands, or kill the harness/own process. Stop only a known test child after a 
 exists, run autonomously to completion; ask only for destructive or missing
 inputs. See `AGENTS.md`.
 
+## v1.5 implementation map
+
+Start here before reading the revision code:
+
+| Need | Read |
+|---|---|
+| CLI flags and output | `scripts/revision.py` |
+| One revision verb | `scripts/revision_ops/<verb>.py` |
+| Snapshot, sizes, delete, prune | `scripts/revision_ops/snapshot.py` |
+| Shared note/schedule/conflict helpers | `scripts/revision_ops/common.py` |
+| Atomic storage and locks | `scripts/dossier/store.py` |
+| Record and manifest format | `scripts/dossier/model.py`, `manifest.py` |
+| Behavior index | `tests/revision_hardening.py`, `tests/README.md` |
+
+Data flow: `attach` writes state, `plan` writes a plan, `apply` writes snapshot +
+affected backup + apply log, and `revert` reads the backup + apply log. Old state
+is never duplicated in `snapshot.json`.
+
 ## Deferred: v1.5 deck revisions
 
-**v1.5 status:** implemented in `scripts/deck_context.py`, `scripts/revision.py`, and
-`scripts/anki_connect.py`. The notes below remain the rationale and the boundaries.
+**v1.5 status:** implemented in `scripts/dossier/`, `scripts/revision_ops/`,
+`scripts/deck_context.py`, `scripts/revision.py`, and `scripts/anki_connect.py`. The notes
+below remain the rationale and the boundaries.
 
 Do not implement this in v1.4.x. Notes only:
 

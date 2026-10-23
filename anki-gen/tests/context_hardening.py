@@ -15,6 +15,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import deck_context as dc  # noqa: E402
 from cardid import card_hash  # noqa: E402
+from dossier.errors import ArchiveError, SchemaTooNew  # noqa: E402
 
 try:
     from PIL import Image, ImageDraw
@@ -125,20 +126,27 @@ def main() -> int:
         for name in ("manifest.json", "deck_context.md", "topics.jsonl",
                      "style.md", "notation.json", "learner.md",
                      "preferences.json", "decisions.md", "future_work.md",
-                     "cards.jsonl", "authoring_ledger.md", "scope_gate.md",
-                     "intake.md", "sources.jsonl", "source_excerpts.jsonl",
-                     "media_candidates.jsonl", "thumbnails"):
+                     "cards.jsonl", "anki_state.jsonl", "sources.jsonl",
+                     "source_excerpts.jsonl", "media_candidates.jsonl",
+                     "thumbnails", "evidence/intake.md",
+                     "evidence/scope_gate.md", "evidence/authoring_ledger.md"):
             assert (dossier / name).exists(), name
+        manifest = json.loads((dossier / "manifest.json").read_text())
+        assert manifest["format"] == "anki-gen.deck-dossier"
+        assert manifest["schema"] == 1 and manifest["deck"]["uuid"] == key
+        assert "cards.jsonl" in manifest["files"]
+        assert manifest["files"]["cards.jsonl"]["role"] == "cards"
         print("ok    dossier layout")
 
         rows = [json.loads(x) for x in (dossier / "cards.jsonl").read_text().splitlines()]
-        assert len(rows) == 3, rows
+        states = [json.loads(x) for x in (dossier / "anki_state.jsonl").read_text().splitlines()]
+        assert len(rows) == 3 and len(states) == 3, rows
         assert len({r["rev_id"] for r in rows}) == 3
         assert all(r["guid"] == card_hash({"front": r["front"], "back": r["back"]})
                    for r in rows)
         assert rows[0]["why"] and rows[0]["source"]
-        assert rows[0]["anki_note_id"] is None
         assert rows[0]["review_score"] == 1, rows[0]
+        assert states[0]["anki_note_id"] is None and states[0]["state"] == "live"
         assert "FULL TRANSCRIPT" not in (dossier / "cards.jsonl").read_text()
         assert not (dossier / "transcripts.md").exists()
         assert not (dossier / "media").exists()
@@ -200,9 +208,10 @@ def main() -> int:
         with zipfile.ZipFile(archive) as z:
             assert "_export.json" in z.namelist()
             meta = json.loads(z.read("_export.json"))
-            assert meta["deck_key"] == key and meta["checksum"]
+            assert meta["deck_uuid"] == key and meta["files"]
+            assert all(e.get("sha256") for e in meta["files"])
         shutil.rmtree(dossier)
-        imported = dc.import_archive(archive, attach=False)
+        imported = dc.import_archive(archive)
         assert imported["key"] == key, imported
         rows3 = [json.loads(x) for x in (Path(imported["path"]) / "cards.jsonl").read_text().splitlines()]
         assert len(rows3) == 3 and rows3[0]["rev_id"] == rows[0]["rev_id"]
@@ -210,9 +219,10 @@ def main() -> int:
 
         bad = dict(rows[0], source="")
         check = dc.validate({"manifest": {"schema": 1}, "cards": [bad], "topics": [],
-                             "media_candidates": [], "learner": "x"})
-        assert any("missing source" in e for e in check["errors"]), check
-        assert any("why" in w for w in check["warnings"]), check
+                             "state": [], "media_candidates": [], "learner": "x",
+                             "path": str(dossier), "sources": []})
+        assert any("missing source" in e["message"] for e in check["errors"]), check
+        assert any("why" in w["message"] for w in check["warnings"]), check
         print("ok    validation catches lost source and context gaps")
 
         # No hard cap: every indexed high/medium candidate survives packing.
@@ -236,6 +246,106 @@ def main() -> int:
         if HAVE_PIL:
             assert all(m["preview"] for m in media_many), media_many
         print("ok    no hard cap on high/medium media candidates")
+
+        # Unknown fields survive a repack; the schema is additive.
+        states = [json.loads(x) for x in
+                  (dossier / "anki_state.jsonl").read_text().splitlines()]
+        cards_now = [json.loads(x) for x in
+                     (dossier / "cards.jsonl").read_text().splitlines()]
+        cards_now[0].setdefault("extra", {})["x_future"] = {"keep": True}
+        dc.update_cards(key, cards_now, states)
+        dc.pack(work, {"deck_name": "SCHOOL::RTOS", "profile": "User 1"})
+        rows4 = [json.loads(x) for x in (dossier / "cards.jsonl").read_text().splitlines()]
+        assert rows4[0]["extra"]["x_future"] == {"keep": True}, rows4[0]
+        print("ok    unknown fields preserved")
+
+        # The index is a cache and rebuilds from manifests.
+        index = Path(dc.data_root()) / "decks" / "index.json"
+        index.unlink()
+        assert dc.resolve(key) == key
+        assert index.is_file()
+        print("ok    index rebuilds from manifests")
+
+        # Checksum verification is explicit and catches tamper.
+        cards_file = dossier / "cards.jsonl"
+        original_cards = cards_file.read_text()
+        cards_file.write_text(original_cards + json.dumps({"rev_id": "tamper"}) + "\n")
+        assert dc.file_problems(key), "tampered file was not reported"
+        cards_file.write_text(original_cards)
+        print("ok    file checksum verification detects tamper")
+
+        # Newer schemas are refused instead of rewritten.
+        manifest_file = dossier / "manifest.json"
+        original_manifest = manifest_file.read_text()
+        future = json.loads(original_manifest)
+        future["schema"] = 99
+        manifest_file.write_text(json.dumps(future))
+        try:
+            dc.load(key)
+        except SchemaTooNew:
+            pass
+        else:
+            raise AssertionError("future schema was accepted")
+        manifest_file.write_text(original_manifest)
+        print("ok    newer schema is read-only/refused")
+
+        # Unsafe archives and checksum tampering are rejected.
+        bad = td / "bad.zip"
+        with zipfile.ZipFile(archive) as src, zipfile.ZipFile(bad, "w") as dst:
+            for name in src.namelist():
+                data = src.read(name)
+                if name == "cards.jsonl":
+                    data += b" "
+                dst.writestr(name, data)
+        try:
+            dc.import_archive(bad)
+        except ArchiveError:
+            pass
+        else:
+            raise AssertionError("tampered archive was accepted")
+        with zipfile.ZipFile(archive) as src:
+            meta = json.loads(src.read("_export.json"))
+        evil = td / "evil.zip"
+        with zipfile.ZipFile(evil, "w") as z:
+            z.writestr("_export.json", json.dumps(meta))
+            z.writestr("../escape.txt", "nope")
+        try:
+            dc.import_archive(evil)
+        except ArchiveError:
+            pass
+        else:
+            raise AssertionError("unsafe archive path was accepted")
+        print("ok    archive path/checksum hardening")
+
+        # Generic resources: any file type, open kind/role, future metadata.
+        blob = td / "future-resource.bin"
+        blob.write_bytes(b"\x00\x01future-resource\xff")
+        row = dc.add_resource(key, blob, kind="dataset", role="reference",
+                              name="future-resource.bin",
+                              metadata={"unknown_future_field": {"x": 1}})
+        assert row["path"].startswith("resources/")
+        assert (dossier / row["path"]).read_bytes() == blob.read_bytes()
+        loaded = dc.load(key)
+        assert any(r["resource_id"] == row["resource_id"] for r in loaded["resources"])
+        assert loaded["manifest"]["counts"]["resources"] == 1
+        assert not dc.validate(deck_key_or_selector=key)["errors"]
+        archive2 = td / "with-resource.zip"
+        dc.export(key, archive2)
+        with zipfile.ZipFile(archive2) as z:
+            assert row["path"] in z.namelist()
+        (dossier / row["path"]).write_bytes(b"tampered")
+        assert any("checksum mismatch" in e["message"]
+                   for e in dc.validate(deck_key_or_selector=key)["errors"])
+        print("ok    generic resources are extensible and validated")
+
+        # Future manifest metadata is preserved in extensions.
+        manifest = json.loads((dossier / "manifest.json").read_text())
+        manifest.setdefault("extensions", {})["x-future"] = {"ok": True}
+        (dossier / "manifest.json").write_text(json.dumps(manifest))
+        dc.pack(work, {"deck_name": "SCHOOL::RTOS", "profile": "User 1"})
+        assert json.loads((dossier / "manifest.json").read_text()
+                          )["extensions"]["x-future"] == {"ok": True}
+        print("ok    manifest extensions are preserved")
 
     print("\nPASS  context hardening")
     return 0

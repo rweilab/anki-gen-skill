@@ -64,6 +64,23 @@ def _is_media_source(source: str) -> bool:
     return "youtube.com/" in low or "youtu.be/" in low
 
 
+def _media_images(sources: list[str], mode: str) -> str:
+    if mode != "auto":
+        return mode
+    from media_transcribe import is_media, kind, media_files
+    for source in sources:
+        path = Path(source[7:] if source.startswith("file://") else source)
+        if path.is_file():
+            if is_media(path) and kind(path) == "video":
+                return "yes"
+        elif path.is_dir():
+            if any(kind(p) == "video" for p in media_files(str(path))):
+                return "yes"
+        else:
+            return "yes"
+    return "no"
+
+
 def stage_media(sources: list[str], out: Path, images: str, model: str,
                 language: str, force: bool, whole_playlist: bool = False,
                 items: str = "", title: str = "", device: str = "cpu",
@@ -343,8 +360,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="deck name for --build and the summary")
     ap.add_argument("--manifest-full", action="store_true",
                     help="list every image path in the manifest (diagnosis only)")
-    ap.add_argument("--images", choices=("yes", "no"), default="no",
-                    help="extract frames from local/video sources")
+    ap.add_argument("--images", choices=("yes", "no", "auto"), default="auto",
+                    help="extract frames from video sources; auto enables them for video")
     ap.add_argument("--model", default="auto", help="local Whisper model or auto")
     ap.add_argument("--language", default="en", help="local language, or auto")
     ap.add_argument("--device", default="cpu", help="local Whisper device")
@@ -416,8 +433,9 @@ def main(argv: list[str] | None = None) -> int:
         media_sources = [s for s in args.sources if _is_media_source(s)]
         doc_sources = [s for s in args.sources if s not in media_sources]
         if media_sources:
-            med = stage_media(media_sources, out, args.images, args.model,
-                              args.language, args.force_transcribe,
+            med = stage_media(media_sources, out,
+                              _media_images(media_sources, args.images),
+                              args.model, args.language, args.force_transcribe,
                               args.whole_playlist, args.items, args.title,
                               args.device, args.initial_prompt)
             lines.append(f"media      {med['videos']} source(s), {med['chunks']} chunks"

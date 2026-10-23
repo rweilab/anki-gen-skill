@@ -1264,6 +1264,8 @@ def main() -> int:
     print("", flush=True)
     print(f"http://{host}:{port}/", flush=True)
     print("", flush=True)
+    print(f"[review] stop without pkill: curl -s -X POST http://{host}:{port}/finish",
+          flush=True)
     print("[review] hand the user the URL: one short sentence saying what the page is "
           "and to come back when done, then the URL above alone on its own line", flush=True)
     print(f"[review] feedback -> {out.resolve()}", flush=True)

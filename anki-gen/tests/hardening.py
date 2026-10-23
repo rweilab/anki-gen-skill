@@ -5,7 +5,6 @@ Run by scripts/smoke.sh. Everything is local and temporary; no model calls.
 """
 from __future__ import annotations
 
-import copy
 import json
 import re
 import shutil
@@ -97,8 +96,11 @@ def main() -> int:
     skill = (ROOT / "SKILL.md").read_text()
     for phrase in ("Never use main-model vision",
                    "Never spawn a child `opencode` process",
-                   "Do not probe for LibreOffice"):
+                   "Do not probe for LibreOffice",
+                   "Never open, copy, query, or inspect the live collection DB"):
         assert phrase in skill, f"guardrail missing from SKILL.md: {phrase!r}"
+    revision = (ROOT / "references" / "revision.md").read_text()
+    assert "collection.anki2" in revision and "AnkiConnect" in revision
     maintainers = (ROOT / "MAINTAINERS.md").read_text()
     for phrase in ("## Quality contract", "**98%**", "4. speed"):
         assert phrase in maintainers, f"quality contract missing: {phrase!r}"

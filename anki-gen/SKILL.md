@@ -12,13 +12,9 @@ local web page, optional web deck audit, and optional deck merging.
 Paths use `~/.claude/skills/anki-gen/`; substitute the skill's own directory if moved. Only the
 entry point differs (`/anki-gen` vs description match); the pipeline is identical.
 
-**Supporting files.** `references/card-writing.md` (read before stage 7), `references/prompts.md`
-(stages 5/7/8/13), `references/review.md` (stages 9/10), `references/lessons.md` (when changing a
-script), `references/optional.md` (programming decks, known gaps, media, deck audit),
-`references/video.md` (video sources), `references/slides.md` (PowerPoint),
-`references/revision.md` (attaching/revising an imported deck). Each is read once at its
-stage, not every step. They ship with the skill; if `references/` is missing, work
-from the rules alone (they are the contract).
+**Supporting files.** Read only the file named for the current stage; the rules below are
+the contract. The full read-when map is at the end of this file. If `references/` is
+missing, work from the rules alone.
 
 **Token discipline.** Batch 10–15 cards per topic after a one-line-per-card ledger; read only the
 chosen sources, learner context, and the stage's reference; phase-split large reviews. Quality
@@ -276,7 +272,7 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     of <tag> dirs + md paths (read the .md when classifying). Cite the
                     file the text came from ("Lec 04 · p.12"), not the topic dir.
 4b. VIDEO/MEDIA   → read $WORK/intake.md, then pipeline.py --sources "<url-or-local-path>"
-                    --out "$WORK" [--images yes|no] [--model auto]
+                    --out "$WORK" [--images auto|yes|no] [--model auto]
                     [--whole-playlist | --items 2-5] [--title "..."] (preferred).
                     Direct extract_video.py "<url-or-local-path>" --work "$WORK"
                     is the single-source diagnosis path. Writes
@@ -337,12 +333,11 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     Read the detail in `references/authoring.md` and `references/video.md`.
                     Video source: `source` is the full `<channel> - ... - <title> @ mm:ss`
                     line; `source_url` is the plain timestamp URL (series includes the playlist).
-                    Read $WORK/intake.md for images yes/no and the video range; do not re-ask.
-                    While the source is still open, write a short $WORK/curated.json for
-                    the persistent dossier: per-topic takeaways, course notation/style,
-                    learner preferences, deck-shape decisions, and future work. Do not
-                    re-read the corpus at the end to summarize it; context packing is
-                    deterministic. Details: `references/revision.md`.
+                    Read $WORK/intake.md for the image preference and video range; do not re-ask.
+                    Video sources default to frames (`--images auto`); audio-only skip frames.
+                    While the source is open, write a short $WORK/curated.json for the
+                    dossier (takeaways, style, decisions); never re-read the corpus to
+                    summarize it. Details: `references/revision.md`.
 8. VERIFY (static) → validate_cards.py $WORK/cards.jsonl — escapes, delimiters, leaked markup,
                     computation fronts, duplicates, front-visible tag leaks, answer overlap,
                     missing glossary/provenance. Layer 2 is
@@ -359,7 +354,8 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     `cardid.py` (last row per card), read only low scores/comments, generalise,
                     re-scope (see `references/review.md`). The 1–5 scale is the primary review;
                     `--ask recall` is a second pass (default log `review_recall.jsonl`), never
-                    a substitute.
+                    a substitute. Stop a stuck server with `curl -X POST <url>/finish`,
+                    never `pkill -f`.
 11. BUILD         → prefer pipeline.py --cards $WORK/cards.jsonl --gates-only --build
                     --deck-name "Name" --out-apkg ./<deck>.apkg (build + validate in
                     one call). `--work`/`--out` is the work directory; a `.apkg`
@@ -374,9 +370,9 @@ uses `$WORK/cards.jsonl` (or the same file named `.json`).
                     deletes it and the .apkg is one-shot.
                     A missing evidence file is a hard stop; `--allow-missing-artifacts` is
                     for a draft only. Static validation is automatic; `--allow-invalid` is
-                    diagnosis only. A successful build also packs the persistent deck
-                    dossier under `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`
-                    before cleanup; `--no-context` opts out.
+                    diagnosis only. A successful build packs the dossier under
+                    `${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`; `--no-context`
+                    opts out.
 12. VALIDATE      → validate_apkg.py out.apkg — the only step that sees a deck which imports
                     cleanly but is unreadable.
 13. DEBLOAT (ROI) → roi_report.py $WORK/cards.jsonl, then the deblating pass (prompt in `references/prompts.md`).
@@ -412,18 +408,13 @@ in Anki may keep scheduling history, but it must be mirrored in the source befor
 
 ## Revising an imported deck
 
-A new deck is an `.apkg`. Once it is imported, revisions use AnkiConnect only — never raw
-SQLite, the `anki` library, or MCP. If AnkiConnect is not running, `attach`, `audit`, `plan`,
-and `apply` fail with a setup message and nonzero exit; new `.apkg` builds still work offline.
-
-The caller states intent in plaintext (“cull the easiest cards”, “keep the anchors”, “make this
-more visual”, “suspend, don't delete”). `revision.py plan` resolves cards by topic/front/tags/
-score/family and writes a human + machine plan; `apply` waits for explicit destructive choices.
-Manual Anki edits win by default, field-only updates preserve scheduling/revlog, and destructive
-applies are backed up first. Score 1 is calibration (“known / too easy”), not automatic
-rejection. The dossier (`context pack`, automatic after `--build`) keeps distilled takeaways,
-notation, learner preferences, decisions, source anchors, media metadata, and revision logs.
-Details and commands: `references/revision.md`. The review page UI is unchanged.
+Open Anki first, run `python3 scripts/anki_connect.py`, and stop to fix setup if it fails
+(add-on code `2055492159`; `scripts/anki_connect.py --install --yes` for the pinned build).
+Never open, copy, query, or inspect the live collection DB, even read-only. Ask whether to
+**update the deck already in Anki** (keeps history) or **regenerate a `.apkg`** (fresh import).
+`references/revision.md` has the commands, conflicts, destructive choices, snapshots,
+one-command revert, and how to find cards in Anki. Score 1 is calibration (“known / too
+easy”), never automatic rejection. The review page UI is unchanged.
 
 ## Reporting
 The report is the last thing the caller reads; for a beginner it is the whole experience.
@@ -443,10 +434,10 @@ review page is for. Name cards by `topic` and number so the caller can run `roi_
 The **Assumed** line is not optional when you skipped a question to reduce friction: it is the only
 thing between a fast default and a silently wrong deck.
 
-## Working references
+## Supporting files
 
 Read each file once, at the stage named. The rules above are the contract; a reference is the
-explanation. If `references/` is missing, work from the rules alone.
+explanation, never an override. Do not read every reference up front.
 
 | File | Read | Carries |
 |---|---|---|
@@ -458,11 +449,14 @@ explanation. If `references/` is missing, work from the rules alone.
 | `references/survey.md` | stage 2 | what to propose, learner-context files, deck-name ask |
 | `references/review.md` | stages 9/10 and the review handoff | triage budget, score meanings, generalise/re-scope |
 | `references/output.md` | at the end | cleanup, deck naming, GUID identity, merge |
-| `references/revision.md` | when revising an imported deck | AnkiConnect, dossier, attach/audit/plan/apply, conflicts, destructive choices |
+| `references/revision.md` | when revising an imported deck | AnkiConnect setup, no raw DB, dossier, attach/audit/plan/apply, conflicts, destructive choices |
 | `references/video.md` | when the source is a video | transcripts, playlists, frame cues, auto-picking, legal |
+| `references/slides.md` | when the source is PowerPoint | PPTX text, notes, embedded images, vector limits |
 | `references/optional.md` | when relevant | programming decks, known gaps, media, deck audit |
 | `references/lessons.md` | when changing a script | regression lessons |
 | `references/getting-started.md` | when no sources are found | the beginner intro copy |
+| `references/dossier-format.md` | only when changing dossier storage | schema, files, snapshots, archive rules |
+| `MAINTAINERS.md`, `AGENTS.md` | before changing scripts or quality rules | 98% contract, test map, implementation map |
 | `README.md` | setup | dependencies, vendored MathJax |
 
 ## Image-heavy or handwritten sources

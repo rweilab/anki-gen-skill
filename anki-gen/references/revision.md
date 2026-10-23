@@ -1,32 +1,55 @@
 # Revising an imported deck
 
 New decks are `.apkg` files. Once the caller has imported one, revisions go
-through **AnkiConnect** — a local HTTP bridge inside Anki Desktop. Never write
-SQLite, import the `anki` library, or use MCP for live revision. If AnkiConnect
-is down, attach/audit/plan/apply stop with a setup message; they do not silently
-fall back to a rebuild.
+through **AnkiConnect** — a local HTTP bridge inside Anki Desktop.
 
-Setup: open Anki, install/enable AnkiConnect, keep Anki running. Check with:
+**Hard rules:** never open, copy, query, or inspect the live Anki collection DB
+(`collection.anki2`, `collection.anki21b`), even read-only. Do not use raw SQLite,
+the `anki` library, or MCP for live revision. The DB schema changes; AnkiConnect
+is the only supported surface. If AnkiConnect is down, stop and fix setup; do not
+fall back to a rebuild or a database edit.
 
-```bash
-python3 scripts/anki_connect.py
-```
+## Before you start
+
+1. Ask the user to open Anki Desktop and leave it running.
+2. Check the bridge:
+   ```bash
+   python3 scripts/anki_connect.py
+   ```
+3. If it is missing or broken, install the pinned add-on only after asking:
+   ```bash
+   python3 scripts/anki_connect.py --install --yes
+   ```
+   Then restart Anki and check again. Do not install upstream `master`; recent
+   releases broke many clients.
+4. Ask which outcome the user wants:
+   - **Update the deck already in Anki** — keeps scheduling and review history;
+     recommended once they have studied it.
+   - **Regenerate a `.apkg`** — fresh import; review history is not carried over
+     automatically.
+
+If setup fails, stop. Do not inspect the collection DB to work around it.
 
 ## The dossier
 
 `context pack` writes a compact, persistent record under:
 
 ```text
-${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-key>/
+${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-uuid>/
 ```
 
+`<deck-uuid>` is stable for the dossier's whole life. `index.json` is a rebuildable
+cache, not the source of truth.
+
 `pipeline.py --build` packs automatically after a successful build, before stage
-14 removes `.anki-gen-temp`. `--no-context` disables it. The dossier holds only
-distilled context: card records, topic takeaways, course style/notation, learner
-preferences, deck-shape decisions, future work, source anchors/hashes, media
-candidate metadata, adaptive previews, and revision logs. It never holds full
-PDFs/videos/transcripts, full media, the Anki DB, scheduling copies, secrets, or
-hidden reasoning.
+14 removes `.anki-gen-temp`. `--no-context` disables it. The dossier holds only distilled context: authored card records, live Anki state,
+topic takeaways, course style/notation, learner preferences, deck-shape decisions,
+future work, source anchors/hashes, media-candidate metadata, adaptive previews,
+revision logs, and snapshots. `cards.jsonl` is authored identity/context;
+`anki_state.jsonl` is note IDs, last-seen fields, scheduling fingerprints, and
+live state. It never holds full PDFs/videos/transcripts, full media, the Anki DB,
+secrets, or hidden reasoning. `manifest.json` declares the schema, file table,
+checksums, features, and deck identity.
 
 `curated.json` in the work directory is the optional model-authored section:
 `topics`, `style`, `notation`, `learner`, `preferences`, `decisions`,
@@ -38,9 +61,13 @@ Portability is explicit:
 
 ```bash
 python3 scripts/revision.py context export --deck "DECK NAME" --out deck-context.zip
-python3 scripts/revision.py context import deck-context.zip            # re-attaches if AnkiConnect is up
-python3 scripts/revision.py context import deck-context.zip --no-attach
+python3 scripts/revision.py context import deck-context.zip            # restore only
+python3 scripts/revision.py context import deck-context.zip --attach   # restore + attach
 ```
+
+Archives are deterministic, per-file checksummed, and reject unsafe paths,
+symlinks, duplicate entries, and oversized content. Imports are staged, verified,
+backed up, and atomically swapped.
 
 Context stays local by default. Do not put it in Anki notes or media.
 
@@ -65,6 +92,41 @@ python3 scripts/revision.py audit --deck "SCHOOL::RTOS"                 # read-o
 `--reconstruct` builds a `confidence: reconstructed` record from live fields and
 tags. It does not invent a ledger, `why`, or source evidence. Audit never writes.
 
+## Snapshots and one-command revert
+
+Every `apply` takes an AnkiConnect snapshot before writing: `deck.apkg` is exported
+with scheduling (`exportPackage`, `includeSched`) and `snapshot.json` stores only
+metadata (ID, deck, reason, note/card counts, apply-log link). Old fields and
+queue state live in `revisions/<stamp>/backup.json`, limited to affected notes,
+cards, and dossier rows. The apply log records the snapshot ID.
+
+```bash
+python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS"
+python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS" --sizes
+python3 scripts/revision.py revert --deck "SCHOOL::RTOS" --last --yes
+```
+
+`--sizes` reports snapshots, previews, revisions, resources, and per-snapshot
+bytes. It warns above 256 MB or 16 snapshots by default; override with
+`--warn-mb` and `--warn-count`. Retention is always explicit:
+
+```bash
+python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS" --delete ID --yes
+python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS" --prune --keep 4 --yes
+```
+
+Nothing is deleted automatically. Deleting the snapshot used by the latest apply
+removes the easy `revert --last` path, so it requires `--force`. Context export
+still excludes `snapshots/` unless `--include-snapshots` is passed.
+
+`revert --last` restores the last applied revision from `backup.json` +
+`apply_log.json`: field updates by note ID, added cards are removed, deleted cards
+are restored through `importPackage`, and suspension state is restored. Manual
+edits made after the revision are preserved by default and reported as conflicts;
+`--force` overrides them. A pre-revert snapshot is taken first. `--dry-run` prints
+the counts. Field restores require `--browser-closed`; sync is opt-in and only
+after verification.
+
 ## Plan, then apply
 
 The user speaks plaintext; note IDs stay internal.
@@ -77,7 +139,9 @@ python3 scripts/revision.py plan --deck "SCHOOL::RTOS" \
 `plan` reads the dossier plus a live snapshot, resolves by topic/front/tag/score/
 leech/family, and writes `revision_plan.md` + `revision_plan.json` under
 `revisions/<stamp>/`. It does not write Anki. The human plan names cards by layer,
-topic, and front; never by note ID. Useful selectors:
+topic, and front; never by note ID. To inspect them in Anki: open **Browse**,
+select the deck, and search for one of the fronts shown in the plan (OS-agnostic;
+no file paths). Useful selectors:
 
 - `--topic`, `--front`, `--tag`, `--layer`, `--stratum`, `--score 1..5`, `--leech`
 - `--update-front OLD=NEW`, `--update-back OLD=NEW`
@@ -131,7 +195,22 @@ only after the caller has seen the report.
   ordinals keep history, removed cards lose it, new cards start new.
 - No notetype, field, or template changes in routine revision. Use only
   `updateNoteFields`, `addNotes`, `deleteNotes`, `suspend`, `changeDeck`,
-  `setDueDate`, `storeMediaFile`, and `sync`.
+  `setDueDate`, `storeMediaFile`, `exportPackage`, `importPackage`, and `sync`.
+
+## Resources
+
+`resources/` is the forward-compatible home for files that are not card media:
+datasets, notes, audio, future formats. `resources.jsonl` records `kind` and
+`role` as open strings plus a hash and metadata. Add with:
+
+```bash
+python3 scripts/revision.py context add-resource --deck "NAME" --file path \
+    --kind dataset --role reference --name "name"
+python3 scripts/revision.py context resources --deck "NAME"
+```
+
+The default dossier still stores metadata/previews rather than full media unless
+the caller explicitly adds a resource.
 
 ## Media previews
 

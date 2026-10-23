@@ -19,7 +19,6 @@ from extract_video import (chunks, entries, get_vtt, index, parse_items, parse_v
                            source_label, video_url)  # noqa: E402
 from frames import late_best  # noqa: E402
 import media_transcribe as mt  # noqa: E402
-from extract_video import write_combined_transcripts, write_transcript  # noqa: E402
 import extract_video  # noqa: E402
 import ytdlp  # noqa: E402
 from unittest import mock  # noqa: E402

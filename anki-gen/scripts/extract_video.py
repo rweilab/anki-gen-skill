@@ -304,7 +304,7 @@ def local_source(source: str, work: Path, args) -> int:
             "media_kind": mt.kind(media), "transcript_source": transcript_source,
             "model": "none" if transcript_source.startswith("sidecar") else transcript_source,
         })
-        if args.images == "yes" and mt.kind(media) == "video":
+        if args.images in ("yes", "auto") and mt.kind(media) == "video":
             r = run([sys.executable, str(Path(__file__).with_name("frames.py")),
                      "--work", str(work), "--video-id", vid, "--url", "",
                      "--video-file", str(media), "--title", title,
@@ -313,7 +313,7 @@ def local_source(source: str, work: Path, args) -> int:
             if r.returncode != 0:
                 failures.append({"id": vid, "title": title,
                                  "reason": "frame extraction failed"})
-        elif args.images == "yes":
+        elif args.images in ("yes", "auto"):
             print(f"extract_video.py: audio-only {media.name}; frames skipped",
                   file=sys.stderr)
     if not all_rows and not videos:
@@ -354,7 +354,7 @@ def main() -> int:
     ap.add_argument("--whole-playlist", action="store_true")
     ap.add_argument("--items", default="", help="1-3 or 2,4")
     ap.add_argument("--lang", default="en.*")
-    ap.add_argument("--images", choices=("yes", "no"), default="no")
+    ap.add_argument("--images", choices=("yes", "no", "auto"), default="auto")
     ap.add_argument("--search", default=None, help="print candidate videos for a query")
     ap.add_argument("--title", default="", help="local recording title")
     ap.add_argument("--model", default="auto", help="local Whisper model or auto")
@@ -432,7 +432,7 @@ def main() -> int:
         if caption_status != "ok":
             video["caption_error"] = caption_status
         videos.append(video)
-        if args.images == "yes":
+        if args.images in ("yes", "auto"):
             r = run([sys.executable, str(Path(__file__).with_name("frames.py")),
                      "--work", str(work), "--video-id", vid, "--url", url,
                      "--title", title, "--source-label", label,

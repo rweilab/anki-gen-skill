@@ -49,7 +49,11 @@ for f in anki-gen/SKILL.md image-vision/SKILL.md \
          anki-gen/scripts/preflight.py anki-gen/scripts/pipeline.py \
          anki-gen/scripts/platform_paths.py anki-gen/scripts/anki_connect.py \
          anki-gen/scripts/deck_context.py anki-gen/scripts/revision.py \
+         anki-gen/scripts/dossier/__init__.py anki-gen/scripts/dossier/store.py \
+         anki-gen/scripts/dossier/resources.py \
+         anki-gen/scripts/revision_ops/__init__.py \
          anki-gen/references/slides.md anki-gen/references/revision.md \
+         anki-gen/references/dossier-format.md \
          anki-gen/scripts/handoff/install.sh anki-gen/HANDOFF.md \
          anki-gen/AGENTS.md install.sh INSTALL.md VERSION; do
   if [ ! -f "$STAGE/$f" ]; then

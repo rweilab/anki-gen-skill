@@ -179,6 +179,8 @@ python3 "$SCRIPTS/pipeline.py" --gates-only --out "$WORK/pipeline-test" >/dev/nu
   && fail "pipeline accepted --gates-only without --cards"
 python3 "$SCRIPTS/media_index.py" "$WORK/does-not-exist" >/dev/null 2>&1 \
   && fail "media_index accepted a missing directory"
+python3 "$SCRIPTS/cardid.py" --help >/dev/null || fail "cardid.py rejected --help"
+python3 "$SCRIPTS/cardid.py" >/dev/null 2>&1 && fail "cardid.py accepted no path"
 pass "CLI guards"
 
 python3 "$SCRIPTS/triage.py" "$WORK/cards.json" -o "$WORK/review_plan.json" \
@@ -364,6 +366,9 @@ pass "context hardening"
 
 python3 "$ROOT/tests/revision_hardening.py" || fail "revision hardening"
 pass "revision hardening"
+
+python3 "$ROOT/tests/quality_precision.py" || fail "quality precision"
+pass "quality precision"
 
 # The zip ships scripts/handoff/install.sh; keep it identical to the repo copy.
 ROOT_INSTALL="$(dirname "$ROOT")/install.sh"
