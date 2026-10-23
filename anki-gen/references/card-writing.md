@@ -3,9 +3,9 @@
 The rule index is the contract; this is the working detail for rules that need more than a line.
 Read the part you are about to write against, not the whole thing.
 
-Rule map: 5 symbols · 6 tier-zero · 10 anchors · 11 front/back length · 12 course language ·
-13 calibration · 14 retrieval success · 15 cloze · 16 backs explain · 17 provenance ·
-18 housekeeping · 19 Procedure · 26 no cross-card pointers · 27 topic/objects.
+Rule map: 5 symbols · 6 tier-zero · 8 recallability · 10 anchors · 11 front/back length ·
+12 course language · 13 calibration · 14 retrieval success · 15 cloze · 16 backs explain ·
+17 provenance · 18 housekeeping · 19 Procedure · 26 no cross-card pointers · 27 topic/objects.
 
 ### Every symbol is defined on its card
 

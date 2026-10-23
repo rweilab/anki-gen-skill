@@ -51,13 +51,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from validate_cards import findings     # noqa: E402
-from cardid import load_cards as load   # noqa: E402,F401
 
 REQUIRED = ("front", "back", "layer", "topic", "deck", "source")
 LAYERS = {"L1", "L2", "L3", "Procedure"}
 
-# Every warning any card raised, in the order it was raised. Printed by dump().
+# Every warning/error any card raised, in the order it was raised. Printed by dump().
 WARNINGS: list = []
+ERRORS: list = []
 # Exact normalized duplicates within one authoring process.
 _SEEN: dict[tuple[str, str, str], str] = {}
 
@@ -89,8 +89,9 @@ def C(front: str, back: str, *, layer: str, topic: str, deck: str, source: str,
     tag.
 
     `strict=False` returns the card even when it has errors, for the case where
-    you want to see the whole deck's problems in one pass. It is not the default
-    because the point of this module is to fail early.
+    you want to see the whole deck's problems in one pass. `dump()` then prints
+    every error and refuses to write. It is not the default because the point of
+    this module is to fail early.
     """
     card = {"front": front, "back": back, "layer": layer, "topic": topic,
             "deck": deck, "source": source, "cloze": bool(cloze),
@@ -116,6 +117,8 @@ def C(front: str, back: str, *, layer: str, topic: str, deck: str, source: str,
     errors = [m for sev, m in problems if sev == "err"]
     if errors and strict:
         raise CardError(f"{str(front)[:60]!r}\n  " + "\n  ".join(errors))
+    if errors:
+        ERRORS.extend((card, m) for m in errors)
     WARNINGS.extend((card, m) for sev, m in problems if sev == "warn")
     return card
 
@@ -136,19 +139,26 @@ def validate_card(card: dict) -> list[tuple[str, str]]:
 
 
 def dump(cards: list, path: str, *, indent: int = 1) -> Path:
-    """Write cards.json, then report the warnings collected while building.
+    """Write cards.json, then report warnings and refuse to write known errors.
 
     Warnings are printed rather than raised because they are the judgement calls
     (a locator-less citation, a comparison front with no data) that a human should
     see together and decide on -- and because raising on the first one would stop
-    the authoring run for something that may be intentional.
+    the authoring run for something that may be intentional. Errors collected with
+    `C(..., strict=False)` are different: report all of them once and write nothing.
 
     A `.jsonl` path writes one card per line instead. That form exists because the
     review step edits cards one at a time: in an array, every edit is a
     read-modify-write of the whole file, which is both expensive and a silent
     corruption risk on a near-miss. One line per card makes a fix a one-line edit.
-    `load()` reads either form, so the two are interchangeable downstream.
+    `cardid.load_cards()` reads either form, so the two are interchangeable downstream.
     """
+    if ERRORS:
+        print(f"{len(ERRORS)} error(s); refusing to write {path}:", file=sys.stderr)
+        for card, msg in ERRORS:
+            print(f"  {str(card.get('front', ''))[:44]!r}  {msg.split(' -- ', 1)[-1]}",
+                  file=sys.stderr)
+        raise CardError(f"refusing to write {len(ERRORS)} invalid card(s)")
     out = Path(path)
     if out.suffix == ".jsonl":
         out.write_text("".join(json.dumps(c) + "\n" for c in cards))

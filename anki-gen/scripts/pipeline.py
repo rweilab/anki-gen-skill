@@ -112,6 +112,19 @@ def _media_images(sources: list[str], mode: str) -> str:
     return "no"
 
 
+def _run_media(cmd: list[str], log: Path) -> int:
+    """Run a media child, showing its progress while keeping the full log."""
+    with log.open("w") as handle:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, bufsize=1)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            handle.write(line)
+            handle.flush()
+        return proc.wait()
+
+
 def stage_media(sources: list[str], out: Path, images: str, model: str,
                 language: str, force: bool, whole_playlist: bool = False,
                 items: str = "", title: str = "", device: str = "cpu",
@@ -130,6 +143,13 @@ def stage_media(sources: list[str], out: Path, images: str, model: str,
             units.append(source)
     state = _load_state(out)
     media = state.setdefault("media", {})
+    # A previous run cannot still be alive when this one starts. Mark its
+    # running entry as interrupted so --status and --resume tell the truth.
+    for prior in media.values():
+        if prior.get("status") == "running":
+            prior["status"] = "interrupted"
+            prior["finished_at"] = _now()
+            prior.setdefault("error", "previous run was interrupted")
     all_videos, all_failures = [], []
     chunks = failed = 0
     for index, source in enumerate(units, 1):
@@ -143,7 +163,8 @@ def stage_media(sources: list[str], out: Path, images: str, model: str,
                   flush=True)
             continue
         media[key] = {"status": "running", "started_at": _now(),
-                      "index": index, "total": len(units)}
+                      "index": index, "total": len(units),
+                      "videos_done": 0, "videos_total": 0}
         state["stage"] = "media"
         state["status"] = "running"
         state["source"] = key
@@ -167,13 +188,16 @@ def stage_media(sources: list[str], out: Path, images: str, model: str,
             cmd += ["--initial-prompt", initial_prompt]
         if force:
             cmd.append("--force-transcribe")
-        with log.open("w") as handle:
-            r = subprocess.run(cmd, stdout=handle, stderr=subprocess.STDOUT,
-                               text=True)
-        if r.returncode != 0:
+        if resume:
+            cmd.append("--resume")
+        code = _run_media(cmd, log)
+        if code != 0:
             failed += 1
             media[key] = {"status": "failed", "finished_at": _now(),
-                          "log": str(log), "error": _tail(log)}
+                          "log": str(log), "error": _tail(log),
+                          "videos_done": 0, "videos_total": 0}
+            state["status"] = "failed"
+            _write_state(out, state)
             print(f"[media {index}/{len(units)}] failed; log {log}", flush=True)
             continue
         try:
@@ -184,19 +208,27 @@ def stage_media(sources: list[str], out: Path, images: str, model: str,
         except (OSError, json.JSONDecodeError):
             failed += 1
             media[key] = {"status": "failed", "finished_at": _now(),
-                          "log": str(log), "error": "missing video output"}
+                          "log": str(log), "error": "missing video output",
+                          "videos_done": 0, "videos_total": 0}
+            state["status"] = "failed"
+            _write_state(out, state)
             print(f"[media {index}/{len(units)}] failed; no video output",
                   flush=True)
             continue
-        media[key] = {"status": "done", "finished_at": _now(), "log": str(log),
+        failures = list(meta.get("failures") or [])
+        status = "partial" if failures else "done"
+        media[key] = {"status": status, "finished_at": _now(), "log": str(log),
                       "videos": videos, "chunks": int(meta.get("chunks") or 0),
-                      "failures": list(meta.get("failures") or [])}
+                      "failures": failures,
+                      "videos_done": len(videos) - len(failures),
+                      "videos_total": len(videos)}
         all_videos.extend(videos)
-        all_failures.extend(meta.get("failures") or [])
+        all_failures.extend(failures)
         chunks += int(meta.get("chunks") or 0)
-        print(f"[media {index}/{len(units)}] done {len(videos)} video(s)",
-              flush=True)
+        state["status"] = "partial" if failures else "running"
         _write_state(out, state)
+        print(f"[media {index}/{len(units)}] {len(videos)} video(s), "
+              f"{len(failures)} failed", flush=True)
     if all_videos:
         (out / "videos.jsonl").write_text("".join(
             json.dumps(v, ensure_ascii=False) + "\n" for v in all_videos))
@@ -223,12 +255,13 @@ def stage_media(sources: list[str], out: Path, images: str, model: str,
         except Exception as e:
             print(f"pipeline.py: could not merge transcripts: {e}",
                   file=sys.stderr)
-    state = _load_state(out)
     state["stage"] = "media"
-    state["status"] = "done" if not failed else "failed"
-    state["media_failed"] = failed
+    state["status"] = ("failed" if failed else
+                       "partial" if all_failures else "done")
+    state["media_failed"] = len(all_failures) + failed
     _write_state(out, state)
-    return {"videos": len(all_videos), "chunks": chunks, "failed": failed}
+    return {"videos": len(all_videos), "chunks": chunks,
+            "failed": failed + len(all_failures)}
 
 
 def _tail(path: Path, limit: int = 300) -> str:
@@ -239,12 +272,27 @@ def _tail(path: Path, limit: int = 300) -> str:
 
 
 
+def _write_sources_md(out: Path, manifest: dict) -> None:
+    blocks = ["# Sources", "",
+              "Read once when classifying; use a per-source file for a narrow check.",
+              ""]
+    for source in manifest["sources"]:
+        if source.get("error") or not source.get("md"):
+            continue
+        md = out / source["md"]
+        body = md.read_text() if md.is_file() else ""
+        blocks += [f"## {source['tag']} — {source.get('source_path', '')}", "",
+                   body.strip(), ""]
+    (out / "sources.md").write_text("\n".join(blocks))
+
+
 def stage_extract(sources: list[str], out: Path, manifest_full: bool,
                   date_filter: str | None = None,
                   page_crops: str = "auto") -> dict:
     from extract_pdf import run_batch
 
     manifest = run_batch(sources, out, date_filter, manifest_full, page_crops)
+    _write_sources_md(out, manifest)
     ok = [s for s in manifest["sources"] if not s.get("error")]
     chars = sum(s.get("chars", 0) for s in ok)
     figs = sum(s.get("images", 0) if isinstance(s.get("images"), int) else 0 for s in ok)
@@ -343,6 +391,14 @@ def stage_context(out: Path, cards_path: Path, deck_name: str,
                 cards_path=cards_path)
 
 
+def _vision_candidates(rows: list[dict]) -> list[dict]:
+    """Only ambiguous frames need a vision call; direct frames are attachable."""
+    return [r for r in rows
+            if r.get("best") and r.get("attach") == "confirm"
+            and (r.get("canonical", True))
+            and r.get("local_kind") not in ("likely_code", "likely_webpage")]
+
+
 def stage_vision(out: Path, max_n: int, max_seconds: float,
                  timeout: float) -> dict:
     """One bounded vision pass over canonical frames; report is work-local."""
@@ -355,12 +411,7 @@ def stage_vision(out: Path, max_n: int, max_seconds: float,
                 if line.strip()]
     except json.JSONDecodeError:
         return {"checked": 0, "stopped": "", "error": "bad frames.jsonl"}
-    candidates = [
-        r for r in rows
-        if r.get("best") and r.get("attach") in ("direct", "confirm")
-        and (r.get("canonical", True))
-        and r.get("local_kind") not in ("likely_code", "likely_webpage")
-    ]
+    candidates = _vision_candidates(rows)
     if not candidates:
         return {"checked": 0, "stopped": "", "error": "no canonical frames"}
     candidates.sort(key=lambda r: ({"high": 0, "medium": 1}.get(
@@ -472,7 +523,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-media-risk", action="store_true",
                     help="build despite media risks (diagnosis only)")
     ap.add_argument("--vision", choices=("off", "auto"), default="off",
-                    help="opt-in bounded vision pass over canonical frames")
+                    help="opt-in bounded vision pass over confirm frames")
     ap.add_argument("--vision-max", type=int, default=12)
     ap.add_argument("--vision-seconds", type=float, default=180)
     ap.add_argument("--vision-timeout", type=float, default=20)
@@ -500,7 +551,23 @@ def main(argv: list[str] | None = None) -> int:
     lines: list[str] = []
     if args.status:
         state = _load_state(out)
-        print(json.dumps(state, indent=2) if state else "no pipeline state")
+        if not state:
+            print("no pipeline state")
+            return 0
+        try:
+            meta = json.loads((out / "video_meta.json").read_text())
+        except (OSError, json.JSONDecodeError):
+            meta = {}
+        videos = list(meta.get("videos") or [])
+        failures = list(meta.get("failures") or [])
+        current = state.get("source")
+        for key, entry in state.get("media", {}).items():
+            if key == current and entry.get("status") in (
+                    "running", "partial", "failed"):
+                entry["videos_done"] = max(0, len(videos) - len(failures))
+                entry["videos_total"] = len(videos)
+                entry["failures"] = failures
+        print(json.dumps(state, indent=2))
         return 0
     _mark(out, "run", "running")
 
@@ -521,7 +588,7 @@ def main(argv: list[str] | None = None) -> int:
                               args.whole_playlist, args.items, args.title,
                               args.device, args.initial_prompt,
                               resume=args.resume)
-            lines.append(f"media      {med['videos']} source(s), {med['chunks']} chunks"
+            lines.append(f"media      {med['videos']} video(s), {med['chunks']} chunks"
                          + (f", {med['failed']} FAILED" if med['failed'] else ""))
             if med["failed"] and not med["videos"]:
                 print("\n".join(lines))
@@ -554,8 +621,14 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 lines.append(f"vision     {v['checked']} checked, "
                              f"{v.get('stopped') or 'ok'}, report {_short(v['report'], root)}")
-        lines.append("NEXT       classify the sources, then write cards.jsonl "
-                     "(stage 5 -> 7); re-run with --cards for the gates")
+        reads = []
+        if doc_sources:
+            reads.append("sources.md")
+        if media_sources:
+            reads.append("transcripts.md")
+        lines.append(f"NEXT       read {' and '.join(reads) or 'the extracts'} "
+                     "once, classify, write authoring_ledger.md before "
+                     "cards.jsonl (stage 5 -> 7); re-run with --cards for the gates")
 
     g = None
     if args.cards:

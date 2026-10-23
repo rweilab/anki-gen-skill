@@ -53,7 +53,8 @@ for f in anki-gen/SKILL.md image-vision/SKILL.md \
          anki-gen/scripts/dossier/resources.py \
          anki-gen/scripts/revision_ops/__init__.py \
          anki-gen/references/slides.md anki-gen/references/revision.md \
-         anki-gen/references/dossier-format.md \
+         anki-gen/maintainers/README.md anki-gen/maintainers/lessons.md \
+         anki-gen/maintainers/dossier-format.md \
          anki-gen/scripts/handoff/install.sh anki-gen/HANDOFF.md \
          anki-gen/AGENTS.md install.sh INSTALL.md VERSION; do
   if [ ! -f "$STAGE/$f" ]; then

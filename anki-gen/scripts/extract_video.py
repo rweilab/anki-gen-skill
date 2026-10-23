@@ -220,6 +220,40 @@ def write_transcript(work: Path, vid: str, cues: list[dict], label: str) -> dict
             "compact_chars": len(body), "compact_tokens": max(1, len(body) // 4)}
 
 
+def write_video_meta(work: Path, videos: list[dict], failures: list[dict],
+                     chunks_count: int) -> None:
+    """Write the resume index after every video, not only at the end."""
+    path = work / "video_meta.json"
+    tmp = path.with_name(".video_meta.json.tmp")
+    tmp.write_text(json.dumps(
+        {"videos": videos, "chunks": chunks_count, "failures": failures},
+        indent=2) + "\n")
+    tmp.replace(path)
+
+
+def load_video_meta(work: Path) -> tuple[list[dict], list[dict]]:
+    try:
+        data = json.loads((work / "video_meta.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    return list(data.get("videos") or []), list(data.get("failures") or [])
+
+
+def rows_from_videos(work: Path, videos: list[dict]) -> list[dict]:
+    rows = []
+    for video in videos:
+        raw = Path(str(video.get("caption_file") or ""))
+        if not raw.is_file():
+            continue
+        try:
+            cues = [json.loads(line) for line in raw.read_text().splitlines()
+                    if line.strip()]
+        except json.JSONDecodeError:
+            continue
+        rows.extend(chunks(cues, str(video.get("source_label") or "")))
+    return rows
+
+
 def write_combined_transcripts(work: Path, videos: list[dict]) -> None:
     blocks = ["# Transcripts", ""]
     for v in videos:
@@ -229,7 +263,8 @@ def write_combined_transcripts(work: Path, videos: list[dict]) -> None:
         if path and Path(path).is_file():
             body = Path(path).read_text().strip()
             if body.startswith("# "):
-                body = body.split("\n", 1)[1].strip()
+                _, sep, rest = body.partition("\n")
+                body = rest.strip() if sep else ""
         blocks += [body or f"_No transcript ({v.get('caption_error', 'missing')})._", ""]
     text = "\n".join(blocks)
     (work / "transcripts.md").write_text(text)
@@ -266,18 +301,19 @@ def local_source(source: str, work: Path, args) -> int:
     if platform.system() == "Darwin" and platform.machine() != "arm64":
         print("extract_video.py: warn: Intel Mac local transcription is unsupported",
               file=sys.stderr)
-    files = mt.media_files(source)
-    if not files:
+    media_list = mt.media_files(source)
+    if not media_list:
         print("extract_video.py: no supported media files found", file=sys.stderr)
         return 1
     all_rows, videos, failures = [], [], []
-    for media in files:
+    for position, media in enumerate(media_list, 1):
         try:
             info = mt.probe(media)
         except Exception as e:
             failures.append({"id": media.name, "title": media.name, "reason": str(e)})
             continue
-        title = _local_title(media, info, args.title if len(files) == 1 else "")
+        title = _local_title(media, info,
+                             args.title if len(media_list) == 1 else "")
         vid = mt.media_id(media)
         label = f"Local recording - {title}"
         try:
@@ -292,30 +328,39 @@ def local_source(source: str, work: Path, args) -> int:
             continue
         if not cues:
             transcript_source = "no_speech"
-        files = write_transcript(work, vid, cues, label)
+        transcript_files = write_transcript(work, vid, cues, label)
         rows = chunks(cues, label)
         all_rows.extend(rows)
         videos.append({
             "id": vid, "title": title, "url": "", "channel": "Local recording",
             "duration": info.get("duration"), "playlist_title": "",
             "playlist_index": 0, "source_label": label, "source_url": "",
-            "cues": len(cues), **files,
+            "cues": len(cues), **transcript_files,
             "source_type": "local", "local_path": str(media.resolve()),
             "media_kind": mt.kind(media), "transcript_source": transcript_source,
             "model": "none" if transcript_source.startswith("sidecar") else transcript_source,
         })
+        frames = "skipped"
         if args.images in ("yes", "auto") and mt.kind(media) == "video":
             r = run([sys.executable, str(Path(__file__).with_name("frames.py")),
                      "--work", str(work), "--video-id", vid, "--url", "",
                      "--video-file", str(media), "--title", title,
                      "--source-label", label, "--source-url", "",
-                     "--transcript", files["caption_file"], "--auto"], timeout=900)
+                     "--transcript", transcript_files["caption_file"],
+                     "--auto"], timeout=900)
             if r.returncode != 0:
+                frames = "failed"
                 failures.append({"id": vid, "title": title,
                                  "reason": "frame extraction failed"})
+            else:
+                frames = "ok"
         elif args.images in ("yes", "auto"):
             print(f"extract_video.py: audio-only {media.name}; frames skipped",
                   file=sys.stderr)
+        print(f"[video {position}/{len(media_list)}] {title}: "
+              f"transcript {transcript_source}, cues {len(cues)}, frames {frames}",
+              flush=True)
+        write_video_meta(work, videos, failures, len(all_rows))
     if not all_rows and not videos:
         for f in failures:
             print(f"extract_video.py: {f['id']} — {f['reason']}", file=sys.stderr)
@@ -338,9 +383,7 @@ def local_source(source: str, work: Path, args) -> int:
         toc.extend(f"- {f['id']} — {f['reason']} — {f['title']}" for f in failures)
         toc.append("")
     (work / "video_toc.md").write_text("\n".join(toc))
-    (work / "video_meta.json").write_text(json.dumps(
-        {"videos": videos, "chunks": len(all_rows), "failures": failures},
-        indent=2) + "\n")
+    write_video_meta(work, videos, failures, len(all_rows))
     print(json.dumps({"videos": len(videos), "chunks": len(all_rows),
                       "frames": (work / "frames.jsonl").is_file(),
                       "failures": failures}, indent=2))
@@ -362,6 +405,8 @@ def main() -> int:
     ap.add_argument("--device", default="cpu", help="local Whisper device")
     ap.add_argument("--force-transcribe", action="store_true",
                     help="ignore a sidecar VTT/SRT and transcribe anyway")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip playlist videos already in video_meta.json")
     ap.add_argument("--initial-prompt", default=None,
                     help="optional course terms for local transcription")
     args = ap.parse_args()
@@ -396,13 +441,34 @@ def main() -> int:
         print(f"extract_video.py: {e}", file=sys.stderr)
         return 1
     all_rows, videos, failures = [], [], []
+    picked_ids = {str(e.get("id") or "") for e in picked}
+    prior_videos, prior_failures = load_video_meta(work) if args.resume else ([], [])
+    failed_ids = {str(f.get("id") or "") for f in prior_failures}
+    # A rate-limited caption is incomplete; retry it on resume. A permanent
+    # no-captions result stays complete so every resume does not re-request it.
+    retry_ids = failed_ids | {str(v.get("id") or "") for v in prior_videos
+                              if v.get("caption_error") == "rate_limited"}
+    completed = [v for v in prior_videos
+                 if str(v.get("id") or "") in picked_ids
+                 and str(v.get("id") or "") not in retry_ids]
+    videos.extend(completed)
+    failures.extend([f for f in prior_failures
+                     if str(f.get("id") or "") in picked_ids])
+    all_rows.extend(rows_from_videos(work, completed))
+    completed_ids = {str(v.get("id") or "") for v in completed}
     full_entries = meta.get("entries") or []
     playlist_title = str(meta.get("title") or "") if meta.get("_type") == "playlist" and (whole or args.items) else ""
     playlist_id = str(meta.get("id") or "") if meta.get("_type") == "playlist" and (whole or args.items) else ""
-    for e in picked:
+    for position, e in enumerate(picked, 1):
         vid = str(e.get("id") or "")
         if not vid:
             continue
+        if vid in completed_ids:
+            print(f"[video {position}/{len(picked)}] resume skip {e.get('title') or vid}",
+                  flush=True)
+            continue
+        videos[:] = [v for v in videos if str(v.get("id") or "") != vid]
+        failures[:] = [f for f in failures if str(f.get("id") or "") != vid]
         title = str(e.get("title") or vid)
         channel = str(e.get("channel") or e.get("uploader") or meta.get("channel") or
                       meta.get("uploader") or "Unknown")
@@ -432,6 +498,7 @@ def main() -> int:
         if caption_status != "ok":
             video["caption_error"] = caption_status
         videos.append(video)
+        frames = "skipped"
         if args.images in ("yes", "auto"):
             r = run([sys.executable, str(Path(__file__).with_name("frames.py")),
                      "--work", str(work), "--video-id", vid, "--url", url,
@@ -439,10 +506,17 @@ def main() -> int:
                      "--source-url", base_url, "--transcript",
                      files["caption_file"], "--auto"], timeout=900)
             if r.returncode != 0:
+                frames = "failed"
                 failures.append({"id": vid, "title": title,
                                  "reason": "frame extraction failed"})
                 print(f"extract_video.py: frames for {vid} failed: {r.stderr[-300:]}",
                       file=sys.stderr)
+            else:
+                frames = "ok"
+        print(f"[video {position}/{len(picked)}] {title}: "
+              f"captions {caption_status}, cues {len(cues)}, frames {frames}",
+              flush=True)
+        write_video_meta(work, videos, failures, len(all_rows))
     if not all_rows and not videos:
         print("extract_video.py: no usable transcripts or frames", file=sys.stderr)
         return 1
@@ -452,11 +526,12 @@ def main() -> int:
         "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in videos))
     toc = ["# Video source map", ""]
     for v in videos:
-        toc.append(f"## {v['title']}")
-        toc.append(f"- id: {v['id']}")
-        toc.append(f"- {v['source_label']} @ 00:00")
-        toc.append(f"- {v['source_url']}")
-        toc.append(f"- cues: {v['cues']}")
+        toc.append(f"## {v.get('title', v.get('id', ''))}")
+        toc.append(f"- id: {v.get('id', '')}")
+        toc.append(f"- {v.get('source_label', '')} @ 00:00")
+        if v.get("source_url"):
+            toc.append(f"- {v['source_url']}")
+        toc.append(f"- cues: {v.get('cues', 0)}")
         if v.get("transcript_source"):
             toc.append(f"- transcript: {v['transcript_source']}")
         if v.get("compact_file"):
@@ -469,9 +544,7 @@ def main() -> int:
             toc.append(f"- {f['id']} — {f['reason']} — {f['title']}")
         toc.append("")
     (work / "video_toc.md").write_text("\n".join(toc))
-    (work / "video_meta.json").write_text(json.dumps(
-        {"videos": videos, "chunks": len(all_rows), "failures": failures},
-        indent=2) + "\n")
+    write_video_meta(work, videos, failures, len(all_rows))
     print(json.dumps({"videos": len(videos), "chunks": len(all_rows),
                       "frames": (work / "frames.jsonl").is_file(),
                       "failures": failures}, indent=2))

@@ -3,6 +3,9 @@
 New decks are `.apkg` files. Once the caller has imported one, revisions go
 through **AnkiConnect** — a local HTTP bridge inside Anki Desktop.
 
+**Revising an imported deck is not a rebuild.** Attach/audit/revision use AnkiConnect and the
+dossier; do not fix a live deck by re-importing beside it.
+
 **Hard rules:** never open, copy, query, or inspect the live Anki collection DB
 (`collection.anki2`, `collection.anki21b`), even read-only. Do not use raw SQLite,
 the `anki` library, or MCP for live revision. The DB schema changes; AnkiConnect
@@ -113,6 +116,21 @@ python3 scripts/revision.py audit --deck "SCHOOL::RTOS"                 # read-o
 
 `--reconstruct` builds a `confidence: reconstructed` record from live fields and
 tags. It does not invent a ledger, `why`, or source evidence. Audit never writes.
+
+### Build identity and merge
+
+A note's identity is its content. The `.apkg` GUID is `hash = md5(front|back)`
+(`scripts/cardid.py`), which makes a re-run idempotent — but a card whose *text*
+is edited becomes a new note, orphaning the old one's scheduling history. This
+applies to **every** build. Fix wording in the source of truth *before* the deck
+goes into Anki for real use; once it is being reviewed, edit the note in Anki for
+pure wording fixes (history stays attached) and return to the source only for
+structural changes (split, cut, rewritten front). Never "fix" a live deck by
+rebuilding and importing beside the old one.
+
+`--merge-existing` starts from the existing deck (history and scheduling survive)
+and adds only cards whose `hash` is absent, printing the skip count — **idempotent**.
+(This was false until v1.5: the merge path added every card unconditionally.)
 
 ## Snapshots and one-command revert
 

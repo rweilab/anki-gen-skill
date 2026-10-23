@@ -175,12 +175,50 @@ assert not any("stray $" in x for x in audit("Use <code>$</code> for inline math
 PY
 pass "URL tag and code-span audit"
 
+python3 - "$ROOT" <<'PY' || fail "docs path audit"
+import re
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+bad = []
+for md in root.rglob("*.md"):
+    text = md.read_text()
+    for match in re.finditer(
+            r"`((?:references|maintainers|scripts|tests)/[^`\s]+?\.(?:md|py|sh))`",
+            text):
+        rel = match.group(1)
+        if "<" in rel:
+            continue
+        if not (root / rel).exists():
+            bad.append(f"{md.relative_to(root)}: missing {rel}")
+    for old in ("references/" + "output.md", "references/" + "lessons.md",
+                "references/" + "dossier-format.md"):
+        if old in text:
+            bad.append(f"{md.relative_to(root)}: deprecated {old}")
+if bad:
+    print("\n".join(bad), file=sys.stderr)
+    raise SystemExit(1)
+PY
+pass "docs paths"
+
 python3 "$SCRIPTS/pipeline.py" --gates-only --out "$WORK/pipeline-test" >/dev/null 2>&1 \
   && fail "pipeline accepted --gates-only without --cards"
 python3 "$SCRIPTS/media_index.py" "$WORK/does-not-exist" >/dev/null 2>&1 \
   && fail "media_index accepted a missing directory"
 python3 "$SCRIPTS/cardid.py" --help >/dev/null || fail "cardid.py rejected --help"
 python3 "$SCRIPTS/cardid.py" >/dev/null 2>&1 && fail "cardid.py accepted no path"
+python3 "$SCRIPTS/pipeline.py" --cards "$WORK/cards.json" --gates-only --build \
+  --out "$WORK/no-deck" --out-apkg "$WORK/no-deck.apkg" >/dev/null 2>&1 \
+  && fail "pipeline built without --deck-name"
+printf 'not a package\n' > "$WORK/fake.apkg"
+if python3 "$SCRIPTS/validate_apkg.py" "$WORK/fake.apkg" \
+    >"$WORK/fake.out" 2>"$WORK/fake.err"; then
+  fail "validate_apkg accepted a non-package"
+fi
+grep -q "not an Anki package" "$WORK/fake.err" \
+  || fail "validate_apkg did not explain the non-package"
+grep -q "Traceback" "$WORK/fake.err" \
+  && fail "validate_apkg dumped a traceback for a non-package"
 pass "CLI guards"
 
 python3 "$SCRIPTS/triage.py" "$WORK/cards.json" -o "$WORK/review_plan.json" \
@@ -191,6 +229,22 @@ p = json.load(open(sys.argv[1]))
 assert p["media_total"] == 1 and p["media_shown"] == 1, (p["media_total"], p["media_shown"])
 PY
 pass "triage reports media"
+
+python3 - "$WORK/review_plan.json" "$WORK/stale_plan.json" <<'PY' \
+  || fail "could not build a stale review plan"
+import json, sys
+p = json.load(open(sys.argv[1]))
+p["entries"][0]["hash"] = "deadbeef" * 4
+json.dump(p, open(sys.argv[2], "w"))
+PY
+status=0
+python3 "$SCRIPTS/review_server.py" --cards "$WORK/cards.json" \
+  --plan "$WORK/stale_plan.json" --out "$WORK/stale_feedback.jsonl" \
+  --done-file "$WORK/stale_done" --idle-timeout 0.1 --port 0 \
+  >"$WORK/stale.out" 2>"$WORK/stale.err" || status=$?
+[ "$status" -ne 0 ] || fail "stale review plan did not abort"
+grep -q "out of date" "$WORK/stale.err" || fail "stale plan abort did not explain"
+pass "stale review plan aborts"
 
 python3 "$SCRIPTS/build_apkg.py" "$WORK/cards.json" "$WORK/smoke.apkg" \
   --deck-name "SMOKE::TEST" --strict --media --media-root "$WORK" \

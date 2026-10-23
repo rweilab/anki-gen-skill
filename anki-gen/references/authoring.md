@@ -1,7 +1,5 @@
 # Authoring cards: mechanics
 
-## Authoring cards: mechanics
-
 **If you emit cards from a Python script, build them with `new_cards.py`** — it moves cheap
 mistakes to the line that makes them:
 
@@ -35,6 +33,15 @@ with the same changes. If a deck script is used, write it per topic rather than 
 huge file followed by many edits. If subagents summarize transcripts, ask for one
 line per fact, not prose.
 
+**One authoring path per deck: prefer `.jsonl`.** A `.jsonl` line per card makes a post-review fix
+a one-line edit, not a 61-card rewrite; every downstream script reads either form. If a deck script
+is used (conventionally `make_cards.py`, using `new_cards.C`), write it in one pass per topic —
+never one-card edits. On a large script, `C(..., strict=False)` collects every card error and
+`dump()` refuses to write until they are fixed; use it to fix one batch, not to bypass validation.
+Use `author.py` scaffold only when there is no script: stubs with
+layer/topic/source, fill blanks, `author.py check` prints progress, `author.py finalize` adds
+hashes. Do not scaffold and write a script (two sources of truth).
+
 **Write topics in source order.** The builder uses first-appearance topic order as a bias, lifts
 each topic's `tier_zero` card first, and softly interleaves topics in larger decks. Small decks
 stay grouped. Write topic-by-topic in the order the lecture, chapter, or video presents the
@@ -65,16 +72,18 @@ pre-drafting was buying.
 
 **Address cards by `topic` + `hash`, never by list index.** Every insert or delete renumbers
 everything after it; `hash` is identity, `topic` narrows it enough to find by eye. That is why
-`--show N` prints the card you just named.
+`--show N` prints the card you just named. Use `roi_report.py --list` to see card numbers, topics,
+layers, and fronts without pulling every back into the conversation.
 
-**Use the `content` from the EXTRACT JSON directly. Do not read the extracted `.md` back in** — the
-text is already in the JSON, and re-reading doubles the context for nothing. Keys: `content`,
-`source_type`, `source_path`, `images`, `md` (no `output_dir`; `md` is the file written). `images`
-is a count plus a 3-name sample, not the full list; a figure a card needs is cited by name from the
-source's own text, and every file is on disk either way.
+**Use the `content` from the EXTRACT JSON directly for a single-source run. Do not read its
+extracted `.md` back in** — the text is already in the JSON, and re-reading doubles the context.
+For a pipeline batch, read `sources.md` for documents and/or `transcripts.md` for video once at
+classification; per-source `.md` files are for a narrow check. Keys: `content`, `source_type`, `source_path`, `images`, `md` (no `output_dir`; `md`
+is the file written). `images` is a count plus a 3-name sample, not the full list; a figure a card
+needs is cited by name from the source's own text, and every file is on disk either way.
 
-**Never re-read an artifact the pipeline produced** — not the extract, not `cards.json`, not a file
-you just wrote. A 61-card deck is ~13k tokens you already have. Use the narrow instrument:
+**Never re-read an artifact the pipeline produced** — not the extract after classification, not
+`cards.json`, not a file you just wrote. A 61-card deck is ~13k tokens you already have. Use the narrow instrument:
 `roi_report.py --show N`, `triage.py` stdout, `grep`/`jq`. **Stages 8, 9 and 13 consume stdout,
 never the file.** **Never fetch, render or dump the review page** — hand over its URL and stop; it
 is HTML you wrote, and pulling it back costs thousands of tokens to learn nothing. **Read only what
@@ -92,11 +101,34 @@ stages 5 and 6 leave artifacts, and why the deck belongs in a file.
 
 ## Media (opt-in)
 
-Default: no images; `media` is ignored. When the user asks for figures, use
-`media_index.py <workdir> --cards cards.jsonl --per-card 2` and attach only when the candidate
-shows the thing the front asks about. `--cards` ranks cards that still need media; use
-`--all-cards` to inspect existing choices. Same page, same topic, or a generic caption is not enough.
-Never claim to have seen an image, and never guess.
+**One media path.** `frames.py` owns candidate quality, `media_index.py` owns ranking and the media
+risk audit, `vision_check.py` is the optional confirmation pass, and this file plus
+`references/video.md` own policy. Do not invent a second pipeline.
+
+Default: no images; `media` is ignored and a text-only build carries no media at all. Bundling is
+opt-in: files are included only with `--media --media-root <work>`; otherwise the `media` field is
+ignored.
+
+Figure extraction always happens. `extract_pdf.py [--page-crops auto|all|off]` writes
+`<tag>/media/fig_p<page>_<idx>.png` and `<tag>/figures.json` (page, dimensions, bytes, caption,
+nearby text, heading, bbox, kind). Captioned textbook pages and vector-only slide pages also get
+tight `page-crop`/`slide-crop` images; they are `confirm` candidates, never auto-attached. The
+manifest keeps a count + 3-name sample, so stdout never carries hundreds of paths;
+`--manifest-full` restores them only for extraction diagnosis.
+
+Extracted raster figures are scored with the same visual metrics as video frames: tiny and
+exact-duplicate images are dropped; blank, text-like, and table images are kept and flagged so a
+small diagram is not lost. Ambiguous figures are confirmed with `image-vision` only when they are
+actually being used for a card. Vector textbook/slide figures are rendered as tight page crops; a
+vector-only PPTX still needs a PDF export.
+
+When the user asks for figures, use
+`media_index.py <workdir> --cards cards.jsonl --per-card 2`; compact output is path, page, size,
+quality, flags, title, and caption, with high-quality figures listed first. Attach only when the
+candidate shows the thing the front asks about: caption/slide-title/page match, or nothing.
+`--cards` ranks cards that still need media; use `--all-cards` to inspect existing choices. Same
+page, same topic, or a generic caption is not enough. Never claim to have seen an image, and never
+guess.
 
 A `confirm` crop or frame is **not attachable** without `image-vision` confirmation or explicit
 user approval. “More images” is not approval to lower the bar. Do not attach title/outline/agenda
@@ -107,16 +139,29 @@ If image-vision has no key or exhausts its one bounded retry, the caller may use
 main-model fallback from `SKILL.md` only for images necessary to answer/attach a card. Label that
 read as unverified; never present it as image-vision-confirmed.
 
+Web images only on request: high-signal sources first (textbooks, OpenStax, university notes, Paul's
+Online Math Notes, Wikimedia, NASA/NOAA, publishers); attach none if the top candidate is not
+clearly relevant. The source URL lands in the image caption and the card footer.
+
 `side` defaults to `back`; use `front` when the image *is* the question. A front that says “shown,”
 “this circuit,” or “the example” must carry the image on the front or inline the data. Cap:
-≤1600 px / ≤1 MB per image, ≤2 per card; over-cap images are downscaled with Pillow (not dropped)
-and skipped only if still over. Local-media citations use the recording name + timestamp and
-intentionally have no `source_url`.
+≤1600 px / ≤1 MB per image, ≤2 per card, soft deck warning at `max(10 MB, 250 KB × image_cards)`;
+no hard deck cap. Over-cap images are downscaled with Pillow (EXIF orientation applied), not
+dropped, and skipped only if still over. Local-media citations use the recording name + timestamp
+and intentionally have no `source_url`.
+
+Packaging is the classic layout — `collection.anki2` + a `media` JSON map + numbered files. Anki's
+exporter writes a stub `collection.anki2` for legacy readers, so it is not used.
+`assets/mathjax/tex-svg.js` stays the only always-vendored asset; no OCR, no LaTeX-to-image.
+
+Review: image cards are a bounded cross-section (see `references/review.md`); the page serves
+`/media/` and shows a placeholder for a missing file. Wrong images go in the comment box.
 
 For video frames, read `references/video.md`: attach the marked `BEST` frame
 (high/medium confidence), and keep the video title/timestamp as the source.
 Low-confidence candidates stay in `frames.md`. A shared diagram can appear on
-several related cards; the main model never reads the image.
+several related cards; the main model never reads the image by default, and the bounded
+`SKILL.md` fallback is the only exception.
 
 For handwritten pages, transcribe with `image-vision` first; a page image is not a substitute
 for text unless the user explicitly wants it.

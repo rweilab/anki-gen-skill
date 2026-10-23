@@ -21,8 +21,11 @@ Canonical ownership:
 - notetype/order/card identity: `hardening.py`
 - AnkiConnect behavior and snapshots: `revision_hardening.py`
 - dossier format and archives: `context_hardening.py`
-- pipeline flag passthrough: `pipeline_hardening.py`
-- review page and UI text: `scripts/smoke.sh`
+- pipeline flag passthrough, combined sources, media state/resume: `pipeline_hardening.py`
+- per-video progress and playlist resume: `video_hardening.py`
+- authoring helpers and authors: `hardening.py`
+- vision confirmation selection: `visual_hardening.py`
+- review plan staleness, review page, and UI text: `scripts/smoke.sh`
 
 Run one suite directly while iterating. Run `bash scripts/smoke.sh` once before
 handoff; it contains the changelog, package, UI, installer, and no-litter gates.

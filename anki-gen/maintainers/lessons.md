@@ -16,6 +16,9 @@ because these are the failures that are invisible until they bite.
 - **The model read frames instead of letting the pipeline choose them.** Main-model vision made 23
   image reads on a 154-card deck (21% of tokens, 28% of tool calls); ambiguous frames now go to the
   separate cached `image-vision` pass, with no contact sheets or scan galleries.
+- **`pgrep -f`/`pkill -f` can match the shell running the command.** A long vision run was stopped
+  with `kill $(pgrep -f vision_check.py)`; the pattern matched its own command line and the stop
+  timed out. Capture the child PID (`$!`) or use a bracket pattern.
 - **A PPTX probe for LibreOffice was a workaround, not a requirement.** `.pptx` is a ZIP of XML;
   `extract_slides.py` reads text/notes/embedded images directly. Vector slides are cited, not
   rendered.

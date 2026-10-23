@@ -7,7 +7,8 @@ VERIFIER = 8, DEBLOATER = 13.
 
 You are the CLASSIFIER. Segment source material into atomic concepts and classify each.
 
-**Input:** the `content` field of the EXTRACT JSON (one `<tag>.md` per source in batch mode),
+**Input:** `$WORK/sources.md` for document batches and/or `$WORK/transcripts.md` for video (the
+single-source `.md` for a diagnosis run; per-source `<tag>.md` only for a narrow check),
 `course_hint` (optional), `media/` (images). Classify broadly; stage 6 filters the list before
 anything is written. If `scope_gate.md` already exists (re-run), read it first.
 
@@ -16,12 +17,11 @@ EXPLICITLY PRESENT in the source; (3) classify each with `layer` (L1/L2/L3/Proce
 "Layers"), `topic`, `objects`, `type` (fact/formula/definition/concept/derivation/boundary/
 procedure), and `source` (file + page/slide/line, e.g. "Lec 04 p.12"). Use `source`, not the
 deprecated `source_ref`. `topic` is the chapter/lecture heading the student could look up — never
-a layer code, lecture number, single fact, or subtopic. Cards from the same lecture/chapter share
-the same topic: a Unit Circle deck is `topic: "Unit Circle"`, not `Radians`/`Sine`/`Tangent`.
-`objects` is 0–2 **broad cross-topic buckets**, not subtopics: for an RTOS deck, `["concurrency"]`,
-`["memory"]`, `["rtos"]`; for another deck, use its own 3–6 buckets. **Prefer `[]`**; add a bucket
-only when it recurs across topics and is useful for retrieval. Do not tag the topic, a subtopic,
-or a term already explicit in the card. (4)
+a layer code, lecture number, single fact, or subtopic; cards from the same lecture/chapter share
+the same topic. `objects` is 0–2 **broad cross-topic buckets**, not subtopics; **prefer `[]`** and
+add a bucket only when it recurs across topics and is useful for retrieval. Never tag the topic, a
+subtopic, or a term already explicit in the card. Tags are front-visible: never put the answer,
+method, theorem, or named technique in `topic` or `objects`. (4)
 Stage 6 drops anything on its list before writing; do not write cards for it.
 
 **STRICT CONSTRAINTS — do not produce concepts for:** things NOT explicitly in the source;
@@ -61,7 +61,7 @@ $$\text{the formula}$$
 **Careful:** the common error or unit trap, if there is one.
 ```
 
-**Fronts:** rules 7 and 8 hold; the reject-and-rewrite list is in references/card-writing.md, "The recallability test".
+**Fronts:** rules 7 and 8 hold; the reject-and-rewrite list is in `references/card-writing.md`, "The recallability test".
 **Allowed in backs:** "set them equal and solve", "convert ρ before you compute", "these two can be
 used to derive the rest". L3 fronts are exempt — a boundary card should name the wrong computation
 it is diagnosing, unless calibration says this learner wants boundaries as decisions.
@@ -70,10 +70,9 @@ it is diagnosing, unless calibration says this learner wants boundaries as decis
 (L3), "What are the next steps?" (Procedure) — with no topic prefix (rule 18; the notetype prints
 it). **Tier-zero: rule 6. Course language: rule 12. Symbols: rule 5. Anchors: rule 10.**
 **Topic/tags: copy the classifier's coarse chapter topic; do not split one chapter into
-subtopics. Leave `objects` empty unless a broad bucket recurs across topics. Prefer 0–1; never
-tag the topic, a subtopic, or a term already explicit in the card. A broad `rtos` tag is fine on
-a wide survey deck. Tags are front-visible: never put the answer, method, theorem, or named
-technique in `topic` or `objects` (e.g. no `bernoulli` on “which substitution?”).**
+subtopics. Leave `objects` empty unless a broad bucket recurs across topics; never tag the topic, a
+subtopic, or a term already explicit in the card. Tags are front-visible: never put the answer,
+method, theorem, or named technique in `topic` or `objects`.**
 
 **Answer first.** If the front asks “which enzyme/law/step/name,” the back's first sentence must
 name that target; then add the mechanism/why. Do not start with the reaction or a restatement of
@@ -141,11 +140,11 @@ hand (stage 7) or the review subset (stage 10), not the whole deck with the corp
 
 1. **Grounding:** against the excerpt already in context (fuzzy ≥80%); do not re-read the corpus.
 2. **Atomicity:** one concept/card, no "X and Y" answers.
-3. **Fronts:** rules 7, 8, against the reject/rewrite list in references/card-writing.md, "The recallability test" — a
+3. **Fronts:** rules 7, 8, against the reject/rewrite list in `references/card-writing.md`, "The recallability test" — a
    computation verb in a *back* is correct when it describes method; L3 fronts are exempt.
 4. **Coverage:** every classifier concept has ≥1 card.
-5. **Deduplication:** cosine similarity >0.85 → flag (the static check uses `SequenceMatcher` on raw
-   fronts at the same threshold, via `validate_cards.similar_front_pairs`).
+5. **Deduplication:** cosine similarity >0.85 → flag (the opt-in static check `--deep` uses
+   `SequenceMatcher` on raw fronts at the same threshold, via `validate_cards.similar_front_pairs`).
 6. **Layer appropriateness:** L1=recall, L2=why/how, L3=boundaries.
 7. **Formatting:** valid cloze `{{c1::...}}`, HTML, LaTeX; each `media` path resolves under the
    media root (bundled only with `--media`).

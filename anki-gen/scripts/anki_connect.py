@@ -161,22 +161,11 @@ class AnkiConnect:
             return self.request("removeTags", notes=[int(i) for i in note_ids],
                                 tags=tags)
 
-    def get_tags(self) -> list[str]:
-        return list(self.request("getTags") or [])
-
     def suspend(self, card_ids):
         return self.request("suspend", cards=[int(i) for i in card_ids])
 
     def unsuspend(self, card_ids):
         return self.request("unsuspend", cards=[int(i) for i in card_ids])
-
-    def change_deck(self, card_ids, deck: str):
-        return self.request("changeDeck", cards=[int(i) for i in card_ids],
-                            deck=deck)
-
-    def set_due_date(self, card_ids, days: str):
-        return self.request("setDueDate", cards=[int(i) for i in card_ids],
-                            days=str(days))
 
     def get_media_dir_path(self) -> str:
         return str(self.request("getMediaDirPath") or "")
@@ -199,10 +188,6 @@ class AnkiConnect:
         else:
             raise ValueError("store_media_file needs path or data")
         return str(self.request("storeMediaFile", **params))
-
-    def retrieve_media_file(self, filename: str) -> bytes:
-        encoded = self.request("retrieveMediaFile", filename=filename) or ""
-        return base64.b64decode(encoded)
 
     def sync(self):
         return self.request("sync")

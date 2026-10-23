@@ -161,6 +161,9 @@ def main():
                     help="JSON file mapping topic -> weight fraction (e.g. "
                          '{"Fourier": 0.3}). Optional: without it the coverage '
                          "section prints counts and no verdict at all.")
+    ap.add_argument("--list", action="store_true",
+                    help="print one line per card (number, topic, layer, front), "
+                         "then exit; no backs")
     ap.add_argument("--show", type=int, default=None, metavar="N",
                     help="print card N's full front and back, then exit. Lets the "
                          "deblater cite a card without pulling every card's text "
@@ -172,6 +175,13 @@ def main():
 
     cards = load_cards(args.cards_json)
     n = len(cards)
+
+    if args.list:
+        for i, c in enumerate(cards, 1):
+            img = " [img]" if c.get("media") else ""
+            print(f"{i:>3}  {c.get('topic', '?')}  {c.get('layer', '?')}  "
+                  f"{' '.join(str(c.get('front', '')).split())[:140]}{img}")
+        return 0
 
     if args.show is not None:
         if not 1 <= args.show <= n:

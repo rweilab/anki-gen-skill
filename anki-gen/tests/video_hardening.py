@@ -2,6 +2,8 @@
 """Offline video tests: VTT parsing, playlist entries, frame extraction/picker."""
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import shutil
 import sqlite3
@@ -15,8 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from extract_video import (chunks, entries, get_vtt, index, parse_items, parse_vtt,
-                           source_label, video_url)  # noqa: E402
+from extract_video import (chunks, entries, get_vtt, index, load_video_meta,
+                           parse_items, parse_vtt, rows_from_videos,
+                           source_label, video_url, write_combined_transcripts,
+                           write_video_meta)  # noqa: E402
 from frames import late_best, title_like  # noqa: E402
 import media_transcribe as mt  # noqa: E402
 import extract_video  # noqa: E402
@@ -102,6 +106,127 @@ def main() -> int:
         assert path is None and status == "rate_limited", (path, status)
         print("ok    caption rate limit is distinguished from no captions")
 
+        # A 429 can leave a header-only compact transcript. It must not crash
+        # the whole playlist or hide the videos that did transcribe.
+        combined = td / "combined"
+        (combined / "transcripts").mkdir(parents=True)
+        good = combined / "transcripts" / "good.compact.md"
+        good.write_text("# good\n\nusable transcript\n")
+        empty = combined / "transcripts" / "empty.compact.md"
+        empty.write_text("# empty")
+        write_combined_transcripts(combined, [
+            {"source_label": "Good", "compact_file": str(good)},
+            {"source_label": "Empty", "compact_file": str(empty),
+             "caption_error": "rate_limited"},
+        ])
+        text = (combined / "transcripts.md").read_text()
+        assert "usable transcript" in text, text
+        assert "No transcript (rate_limited)" in text, text
+        print("ok    header-only transcript does not crash the playlist")
+
+        meta_work = td / "meta"
+        meta_work.mkdir()
+        caption = meta_work / "a.jsonl"
+        caption.write_text(json.dumps(
+            {"start": 1, "end": 2, "text": "resume this cue"}) + "\n")
+        video = {"id": "a", "source_label": "Test - A",
+                 "caption_file": str(caption), "cues": 1}
+        write_video_meta(meta_work, [video], [], 1)
+        videos, failures = load_video_meta(meta_work)
+        assert videos == [video] and failures == [], (videos, failures)
+        rows = rows_from_videos(meta_work, videos)
+        assert rows and "resume this cue" in rows[0]["text"], rows
+        print("ok    per-video metadata and resume rows")
+
+        # A completed playlist video must be skipped without asking yt-dlp again.
+        resume_work = td / "resume"
+        resume_work.mkdir()
+        caption = resume_work / "done.jsonl"
+        caption.write_text(json.dumps(
+            {"start": 1, "end": 2, "text": "already transcribed"}) + "\n")
+        compact = resume_work / "done.compact.md"
+        compact.write_text("# Test - Done\n\nalready transcribed\n")
+        done = {"id": "done", "title": "Done", "source_label": "Test - Done",
+                "caption_file": str(caption), "compact_file": str(compact),
+                "cues": 1}
+        write_video_meta(resume_work, [done], [], 1)
+        meta = {"_type": "playlist", "title": "Test",
+                "entries": [{"id": "done", "title": "Done"}]}
+        buf = io.StringIO()
+        argv = ["extract_video.py", "https://youtu.be/playlist",
+                "--work", str(resume_work), "--resume"]
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(extract_video, "metadata", return_value=meta), \
+                mock.patch.object(extract_video, "entries",
+                                  return_value=[{"id": "done", "title": "Done"}]), \
+                mock.patch.object(extract_video, "get_vtt",
+                                  side_effect=AssertionError("resume hit yt-dlp")), \
+                contextlib.redirect_stdout(buf):
+            assert extract_video.main() == 0
+        assert "resume skip Done" in buf.getvalue(), buf.getvalue()
+        assert "already transcribed" in (resume_work / "transcripts.md").read_text()
+        print("ok    playlist resume skips completed videos")
+
+        # A rate-limited caption is incomplete and must be retried, while a
+        # completed video stays skipped.
+        rate_resume = td / "rate-resume"
+        rate_resume.mkdir()
+        prior_caption = rate_resume / "limited.jsonl"
+        prior_caption.write_text("")
+        prior_compact = rate_resume / "limited.compact.md"
+        prior_compact.write_text("# Limited\n\n")
+        write_video_meta(rate_resume, [{
+            "id": "limited", "title": "Limited", "source_label": "Test - Limited",
+            "caption_file": str(prior_caption), "compact_file": str(prior_compact),
+            "cues": 0, "caption_error": "rate_limited",
+        }], [], 0)
+        vtt = td / "limited.vtt"
+        vtt.write_text("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nretry worked\n")
+        meta = {"_type": "playlist", "title": "Test",
+                "entries": [{"id": "limited", "title": "Limited"}]}
+        argv = ["extract_video.py", "https://youtu.be/playlist",
+                "--work", str(rate_resume), "--resume", "--images", "no"]
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(extract_video, "metadata", return_value=meta), \
+                mock.patch.object(extract_video, "entries",
+                                  return_value=[{"id": "limited", "title": "Limited"}]), \
+                mock.patch.object(extract_video, "get_vtt",
+                                  side_effect=lambda e, w, l: (vtt, "ok")), \
+                contextlib.redirect_stdout(buf):
+            assert extract_video.main() == 0
+        assert "[video 1/1] Limited" in buf.getvalue(), buf.getvalue()
+        saved = json.loads((rate_resume / "video_meta.json").read_text())
+        assert saved["videos"][0]["cues"] == 1, saved
+        print("ok    playlist resume retries rate-limited captions")
+
+        progress_work = td / "progress"
+        progress_work.mkdir()
+        vtts = {}
+        for vid, text in (("a", "first video cue"), ("b", "second video cue")):
+            path = td / f"{vid}.vtt"
+            path.write_text("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n"
+                            f"{text}\n")
+            vtts[vid] = path
+        entries_payload = [{"id": "a", "title": "A"}, {"id": "b", "title": "B"}]
+        meta = {"_type": "playlist", "title": "Test", "entries": entries_payload}
+        argv = ["extract_video.py", "https://youtu.be/playlist",
+                "--work", str(progress_work), "--images", "no"]
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(extract_video, "metadata", return_value=meta), \
+                mock.patch.object(extract_video, "entries",
+                                  return_value=entries_payload), \
+                mock.patch.object(extract_video, "get_vtt",
+                                  side_effect=lambda e, w, l: (vtts[e["id"]], "ok")), \
+                contextlib.redirect_stdout(buf):
+            assert extract_video.main() == 0
+        output = buf.getvalue()
+        assert "[video 1/2] A" in output and "[video 2/2] B" in output, output
+        saved = json.loads((progress_work / "video_meta.json").read_text())
+        assert [v["id"] for v in saved["videos"]] == ["a", "b"], saved
+        print("ok    playlist prints per-video progress")
+
         db = td / "mixed-index.sqlite"
         con = sqlite3.connect(db)
         con.execute("CREATE VIRTUAL TABLE chunks USING fts5(id UNINDEXED, source, loc, heading, text)")
@@ -163,7 +288,10 @@ def main() -> int:
         assert all("list=LIST&t=" in f["source_url"] for f in frames)
         assert any(f.get("best") for f in frames), frames
         assert "needs_vision" in frames[0], frames[0]
-        assert "image-vision" in (work / "frames.md").read_text()
+        frames_md = (work / "frames.md").read_text()
+        assert "image-vision" in frames_md
+        assert "never build a frame filename from a timestamp" in frames_md.lower()
+        assert "needs no vision call" in frames_md
         print(f"ok    frame extraction/picker ({len(frames)} candidate(s))")
 
         r = subprocess.run([sys.executable, str(SCRIPTS / "frames.py"),

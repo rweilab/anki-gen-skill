@@ -31,36 +31,11 @@ clothes"; a full solution is not a retrieval target.
 
 ---
 
-## Media Handling (opt-in)
+## Media
 
-Figure extraction always happens; **bundling is off unless the user asked.**
-
-- `extract_pdf.py [--page-crops auto|all|off]` writes `<tag>/media/fig_p<page>_<idx>.png` and `<tag>/figures.json` (page,
-  dimensions, bytes, caption, nearby text, heading, bbox, kind). Captioned textbook pages and
-  vector-only slide pages also get tight `page-crop`/`slide-crop` images; they are `confirm`
-  candidates, never auto-attached. The manifest keeps a count + 3-name sample, so stdout
-  never carries hundreds of paths; `--manifest-full` restores them only for extraction diagnosis.
-- The model chooses from `media_index.py <workdir>` or `--cards cards.jsonl` (compact: path, page, size, quality,
-  flags, title, caption) — **never vision**. High-quality figures are listed first;
-  caption/slide-title/page match, or nothing.
-- Extracted raster figures are scored with the same visual metrics as video frames:
-  tiny and exact-duplicate images are dropped; blank, text-like, and table images
-  are kept and flagged so a small diagram is not lost. Ambiguous figures are confirmed
-  with `image-vision` only when they are actually being used for a card. Vector
-  textbook/slide figures are rendered as tight page crops; a vector-only PPTX still needs
-  a PDF export.
-- Build with `--media --media-root <work>`; a text-only build carries no media at all.
-- Web images only on request: high-signal sources first (textbooks, OpenStax, university notes,
-  Paul's Online Math Notes, Wikimedia, NASA/NOAA, publishers); attach none if the top candidate is
-  not clearly relevant. The source URL lands in the image caption and the card footer.
-- Caps: ≤1600 px and ≤1 MB per image, ≤2 per card, soft deck warning at
-  `max(10 MB, 250 KB × image_cards)`; no hard deck cap. Over-cap files are downscaled with Pillow
-  (EXIF orientation applied), then skipped only if still over.
-- Packaging is the classic layout — `collection.anki2` + a `media` JSON map + numbered files.
-  Anki's exporter writes a stub `collection.anki2` for legacy readers, so it is not used.
-- Review: image cards are a bounded cross-section (see `references/review.md`); the page serves
-  `/media/` and shows a placeholder for a missing file. Wrong images go in the comment box.
-- `assets/mathjax/tex-svg.js` stays the only always-vendored asset. No OCR, no LaTeX-to-image.
+Media policy, extraction, ranking, build flags, and caps are owned by `references/authoring.md`;
+video frames are owned by `references/video.md`. This file keeps programming patterns, known gaps,
+and the deck audit.
 
 ---
 
@@ -77,13 +52,3 @@ wrapper was removed, the judgement kept.)
 3. Report the scores, recommend the best, and say plainly if none is worth having — "generate your
    own" is a legitimate verdict.
 4. If the user accepts one, download it and set it as the merge target.
-
-- **Video frames are opt-in.** `extract_video.py`/`frames.py` support YouTube
-  transcripts and 720p stills; automatic scoring, with image-vision confirmation
-  for ambiguous candidates when available. The main model never reads images;
-  media may be reused across related cards. Personal study only; cite URL +
-  timestamp. See `references/video.md`.
-- **Handwritten/scanned pages are not OCR'd by the builder.** Use the separate
-  `image-vision` skill (Gemini free tier) to transcribe; ask once. A figure that is the only
-  source for a fact can be read the same way; attach it only if the user asked.
-

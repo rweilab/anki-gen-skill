@@ -372,9 +372,11 @@ def refresh(work: Path) -> list[dict]:
     lines = [
         "# Video frame candidates",
         "",
-        "`direct` = attach. `confirm` = use image-vision when available, otherwise",
-        "attach only with a strong visual cue. `skip` and non-best candidates stay",
-        "in frames.jsonl.",
+        "`direct` = attach; it needs no vision call. `confirm` = use image-vision",
+        "when available, otherwise attach only with a strong visual cue. `skip`",
+        "and non-best candidates stay in frames.jsonl.",
+        "",
+        "Copy the exact backticked path; never build a frame filename from a timestamp.",
         "",
     ]
     for r in shown:

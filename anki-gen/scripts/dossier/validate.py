@@ -42,7 +42,7 @@ def validate(context: dict | None = None, selector: str | None = None) -> dict:
                 errors.append(_finding("E_CARD_FIELD",
                                        f"card {i}: missing {field}",
                                        path=f"cards.jsonl:{i}"))
-        if not card.get("why") or not card.get("retrieval_target"):
+        if not card.get("why") and not card.get("retrieval_target"):
             warnings.append(_finding("W_WHY",
                                      f"card {i}: no why/retrieval target recorded",
                                      warning=True, path=f"cards.jsonl:{i}"))

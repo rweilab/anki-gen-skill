@@ -229,6 +229,16 @@ def main():
     if not Path(args.apkg).exists():
         print(f"File not found: {args.apkg}", file=sys.stderr)
         return 1
+    try:
+        with zipfile.ZipFile(args.apkg):
+            pass
+    except (zipfile.BadZipFile, OSError) as e:
+        msg = f"not an Anki package: {args.apkg} ({type(e).__name__})"
+        print(msg, file=sys.stderr)
+        if args.json:
+            print(json.dumps({"valid": False, "errors": [msg], "warnings": []},
+                             indent=2))
+        return 1
 
     errors, warnings, samples = (import_test(args.apkg) + render_test(args.apkg)
                                  + media_test(args.apkg)), [], []

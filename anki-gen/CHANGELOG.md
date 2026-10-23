@@ -17,37 +17,109 @@ Newest first. Keep the index to one line per release; details live below.
 ## v1.5.1 — Quality gate and media hardening
 
 ### Added
+
+**Quality contract and review**
 - An always-loaded **quality kernel** at the top of `SKILL.md`: self-contained fronts, the media
   bar, cloze context, why quality, review status, and the rule that validation is not quality
   certification.
 - A pipeline **quality status** line and media/ROI risk summary. The status is `NOT CERTIFIED`
   after static checks and names media risks, ROI split candidates, and whether a review log exists.
+- A **recovery rule** in the kernel: if a stage was skipped or a gate fired, stop, produce the
+  missing artifact, and re-run the gate; never hand over a deck to get past it.
+
+**Media pipeline**
 - `media_index.py` media-risk auditing: title/outline frames, unconfirmed `confirm` crops, generic
   captions, and front references to unseen images.
-- Pipeline progress and resumable media: per-source `[media i/n]` lines, per-source logs,
-  `pipeline_state.json`, `--status`, and `--resume`.
+- Per-source and per-video progress (`[media i/n]`, `[video i/n]`), incremental `video_meta.json`,
+  `pipeline_state.json`, `--status`, and playlist `--resume`. Interrupted and failed work is
+  recorded instead of looking permanently “running”; resume retries rate-limited captions but
+  skips permanent no-captions videos.
 - A bounded main-model vision fallback: only when image-vision has no key or its one retry fails,
   the image is necessary to answer/attach a card, and the batch is at most 6 images. The result is
   labeled unverified.
+
+**Authoring and context**
+- `pipeline.py` writes one combined `sources.md` for a document batch, and the stage-5/classifier
+  wording points document runs at `sources.md` and video runs at `transcripts.md`. The pipeline
+  NEXT hint follows the same split instead of naming a file that does not exist.
+- `new_cards.C(strict=False)` collects every card error; `dump()` prints them and refuses to write,
+  so a large script can fix one batch instead of one error per run.
+- `roi_report.py --list` prints card numbers, topics, layers, and fronts without pulling backs into
+  the conversation.
+
+**Verification and maintainer docs**
 - Focused regression tests for title/outline frames, confirm-crop risk, self-contained fronts,
-  labeled cloze, pipeline state/resume, and the media-risk build block.
+  labeled cloze, pipeline state/resume, the media-risk build block, empty transcripts, per-video
+  resume, confirm-only vision, and the authoring scaffold.
+- Adversarial smoke checks for the worst derailment paths: a build without `--deck-name` is
+  refused, `validate_apkg` rejects a non-package cleanly, and a stale review plan aborts before
+  serving cards. Smoke also audits internal doc paths and rejects references to retired files.
+- `MAINTAINERS.md` gains a rule-ownership table (rule → contract → owner → code gate → duplicates)
+  and a visible "Maintainer docs" section. Tests are documented as a floor, not proof of quality.
 
 ### Changed
+
+**Media extraction and selection**
 - `frames.py` marks title/outline/agenda slides as non-direct; `media_index.py` penalizes
   unconfirmed crops, title frames, and weak caption matches, skips cards that already have media
   by default, and caps flat-index output at 40.
-- `pipeline.py --build` refuses objective media risks unless `--allow-media-risk` is passed.
+- Vision confirmation is now restricted to `confirm` frames. `direct` frames are attachable
+  without an API call; the bounded `pipeline.py --vision` pass no longer asks to confirm them.
+- Frame paths are treated as exact. `frames.md` says to copy the backticked path, never rebuild a
+  filename from a rounded timestamp.
 - `vision_check.py` paces uncached calls at ~5 RPM by default (12-second gap); `--retry-429`
   permits one retry at a doubled delay, then stops. The 429 message names the free-tier RPM/RPD
   cause. `--max-seconds` now defaults to 600 for paced batches.
+- `pipeline.py --build` refuses objective media risks unless `--allow-media-risk` is passed.
+- The main-model vision rule is stated consistently: never for bulk media by default, with the
+  bounded ≤6-image fallback as the only labeled exception; the failure lesson is preserved.
+
+**Build, validation, and review**
 - `validate_cards.py` warns when a front refers to an unseen image/example and when a multi-blank
-  cloze lacks labels.
+  cloze lacks labels. The stage map notes `--deep` for soft overlap and `--json` for the full
+  warning set, since the text view caps at 20.
+- `validate_apkg.py` rejects a non-package with a clean error instead of a traceback.
 - The web review runs by default on first generation. Later adjustment runs ask whether to reopen
   it; a declined review is reported as not manually reviewed.
 - Score-1 clusters are treated as rescope evidence: merge into a harder L3 contrast/boundary card
   or drop trivial siblings instead of adding more of the same.
+- The stage-11 command now includes the required `--out "$WORK"` work directory; `pipeline.py`
+  refuses a build without one.
+- `MAINTAINERS.md` and `AGENTS.md` now say tests are a floor, not proof, and forbid stopping a
+  child with a literal-name `pgrep -f`/`pkill -f` that can match its own shell.
+
+**Documentation, context, and maintainability**
+- `SKILL.md` now carries a compact stage map (stage → command → gate → reference); the detailed
+  stage areas stay in the contract, while extraction and media procedure lives in the owning
+  references. The maintainer-only script-ladder paragraph moved verbatim to `MAINTAINERS.md`
+  ("Change discipline"), and the duplicate authoring heading was removed.
+- Maintainer-only references moved to `maintainers/` with a one-line `maintainers/README.md` index;
+  `AGENTS.md`, `SKILL.md`, and the package check point there.
+- Prompt topic/object definitions now defer to rule 27 and its owner; the point-of-use
+  why/self-contained/cloze/source guards remain. Reference navigation now names rule 8
+  (recallability) and records that frames are 720p stills.
+- A line-by-line control-flow audit tightened the stage-8 `--deep`/`--json` wording, the VERIFIER
+  opt-in static check, the video/local pipeline `--out` shorthand, the rule-11 gate label, and
+  marked report-only ROI/tier-zero entries as signals rather than gates.
+- `video.md` records that a full-series transcript can exceed 100 KB and be returned in sequential
+  read chunks; that is not duplication, and it should not be split further.
 
 ### Fixed
+- A header-only compact transcript (common after a caption 429) no longer crashes the whole
+  playlist; it becomes a `_No transcript (...)._` placeholder and the other videos survive.
+- Media state no longer stays `running` after a failure or interruption. A new run marks stale
+  work `interrupted`, and `--status`/`--resume` can distinguish done, partial, failed, and
+  interrupted sources.
+- Playlists no longer appear as one opaque `[media 1/1]` unit; per-video progress and metadata
+  show what is done and what remains.
+- Confirm-only vision, exact frame paths, and clean background-process stopping remove three
+  observed failure modes.
+- `validate_apkg.py` no longer prints a traceback for a non-package; it fails closed with a clear
+  message.
+- `revision.py context import --dry-run` no longer raises `KeyError: 'path'`; it prints a dry-run
+  summary and writes nothing.
+- Dossier validation no longer warns `W_WHY` when a card has a why but no separate
+  `retrieval_target`; it warns only when both are missing.
 - Media selection no longer treats title slides, outline frames, incomplete crops, or
   whitespace-heavy frames as ready-to-attach.
 - Cloze cards require labeled context, not bare values.
@@ -63,6 +135,16 @@ Newest first. Keep the index to one line per release; details live below.
 - The default unbounded `media_index` flat dump and the old 3–5-candidates-per-card guidance.
 - The implicit recommendation of unconfirmed `confirm` crops as attachable media.
 - The 0.5-second default burst pacing that caused RPM 429s; pacing is now ~5 RPM with one explicit bounded retry.
+- The old `output.md` reference; its unique content moved to `survey.md` (deck naming),
+  `revision.md` (GUID identity and merge), `authoring.md` (media opt-in), and the stage 11/14
+  contract in `SKILL.md` (import and cleanup).
+- The old `lessons.md` and `dossier-format.md` reference paths; the content moved to
+  `maintainers/lessons.md` and `maintainers/dossier-format.md`.
+- Duplicated media-extraction prose from `references/optional.md`; `references/authoring.md` and
+  `references/video.md` own media policy.
+- Unused `AnkiConnect` wrappers (`get_tags`, `retrieve_media_file`, `change_deck`,
+  `set_due_date`); the allowed AnkiConnect verbs remain documented in `revision.md`.
+- The unused `new_cards.load` re-export; callers use `cardid.load_cards`.
 
 ### Notes
 - No current deck was retroactively repaired. The changes target future runs.

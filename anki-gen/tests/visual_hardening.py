@@ -15,6 +15,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import media_index  # noqa: E402
+import pipeline  # noqa: E402
 import platform_paths  # noqa: E402
 import visual  # noqa: E402
 import ytdlp  # noqa: E402
@@ -25,6 +26,17 @@ import vision_check  # noqa: E402
 
 
 def main() -> int:
+    frames = [
+        {"best": True, "attach": "direct", "file": "direct.png"},
+        {"best": True, "attach": "confirm", "file": "confirm.png"},
+        {"best": False, "attach": "confirm", "file": "not-best.png"},
+        {"best": True, "attach": "confirm", "file": "code.png",
+         "local_kind": "likely_code"},
+    ]
+    selected = pipeline._vision_candidates(frames)
+    assert [r["file"] for r in selected] == ["confirm.png"], selected
+    print("ok    vision confirms only ambiguous frames")
+
     # Decisions from the real RTOS deck: low-edge image-only diagrams and
     # 100-word labelled diagrams must not be treated as text walls.
     diagram = {"edge": 0.019, "focus": 3.35, "color": 0.005, "background": 0.8}

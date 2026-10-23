@@ -276,8 +276,12 @@ def cmd_context(args) -> int:
         result = dc.import_archive(args.archive, dry_run=args.dry_run)
         if args.attach and not args.dry_run:
             result["attached"] = attach_ops.attach_key(result["key"], url=args.url)
-        print(json.dumps(result, indent=2) if args.json else
-              f"dossier {result['key']} -> {result['path']}")
+        if args.json:
+            print(json.dumps(result, indent=2))
+        elif result.get("dry_run"):
+            print(f"dossier {result['key']}: {result['files']} file(s) (dry run)")
+        else:
+            print(f"dossier {result['key']} -> {result['path']}")
         return 0
     if args.context_cmd == "validate":
         result = dc.validate(deck_key_or_selector=args.deck)

@@ -38,7 +38,9 @@ def main() -> int:
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--sources", str(media), "--out", str(work), "--images", "no"], td)
         assert r.returncode == 0, (r.stdout, r.stderr)
-        assert "media      1 source" in r.stdout, r.stdout
+        assert "media      1 video(s)" in r.stdout, r.stdout
+        assert "[video 1/1]" in r.stdout, r.stdout
+        assert "read transcripts.md once" in r.stdout, r.stdout
         assert (work / "videos.jsonl").is_file(), r.stdout
         assert pipeline._media_images([str(media)], "auto") == "yes"
         assert pipeline._media_images([str(media)], "no") == "no"
@@ -75,20 +77,34 @@ def main() -> int:
         assert {v["source_type"] for v in vids} == {"local"}
         print("ok    pipeline multi-file local batch")
 
+        notes = td / "notes.txt"
+        notes.write_text("A voltage source maintains a fixed potential difference.\n")
+        doc_work = td / "doc-work"
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--sources", str(notes), "--out", str(doc_work)], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        combined = (doc_work / "sources.md").read_text()
+        assert "## notes" in combined, combined
+        assert "fixed potential difference" in combined, combined
+        assert "read sources.md once" in r.stdout, r.stdout
+        assert "transcripts.md" not in r.stdout, r.stdout
+        print("ok    pipeline writes one combined sources.md")
+
         # Two URL sources must merge their metadata, not leave only the last.
         merged = td / "url-merge"
         merged.mkdir()
-        def fake_run(cmd, **kw):
+        def fake_run(cmd, log):
             src = cmd[2]
             vid = src.rsplit("/", 1)[-1]
             (merged / "videos.jsonl").write_text(json.dumps(
                 {"id": vid, "title": vid, "source_label": f"ch - {vid}",
                  "source_url": src, "cues": 1}) + "\n")
             (merged / "video_meta.json").write_text(json.dumps(
-                {"videos": [{"id": vid}], "chunks": 1, "failures": []}))
-            class R: returncode = 0; stderr = ""
-            return R()
-        with mock.patch.object(pipeline.subprocess, "run", side_effect=fake_run):
+                {"videos": [{"id": vid, "cues": 1}], "chunks": 1,
+                 "failures": []}))
+            log.write_text("fake media log\n")
+            return 0
+        with mock.patch.object(pipeline, "_run_media", side_effect=fake_run):
             info = pipeline.stage_media(
                 ["https://youtu.be/a", "https://youtu.be/b"], merged, "no",
                 "auto", "en", False)
@@ -97,6 +113,43 @@ def main() -> int:
         toc = (merged / "video_toc.md").read_text()
         assert "youtu.be/a" in toc and "youtu.be/b" in toc, toc
         print("ok    pipeline merges multiple video sources")
+
+        # A previous run cannot still be running. Mark it interrupted, then
+        # record this run's failure honestly.
+        state_work = td / "state"
+        state_work.mkdir()
+        pipeline._write_state(state_work, {
+            "media": {"old-source": {"status": "running"}}})
+        def fail_run(cmd, log):
+            log.write_text("boom\n")
+            return 1
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with mock.patch.object(pipeline, "_run_media", side_effect=fail_run), \
+                contextlib.redirect_stdout(buf):
+            pipeline.stage_media(["https://youtu.be/fail"], state_work, "no",
+                                 "auto", "en", False)
+        state = json.loads((state_work / "pipeline_state.json").read_text())
+        assert state["media"]["old-source"]["status"] == "interrupted", state
+        assert state["media"]["https://youtu.be/fail"]["status"] == "failed", state
+        assert state["status"] == "failed" and state["media_failed"] == 1, state
+        assert "[media 1/1] start" in buf.getvalue(), buf.getvalue()
+        (state_work / "video_meta.json").write_text(json.dumps({
+            "videos": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+            "failures": [{"id": "c"}],
+        }))
+        state = pipeline._load_state(state_work)
+        state["source"] = "s"
+        state["media"] = {"s": {"status": "running"}}
+        pipeline._write_state(state_work, state)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            assert pipeline.main(["--out", str(state_work), "--status"]) == 0
+        status = json.loads(buf.getvalue())
+        assert status["media"]["s"]["videos_done"] == 2, status
+        assert status["media"]["s"]["videos_total"] == 3, status
+        print("ok    media state marks interrupted and failed")
 
         cards = td / "cards.jsonl"
         cards.write_text(json.dumps({

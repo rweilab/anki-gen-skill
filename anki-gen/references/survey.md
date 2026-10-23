@@ -23,7 +23,7 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - ask **whole playlist or videos x–z**;
 - ask **pull still frames when the video shows a diagram?** yes/no (automatic
   scoring; ambiguous frames may be confirmed with image-vision; the main model
-  never reads frames);
+  never reads frames by default; the bounded kernel fallback is the only exception);
 - if the caller supplied a URL, extract it first; search only around a missing/incomplete source;
 - if the user gave a description rather than a URL, use it as the seed for **one** bounded search,
   prefer the official channel/playlist/course page, and record the URL and why in `intake.md`;
@@ -56,14 +56,35 @@ criterion), and the learner's level (the calibration table). A `STUDY-LOG.md` sa
 up wt% and at%" is worth more than another lecture deck. Report anything that changes scope or
 scaffolding — or say plainly that none were found.
 
+## Extraction (stages 4–4b)
+
+Use `pipeline.py --sources <...> --out .anki-gen-temp/<topic>` for PDFs, text, PowerPoint, URLs, and
+directories in one call. For a single-source diagnosis use
+`extract_pdf.py "<source>" "<cwd>/.anki-gen-temp/<topic>" --tag <tag>`; `--date-filter` limits
+directory sources. PPTX text, notes, and embedded images are parsed without Office. Local media goes
+through stage 4b.
+
+Single-source extraction prints `content`, `source_type`, `source_path`, `images_count`, a 3-name
+sample, and the `.md` path; batch prints a manifest with counts, samples of `<tag>` dirs, and `.md`
+paths, and writes `sources.md` with the chosen texts. Read `sources.md` once when classifying; use
+a per-source `.md` only for a narrow check. Cite the file the text came from ("Lec 04 · p.12"), not
+the topic directory.
+
+Video and local media are owned by `references/video.md`: the preferred path is
+`pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto|yes|no] [--model auto]
+[--whole-playlist | --items 2-5] [--title "..."]`; `extract_video.py` is the single-source
+diagnosis path.
+
 **The deck audit is opt-in; do not offer it.** Run stage 3 only when the request asks ("is there a
 deck for this", "check online", "merge with what exists", or `audit_web: true`). The modal outcome
 is "generate your own"; a real Callister deck audited at 58/100. It pays off only when a good deck
 already exists for a popular course — rare enough to be a sentence in the request, not a question
 every run.
 
-**Ask for the deck name here too**, suggesting a shape: `SCHOOL::CIRCUITS::TOPIC`. Their answer is
-the name, flat included (rule 23); `--deck-name` is required at build.
+**Deck naming is the caller's.** Ask for it here too, suggesting a shape:
+`SCHOOL::CIRCUITS::TOPIC`. Their answer is the name, flat included (rule 23); `--deck-name` is
+required at build. Impose no convention. A silent `"Default"` fallback once let a valid deck land
+somewhere nobody finds. A `::` nests; Anki matches deck names case-insensitively.
 
 **Then stop and wait — unless the caller is a beginner.** For a power user, propose, take the
 answer, then EXTRACT. For a beginner, proceed on the survey's recommendation and list the

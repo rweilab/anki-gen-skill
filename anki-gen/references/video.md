@@ -2,6 +2,17 @@
 
 Opt-in. Use when the user provides a YouTube video/playlist, a local recording, or asks to find one.
 
+## Pipeline runs
+
+`pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto|yes|no] [--model auto]
+[--whole-playlist | --items 2-5] [--title "..."]` is the preferred path; `extract_video.py` is the
+single-source diagnosis path. Long runs print `[media i/n]` and `[video i/n]` progress, keep
+`video_meta.json` current after each video, and write `$WORK/pipeline_state.json`; rerun with
+`--resume` and use `--status` to see completed, partial, failed, and interrupted work.
+`pipeline.py --vision auto --vision-max 12` is the opt-in bounded confirmation pass over
+`confirm` frames only; it writes `vision.jsonl`. Do not sleep or poll yt-dlp; the scripts retry briefly and report skipped
+videos.
+
 ## Local recordings
 
 `extract_video.py "<file-or-directory>" --work "$WORK" [--images auto|yes|no]`
@@ -22,7 +33,7 @@ accepts `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
   the Hub. No cloud transcription.
 - Frames use `frames.py --video-file`; no download path. Video sources default to
   `--images auto`; audio-only inputs skip frames; `--images no` disables them.
-- `pipeline.py --sources <local-file-or-directory>` is the preferred one-call path.
+- `pipeline.py --sources <local-file-or-directory> --out "$WORK"` is the preferred one-call path.
 
 ## Questions, once
 
@@ -33,7 +44,8 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 - Pull still frames when a diagram appears? yes/no/auto (video defaults to auto).
   - yes: automatic scoring; ambiguous frames are confirmed through the separate
     `image-vision` skill when a key is available. The main model never reads a
-    frame. A shared diagram may be reused on multiple cards;
+    frame by default; the bounded ≤6-image fallback in `SKILL.md` is the only
+    exception. A shared diagram may be reused on multiple cards;
   - no: transcript-only.
 - If “find it”: search, prefer the official channel/playlist, and state the choice.
   Ask one confirmation if the match is not strong.
@@ -48,6 +60,8 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 - Transcript chunks are written to the work tree and `source_index.sqlite`; `transcripts.md`
   (and per-video `transcripts/<id>.compact.md`) is the compact, deduplicated read: timestamped
   paragraphs plus a token estimate. Read that once; use the index only for a narrow lookup.
+  A full series can exceed 100 KB, so the read tool may return it in sequential chunks; that is
+  not duplication. Do not split it further; per-video files are for a narrow check.
 - A video with missing or rate-limited captions is still registered and frame-scanned; `video_toc.md`
   marks `no_captions`/`rate_limited` instead of discarding the video. Do not retry a hard 429 for
   minutes; mark it and recover frames.
@@ -69,9 +83,10 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 
 ## Frames
 
-`frames.jsonl` logs every candidate with its metrics; `frames.md` lists only the
-best frame per cue plus genuinely ambiguous `confirm` candidates. `frames.py
---at mm:ss` is the manual override.
+Frames are 720p stills. `frames.jsonl` logs every candidate with its metrics; `frames.md` lists
+only the best frame per cue plus genuinely ambiguous `confirm` candidates. `frames.py --at mm:ss`
+is the manual override. Copy the exact backticked path from `frames.md`; never build a filename
+from a timestamp. `direct` frames are attachable without a vision call; only `confirm` needs it.
 
 The picker is two-stage:
 - one cheap probe per cue; shortlist cues with visual structure or an explicit
@@ -96,9 +111,13 @@ The picker is two-stage:
   slides search from the video title/description; register the URL as a second
   source and cite it. Do not invent diagrams or use a random mirror.
 - `--max` is a safety cap, not a per-video target.
-- **Never read an image with the main model.** No `read` on `media/*.png`, no
-  scan/contact-sheet review, no vision on the model's own stream. These are the
-  expensive, low-yield calls this pipeline exists to avoid.
+- **Never read an image with the main model by default.** No `read` on `media/*.png`, no
+  scan/contact-sheet review, no vision on the model's own stream; the bounded ≤6-image fallback in
+  `SKILL.md` is the only exception. These are the expensive, low-yield calls this pipeline exists
+  to avoid.
+
+Stop a background `vision_check` with the PID you started (`$!`) or a bracket
+pattern such as `pkill -f '[v]ision_check.py'`; never `pgrep -f` the literal name.
 
 `image-vision` is card-driven and sparing: confirm only a frame you are about to
 attach, only when it is `confirm`/`needs_vision`. If it has no key or its one

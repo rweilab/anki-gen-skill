@@ -24,12 +24,17 @@ normal deck run.
   changes.** It includes the changelog/version check, package/shipping manifest
   check, negative fixtures, golden deck, sabotage probes, video fixtures, and
   installer test.
+- **Passing tests are a floor, not proof.** They show a path is passable, not that
+  it is correct, complete, or well-maintained. Review the control flow, failure
+  modes, user impact, and maintainability of every change.
 - **Docs-only changes do not need the full smoke.** For `CHANGELOG.md`/`VERSION`,
   run `python3 scripts/changelog_check.py`; for prose only, a diff check is enough.
 - **Do not silently rewrite hard-earned rules or validators.** Fold new lessons
   into the rule they belong to; keep the why.
 - **No zip/package rebuild unless the user asks.** `package_handoff.sh` is ready.
-- **Read `MAINTAINERS.md`** before architectural or token-efficiency changes.
+- **Read `MAINTAINERS.md`** before architectural or token-efficiency changes. Its "Maintainer
+  docs" section points to `maintainers/README.md`; read `maintainers/lessons.md` before changing a
+  script and `maintainers/dossier-format.md` before changing dossier storage.
 
 ## Agent execution boundaries
 
@@ -48,5 +53,9 @@ normal deck run.
   proactively paces Gemini calls and may perform one bounded `--retry-429` sleep; never loop on 429.
 - **Do not kill the harness or your own process.** A test may stop only the known
   child process it started, after a timeout.
+- **Never stop a child with `pkill -f`/`pgrep -f` and a literal script name.**
+  The pattern can match the shell running the command. Capture the PID (`$!`),
+  use the tool's finish endpoint, or use a bracket pattern such as
+  `pkill -f '[v]ision_check.py'`.
 - **Run autonomously to completion once a plan exists.** Ask only when blocked by
   a destructive choice or missing input the user must provide.

@@ -2,6 +2,8 @@
 """Deck dossier checks: pack, schema, previews, validation, export/import."""
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -14,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import deck_context as dc  # noqa: E402
+import revision  # noqa: E402
 from cardid import card_hash  # noqa: E402
 from dossier.errors import ArchiveError, SchemaTooNew  # noqa: E402
 
@@ -215,9 +218,13 @@ def main() -> int:
         assert imported["key"] == key, imported
         rows3 = [json.loads(x) for x in (Path(imported["path"]) / "cards.jsonl").read_text().splitlines()]
         assert len(rows3) == 3 and rows3[0]["rev_id"] == rows[0]["rev_id"]
-        print("ok    export/import roundtrip")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            assert revision.main(["context", "import", str(archive), "--dry-run"]) == 0
+        assert "dry run" in buf.getvalue(), buf.getvalue()
+        print("ok    export/import roundtrip and dry-run CLI")
 
-        bad = dict(rows[0], source="")
+        bad = dict(rows[0], source="", why="", retrieval_target="")
         check = dc.validate({"manifest": {"schema": 1}, "cards": [bad], "topics": [],
                              "state": [], "media_candidates": [], "learner": "x",
                              "path": str(dossier), "sources": []})
