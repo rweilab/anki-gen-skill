@@ -16,12 +16,16 @@ fall back to a rebuild or a database edit.
    ```bash
    python3 scripts/anki_connect.py
    ```
-3. If it is missing or broken, install the pinned add-on only after asking:
+3. If it is missing or broken, detect Anki and install the pinned add-on only
+   after asking:
    ```bash
+   python3 scripts/anki_connect.py --detect
    python3 scripts/anki_connect.py --install --yes
    ```
-   Then restart Anki and check again. Do not install upstream `master`; recent
-   releases broke many clients.
+   The installer finds the Anki profile/add-ons directory on Linux, macOS,
+   Windows, or Flatpak. If detection fails, open Anki once so it creates the
+   profile, or pass `--addons-dir PATH`. Then restart Anki and check again. Do
+   not install upstream `master`; recent releases broke many clients.
 4. Ask which outcome the user wants:
    - **Update the deck already in Anki** — keeps scheduling and review history;
      recommended once they have studied it.

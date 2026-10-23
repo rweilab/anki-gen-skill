@@ -25,10 +25,10 @@ system and Python dependencies, and runs the doctor. It does not touch
 `~/.config/anki-gen` or your Anki collection.
 
 Homebrew and the Anki desktop app are never installed. AnkiConnect is a separate
-add-on inside Anki Desktop; the revision workflow can install a pinned build only
-after you approve it. On macOS, Homebrew must already be present if a system tool
-is missing. On Linux, package installation uses `sudo` and asks for your password
-once.
+add-on inside Anki Desktop; the revision workflow can detect the Anki profile and
+install a pinned build only after you approve it. On macOS, Homebrew must already
+be present if a system tool is missing. On Linux, package installation uses
+`sudo` and asks for your password once.
 
 Restart or reload opencode afterwards.
 

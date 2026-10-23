@@ -409,7 +409,7 @@ in Anki may keep scheduling history, but it must be mirrored in the source befor
 ## Revising an imported deck
 
 Open Anki first, run `python3 scripts/anki_connect.py`, and stop to fix setup if it fails
-(add-on code `2055492159`; `scripts/anki_connect.py --install --yes` for the pinned build).
+(add-on code `2055492159`; `scripts/anki_connect.py --detect` then `--install --yes` for the pinned build).
 Never open, copy, query, or inspect the live collection DB, even read-only. Ask whether to
 **update the deck already in Anki** (keeps history) or **regenerate a `.apkg`** (fresh import).
 `references/revision.md` has the commands, conflicts, destructive choices, snapshots,

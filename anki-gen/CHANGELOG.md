@@ -47,8 +47,8 @@ Newest first. Keep the index to one line per release; details live below.
   `.anki-gen-temp` in full. Revision/dossier detail is lazy-loaded from references, and the v1.5
   `SKILL.md` prose stays smaller than before.
 - Snapshot creation counts notes/cards without loading full deck fields or review history.
-- Revision now starts with an AnkiConnect preflight, verifies required actions, and offers a
-  pinned add-on install. The live collection DB is explicitly off-limits.
+- Revision now starts with an AnkiConnect preflight, verifies required actions, and can
+  detect the Anki profile and install a pinned add-on. The live collection DB is explicitly off-limits.
 - The duplicate `deck_context.py` CLI was removed; `revision.py context` is the one dossier
   command surface. The Python facade remains.
 - Stage references now have one read-when index; `tests/README.md` maps suite ownership and

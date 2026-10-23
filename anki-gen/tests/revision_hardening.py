@@ -608,9 +608,22 @@ def main() -> int:
             plugin = td / "plugin.zip"
             with __import__("zipfile").ZipFile(plugin, "w") as z:
                 z.writestr("anki-connect-test/plugin/__init__.py", "# test\n")
-            dest = anki_connect.install(str(plugin), td / "addons")
+            base = td / "Anki2"
+            base.mkdir()
+            prior = os.environ.get("ANKI_GEN_ANKI2_DIR")
+            os.environ["ANKI_GEN_ANKI2_DIR"] = str(base)
+            try:
+                info = anki_connect.detect()
+                assert info["anki2"] == str(base) and info["addons21"].endswith("addons21")
+                dest = anki_connect.install(str(plugin))
+            finally:
+                if prior is None:
+                    os.environ.pop("ANKI_GEN_ANKI2_DIR", None)
+                else:
+                    os.environ["ANKI_GEN_ANKI2_DIR"] = prior
+            assert dest == base / "addons21" / anki_connect.ADDON_CODE, dest
             assert (dest / "__init__.py").read_text() == "# test\n", dest
-            print("ok    AnkiConnect pin installer copies only the plugin")
+            print("ok    Anki detection and pinned installer copy only the plugin")
         finally:
             server.shutdown()
             server.server_close()

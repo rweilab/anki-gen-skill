@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import socket
 import sys
 import tempfile
@@ -192,27 +193,81 @@ class AnkiConnect:
         return self.request("sync")
 
 
-def addons_dir() -> Path:
-    """Locate Anki's add-ons directory on Linux, macOS, Windows, or Flatpak."""
+def anki2_candidates() -> list[Path]:
+    """Likely Anki profile roots, in preference order."""
+    override = os.environ.get("ANKI_GEN_ANKI2_DIR")
+    if override:
+        return [Path(override).expanduser()]
     home = Path.home()
     if sys.platform == "darwin":
-        bases = [home / "Library" / "Application Support" / "Anki2"]
-    elif sys.platform.startswith("win"):
-        bases = [Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
-                 / "Anki2"]
-    else:
-        bases = [Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
-                 / "Anki2",
-                 home / ".var" / "app" / "net.ankiweb.Anki" / "data" / "Anki2"]
+        return [home / "Library" / "Application Support" / "Anki2"]
+    if sys.platform.startswith("win"):
+        return [Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
+                / "Anki2"]
+    base = Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
+    return [base / "Anki2",
+            home / ".var" / "app" / "net.ankiweb.Anki" / "data" / "Anki2"]
+
+
+def find_anki2() -> Path | None:
+    bases = anki2_candidates()
     for base in bases:
-        if (base / "addons21").is_dir():
-            return base / "addons21"
-    return bases[0] / "addons21"
+        if ((base / "collection.anki2").is_file()
+                or (base / "collection.anki21").is_file()
+                or (base / "addons21").is_dir()):
+            return base
+    return next((base for base in bases if base.is_dir()), None)
+
+
+def anki_binary() -> str:
+    found = shutil.which("anki")
+    if found:
+        return found
+    home = Path.home()
+    if sys.platform == "darwin":
+        paths = [Path("/Applications/Anki.app"),
+                 home / "Applications" / "Anki.app"]
+    elif sys.platform.startswith("win"):
+        local = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+        paths = [local / "Programs" / "Anki" / "anki.exe",
+                 Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
+                 / "Anki" / "anki.exe"]
+    else:
+        paths = [Path("/usr/bin/anki"), Path("/usr/local/bin/anki"),
+                 home / ".local" / "bin" / "anki"]
+    return str(next((p for p in paths if p.exists()), ""))
+
+
+def detect() -> dict:
+    base = find_anki2()
+    return {
+        "anki2": str(base) if base else "",
+        "addons21": str(base / "addons21") if base else "",
+        "binary": anki_binary(),
+        "candidates": [str(path) for path in anki2_candidates()],
+    }
+
+
+def addons_dir(*, create: bool = False) -> Path:
+    """Locate Anki's add-ons directory on Linux, macOS, Windows, or Flatpak."""
+    base = find_anki2()
+    if not base:
+        message = ("Anki profile not found. Open Anki once so it creates its "
+                   "profile, or pass --addons-dir. Checked: "
+                   + ", ".join(str(p) for p in anki2_candidates()))
+        if create:
+            raise FileNotFoundError(message)
+        return anki2_candidates()[0] / "addons21"
+    path = base / "addons21"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def install(source: str | None = None, addons: str | Path | None = None) -> Path:
     """Install a pinned AnkiConnect plugin without touching the collection."""
-    dest = Path(addons).expanduser() if addons else addons_dir() / ADDON_CODE
+    dest = (Path(addons).expanduser() if addons
+            else addons_dir(create=True) / ADDON_CODE)
     archive = Path(source).expanduser() if source else None
     tmp = None
     try:
@@ -251,6 +306,9 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="Check the local AnkiConnect bridge.")
     ap.add_argument("--url", default=None)
+    ap.add_argument("--detect", action="store_true",
+                    help="locate Anki's profile, add-ons, and binary")
+    ap.add_argument("--json", action="store_true")
     ap.add_argument("--install", action="store_true",
                     help="install the pinned AnkiConnect add-on")
     ap.add_argument("--yes", action="store_true",
@@ -260,6 +318,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--addons-dir", default=None,
                     help="override Anki's addons21 directory")
     args = ap.parse_args(argv)
+    if args.detect:
+        info = detect()
+        if args.json:
+            print(json.dumps(info, indent=2))
+        else:
+            print(f"Anki profile: {info['anki2'] or 'not found'}")
+            print(f"Add-ons:      {info['addons21'] or 'not found'}")
+            print(f"Anki binary:  {info['binary'] or 'not found on PATH/app dirs'}")
+        return 0 if info["anki2"] else 1
     if args.install:
         if not args.yes:
             print("anki_connect.py: installation needs --yes after user consent",
