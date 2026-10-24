@@ -6,6 +6,26 @@ Review happens in a throwaway localhost page, **not in the chat** — the chat v
 card's full text through the conversation, and `y/n/e` could not express the two signals that drive
 cutting and splitting (*too hard for me*, *I already know this cold*).
 
+### Semantic self-audit (before the page)
+
+This is a **self-audit, not independent review**. It uses the triaged sample plus every flagged
+card; do not reload the whole corpus. Read `cards.jsonl`, `authoring_ledger.md`, and the chosen
+source. For each sampled card, write one evidence line and check:
+
+1. **Cold answer:** answer the front from this card alone. If you need a sibling, flag it.
+2. **Symbols:** list every symbol/method used and where it is defined on this card. Missing → flag.
+3. **Answer and why:** the back answers the front first; the why adds a mechanism, consequence,
+   mnemonic, or real use rather than restating the front.
+4. **Evidence:** the ledger quote/page anchor supports the claim; otherwise flag or mark `derived`.
+5. **Procedure:** a Procedure card names one decision. An L2 familiarity walkthrough keeps the
+   first and last steps visible and its middle blanks answerable from context.
+6. **ROI:** a look-up-able, redundant, or low-weight card is parked in `scope_gate.md` with a
+   reason, not silently kept or deleted.
+
+Fix or park what fails; if nothing fails, say what you checked and what you did not. “Looks good”
+is not a verdict. The human page remains the authority; a self-audit does not make the deck
+manually reviewed.
+
 ### Reviewer card-quality checklist
 
 The review is the last place these heuristics are enforced. For each shown card:
@@ -13,10 +33,11 @@ The review is the last place these heuristics are enforced. For each shown card:
 - front is answerable instantly from memory; no computed value on the front;
 - one retrievable fact, not "X and Y";
 - back adds a why/mechanism, not just a restatement;
-- every symbol and unit is defined on the card;
+- every symbol, unit, and named method is defined on **this card**, not elsewhere in the deck;
 - source has a page/slide/question locator;
 - tier-zero/anchor exists for formula-heavy topics;
 - scope matches the intake: no formula-sheet lookups carded as recall;
+- a Procedure card names one decision; an L2 procedure walkthrough keeps the flow visible;
 - no cross-card pointers;
 - a video/image frame actually illustrates the card and has caption/source.
 
@@ -27,12 +48,12 @@ checklist is why the review does not need to load the whole card-writing referen
 
 **Per-card adjudication does not scale.** On the first real run the user stopped after nine cards of
 fifty-five — and their edits generalised to the whole deck anyway, so the other forty-six bought
-nothing. `triage.py` (stage 9) picks the set and **always** runs, any deck size; even a small deck
-gets its flagged cards surfaced.
+nothing. Stage 8's `pipeline.py --gates-only` call picks the set and **always** runs, any deck size;
+even a small deck gets its flagged cards surfaced.
 
 ```bash
-python3 ~/.claude/skills/anki-gen/scripts/triage.py $WORK/cards.jsonl \
-    -o $WORK/review_plan.json
+python3 ~/.claude/skills/anki-gen/scripts/pipeline.py --cards $WORK/cards.jsonl \
+    --gates-only --out "$WORK"
 ```
 
 **The set is chosen by axis, not by card** — four questions, cheapest cards that answer each:

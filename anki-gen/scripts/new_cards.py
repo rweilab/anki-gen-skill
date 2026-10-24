@@ -84,9 +84,9 @@ def C(front: str, back: str, *, layer: str, topic: str, deck: str, source: str,
     exists for the schema's own pass-through fields (`source_ref`).
 
     `objects` are 0-2 names of the specific things this card is ABOUT (see
-    SKILL.md "The topic is a chapter name, and object tags are a sniper"). They
-    become the deck's search tags; `topic` is the chapter name and the only other
-    tag.
+    SKILL.md "The topic is a chapter name, and object tags are a sniper"); a
+    Procedure card uses the reserved `procedural` entry. They become the deck's
+    search tags; `topic` is the chapter name and the only other tag.
 
     `strict=False` returns the card even when it has errors, for the case where
     you want to see the whole deck's problems in one pass. `dump()` then prints

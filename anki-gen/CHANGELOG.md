@@ -26,6 +26,9 @@ Newest first. Keep the index to one line per release; details live below.
   after static checks and names media risks, ROI split candidates, and whether a review log exists.
 - A **recovery rule** in the kernel: if a stage was skipped or a gate fired, stop, produce the
   missing artifact, and re-run the gate; never hand over a deck to get past it.
+- A **semantic self-audit** after triage: one evidence line per sampled card, cold-answer and
+  symbol checks, source-anchor check, Procedure check, and a parked list for low-ROI cards. It is
+  explicitly advisory, not independent manual review.
 
 **Media pipeline**
 - `media_index.py` media-risk auditing: title/outline frames, unconfirmed `confirm` crops, generic
@@ -46,6 +49,20 @@ Newest first. Keep the index to one line per release; details live below.
   so a large script can fix one batch instead of one error per run.
 - `roi_report.py --list` prints card numbers, topics, layers, and fronts without pulling backs into
   the conversation.
+- The authoring ledger is now a **card contract**: tier, retrieval target, one-sentence answer,
+  why, every symbol and meaning, source evidence or `derived`, and the checks. The self-audit
+  compares the finished card against it.
+- The scope gate records a soft target count and a **parked** list. Parked candidates are not
+  written, but they are kept with a reason instead of being silently deleted.
+- A **procedure-familiarity walkthrough** is allowed as an L2 cloze: one card per procedure, first
+  and last steps visible, 1–3 labeled middle blanks. It is separate from a Procedure decision card
+  and is dropped once the learner knows the flow. The filter tag is the reserved
+  `objects: ["procedural"]`.
+- Stages 8, 9 and the first stage-13 report are one `pipeline.py --gates-only` call; the standalone
+  validate, triage and ROI commands are diagnosis-only. This keeps one plan and one quality line
+  per pass.
+- Card-count language now treats 10–15 as a batch cap and 4–15 as a healthy ceiling, not a quota;
+  the scope target is a ceiling, and low-ROI candidates are parked before writing.
 
 **Verification and maintainer docs**
 - Focused regression tests for title/outline frames, confirm-crop risk, self-contained fronts,
@@ -56,6 +73,9 @@ Newest first. Keep the index to one line per release; details live below.
   serving cards. Smoke also audits internal doc paths and rejects references to retired files.
 - `MAINTAINERS.md` gains a rule-ownership table (rule → contract → owner → code gate → duplicates)
   and a visible "Maintainer docs" section. Tests are documented as a floor, not proof of quality.
+- `parse_intent.py --help` prints usage, a dossier path works as a `context` deck selector, the
+  quality evidence line names `derived` cards, and the topic-tag warning distinguishes chapter
+  context from an answer leak.
 
 ### Changed
 

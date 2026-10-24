@@ -585,9 +585,11 @@ def tag_leak_findings(cards):
                 continue
             if kind == "topic" and len(tag.split()) > 2:
                 continue
+            hint = ("confirm it is chapter context, not the answer"
+                    if kind == "topic" else
+                    "tags are visible before answering, so do not reveal the answer")
             out.append((i, "err" if kind == "object" else "warn",
-                        f"{kind} tag {tag!r} appears only in the answer; "
-                        "tags are visible before answering, so do not reveal the answer"))
+                        f"{kind} tag {tag!r} appears only in the answer; {hint}"))
     return out
 
 

@@ -25,6 +25,8 @@ missing one is an **error**, including `deck`; self-contained math/definitions u
   `objects: ["bernoulli"]`. Do not tag the topic or a term already explicit in the card; see
   `references/card-writing.md`. Generated tags are lowercase; the Topic field keeps its display
   capitalization.
+- **Procedure filter:** `objects: ["procedural"]` is the reserved tag for Procedure cards. It is
+  not a content bucket, and an L2 procedure walkthrough does not get it.
 - **`stratum`** is optional and deck-authored ("Shape B", "Hess's law"); `triage.py` reports
   coverage per stratum without interpreting it. The tool cannot know what a deck ought to contain —
   only its author can say what its kinds are.
@@ -57,5 +59,7 @@ The build emits **two** notetypes — Basic and Cloze. Procedure A/B shapes are 
 whole formula.
 **L3 Basic (boundary):** `Front: When does {{concept}} fail?` / `Back: {{limitation}} — {{consequence}}`.
 
-No Image Occlusion template (no such notetype) and no Type-in. A "Procedure Cloze" shape (`Step
-{{c1::1}}: ...`) tests sequence recognition, not a decision — use A or B (rule 19).
+No Image Occlusion template (no such notetype) and no Type-in. A "Procedure Cloze" used as a
+decision card (`Step {{c1::1}}: ...`) tests sequence recognition, not a decision — use A or B (rule
+19). An **L2 procedure walkthrough** is different: one card per procedure, first and last steps
+visible, 1–3 labeled middle blanks.

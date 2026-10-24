@@ -111,15 +111,13 @@ def parse_intent(user_input: str, cwd: str = ".") -> Dict[str, Any]:
     if search:
         intent["video_search"] = search.group(1).strip()
 
-    # If no explicit source, check for file/dir/url in input
-    # This is a fallback - the host model should handle the real parsing
     return intent
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: parse_intent.py '<user_input>' [cwd]"}))
-        sys.exit(1)
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: parse_intent.py '<user_input>' [cwd]")
+        sys.exit(0 if len(sys.argv) > 1 else 1)
 
     print(json.dumps(parse_intent(sys.argv[1],
                                   sys.argv[2] if len(sys.argv) > 2 else ".")))

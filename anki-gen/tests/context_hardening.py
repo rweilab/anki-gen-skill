@@ -270,8 +270,9 @@ def main() -> int:
         index = Path(dc.data_root()) / "decks" / "index.json"
         index.unlink()
         assert dc.resolve(key) == key
+        assert dc.resolve(str(dossier)) == key
         assert index.is_file()
-        print("ok    index rebuilds from manifests")
+        print("ok    index rebuilds from manifests and accepts a dossier path")
 
         # Checksum verification is explicit and catches tamper.
         cards_file = dossier / "cards.jsonl"

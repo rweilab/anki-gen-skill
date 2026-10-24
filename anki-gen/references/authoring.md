@@ -20,10 +20,17 @@ into a list `dump()` prints. `new_cards.py --template` prints a starter block. *
 replace `validate_cards.py`**, which alone sees deck-wide checks (near-dup fronts, tier-zero
 coverage); the batch run on the written `cards.json` is mandatory.
 
-**Author in batches, not one card at a time.** Write a one-line ledger per card (front intent,
-retrieval target, why/answer, source anchor, heuristics checked), then append 10–15 cards for a topic in one
-`cards.jsonl` write and validate the batch. A 60-card deck is ~5 writes. The ledger is the
-reasoning record; review checks every card has a line. Prefer `.jsonl` for decks over ~30 cards;
+**Author in batches, not one card at a time.** Write a one-line ledger per card, then append up to
+10–15 cards for a topic in one `cards.jsonl` write and validate the batch. That is a batch cap, not
+a quota; write fewer when fewer cards pass rule 21. A 60-card deck is ~5 writes.
+**The ledger is the card contract**, not a diary:
+
+`N. tier 1|2 · intent · retrieval target · one-sentence front answer · why · symbols: s=meaning, … · evidence: "<short quote>" | derived · source locator · checks: self-contained, one-fact, procedure?`
+
+Name every symbol used on the card, not just the new ones. A source-dependent claim gets a short
+quote or exact page claim; self-contained math gets `derived`. The self-audit checks the finished
+card against this line. A card that cannot answer its front from this line is not ready. Prefer
+`.jsonl` for decks over ~30 cards;
 use `make_cards.py` for media/programmatic decks and write it in one pass per topic — never edit
 one card at a time. The linear 67-card deck used 2 writes + 11 edits; the 99-card midterm used 67
 edits and 6× the input. **Batch the writes too:** after review, apply independent

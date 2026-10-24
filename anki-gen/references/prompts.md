@@ -61,6 +61,10 @@ $$\text{the formula}$$
 **Careful:** the common error or unit trap, if there is one.
 ```
 
+**Ledger contract:** before writing, the ledger line names the tier, retrieval target, one-sentence
+front answer, why, every symbol and meaning used on the card, and a short source quote or `derived`.
+If you cannot fill that line, the card is not ready.
+
 **Fronts:** rules 7 and 8 hold; the reject-and-rewrite list is in `references/card-writing.md`, "The recallability test".
 **Allowed in backs:** "set them equal and solve", "convert ρ before you compute", "these two can be
 used to derive the rest". L3 fronts are exempt — a boundary card should name the wrong computation
@@ -95,6 +99,10 @@ a cloze.
 **For formulas:** use Basic for the whole formula (rule 15). If a genuine enumeration needs cloze,
 blank one item only — never the whole formula or a single computed answer.
 
+**Procedure:** one decision per back. If the learner needs familiarity with the flow, use one L2
+cloze walkthrough instead: first and last steps visible, 1–3 labeled middle blanks, one per
+procedure. It is not a Procedure card.
+
 **Retrieval angles — pick the one that fits, not all of them.** Each is a different retrieval act,
 which is why they are separate cards rather than one large one:
 
@@ -114,7 +122,8 @@ model fast); **sanity check** — "does this answer make sense, what would flag 
 **Density cap — the failure mode to avoid.** This is a menu, not a checklist. Do NOT generate one
 card per angle per concept. Most concepts want one angle, chosen because it tests what is actually
 hard about *that* knowledge; a few want two. Six near-cards off one topic is padding; rule 21 is
-the brake. Same test as Procedure: which single question, missed, costs the most?
+the brake. The 10–15-card batch is a cap, not a target; fewer high-ROI cards is the normal result.
+Same test as Procedure: which single question, missed, costs the most?
 
 **Output ONLY a JSON array matching the card schema in `references/schema.md`.**
 
@@ -129,11 +138,14 @@ missed while the whole deck looked fine.
 
 **Layer 1 — static, mandatory:**
 ```bash
-python3 ~/.claude/skills/anki-gen/scripts/validate_cards.py $WORK/cards.jsonl
+python3 ~/.claude/skills/anki-gen/scripts/pipeline.py --cards $WORK/cards.jsonl \
+    --gates-only --out "$WORK"
 ```
-Covers: escape corruption, LaTeX delimiter/brace balance, stray `$`, literal `**`/backticks/
-markdown tables, computation-demand fronts, empty/stub cards, bad layer values, near-duplicate
-fronts, and symbol-heavy cards with no glossary.
+This runs static checks, triage and ROI once. If the quality line shows warnings, run
+`validate_cards.py --json` for their exact text before review. Covers: escape corruption, LaTeX
+delimiter/brace balance, stray `$`,
+literal `**`/backticks/markdown tables, computation-demand fronts, empty/stub cards, bad layer
+values, near-duplicate fronts, and symbol-heavy cards with no glossary.
 
 **Layer 2 — per-batch or triaged review** of quality, grounding, coverage. Run it on the cards in
 hand (stage 7) or the review subset (stage 10), not the whole deck with the corpus reloaded:
@@ -210,8 +222,10 @@ work.
   them — unless the learner has used the deck long enough that the term is settled.
 - **Long backs** cost review every time. Compress before deleting; keep the *why*, lose the
   ornament, extra examples, and restatement.
+- **Procedure walkthroughs** are scaffolding for a novice: protect one per procedure, drop it when
+  the learner knows the flow, and never merge it with a decision card.
 - **Coverage gaps** belong in a report, not this pass — say a topic is thin and let the caller
-  decide.
+  decide. Low-ROI cards go to the parked list, not silent deletion.
 
 ### Bias to resist
 

@@ -127,7 +127,9 @@ def main() -> int:
     intent = parse_intent('make 30 cards --deck-name "My Deck" from Lec/')
     assert intent["deck_name"] == "My Deck", intent
     assert intent["max_cards"] == 30, intent
-    print("ok    intent keeps quoted deck names and card target")
+    help_run = run([sys.executable, str(SCRIPTS / "parse_intent.py"), "--help"])
+    assert help_run.returncode == 0 and "Usage:" in help_run.stdout, help_run
+    print("ok    intent keeps quoted deck names, card target, and --help")
 
     # Rule 26 and markdown images are structural defects, not style choices.
     pointer = dict(BASE, back="See the magnitude card for the numbers. **Why:** it catches units.")

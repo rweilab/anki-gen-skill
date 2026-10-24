@@ -283,8 +283,8 @@ understanding card and says nothing about the subject); **a section, not a chapt
 defects`, `Unit 2`); **a single card or subtopic wearing a topic's name** (`The T=-(u+v)/3
 identity`, `Radians`, `Sine`, `Tangent` inside a Unit Circle deck). If several cards come from the
 same lecture or chapter, they share the same topic. A topic with 1–2 cards is usually a subtopic;
-merge it into the parent unless it is a real chapter. Roughly **4–15 cards per topic** is healthy;
-small decks may legitimately be one topic.
+merge it into the parent unless it is a real chapter. Roughly **4–15 cards per topic** is a healthy
+ceiling, not a quota; fewer is normal. Small decks may legitimately be one topic.
 
 **`objects` are broad buckets, not subtopics.** The topic already tags every card, so use
 `objects` for cross-topic search buckets. For an RTOS/embedded survey, examples are
@@ -347,7 +347,7 @@ is a guess, and a guessed target is graded wrong for the wrong reason.
 
 **Guardrails — all five:** (1) one decision per back — three sub-decisions is three cards; (2)
 bounded fronts — the learner reaches the decision from the state shown, not by working the
-intervening algebra; (3) a `procedural` tag, so procedural load can be filtered independently
+intervening algebra; (3) `objects: ["procedural"]`, so procedural load can be filtered independently
 (`tag:procedural`), not a subdeck (rule 23); (4) density cap — a handful per topic, at recurring
 decision points, not one per problem; (5) the "practice problem in disguise" test — a complete
 worked solution on the back is a problem-set item wearing a card's clothes, send it to practice.
@@ -357,9 +357,16 @@ demand"; a warning because a demand can be stated without one, but look at that 
 **Why this exists.** Recognising which method applies, and what the next move is, is high-yield for
 STEM; a card that merely relocates a problem set into Anki adds review burden without retrieval
 value. The guardrails *are* the design: a 20-step derivation with one answer is not a hard card, it
-is an unusable one. **Recorded so it is not resurrected:** the "Procedure Cloze" shape (`Step
-{{c1::1}}: ...`) tests sequence recognition, not decision-making — use A or B. (A "Type-in" notetype
-never existed in the build.)
+is an unusable one. **Recorded so it is not resurrected:** a "Procedure Cloze" used *as a decision
+card* (`Step {{c1::1}}: ...`) tests sequence recognition, not decision-making — use A or B. (A
+"Type-in" notetype never existed in the build.)
+
+**L2 procedure walkthrough (allowed, separate).** For a cold learner who needs the shape of a
+procedure, one L2 cloze card may lay out the procedure and blank 1–3 **middle** steps. Keep the
+first and last steps visible so the flow is the context; label every blank; use one card per
+procedure, not one per step. This teaches familiarity with the procedure, not method selection. It
+is not a Procedure card, does not get `objects: ["procedural"]`, and does not replace A/B. Drop it
+when the learner already knows the procedure.
 
 ---
 

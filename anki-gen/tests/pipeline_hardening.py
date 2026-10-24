@@ -172,6 +172,7 @@ def main() -> int:
         assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
         assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
         assert "quality    static 0 error(s)" in r.stdout and "NOT CERTIFIED" in r.stdout, r.stdout
+        assert "provenance 1/1 (0 derived)" in r.stdout, r.stdout
         print("ok    pipeline build+validate+context and quality status")
 
         risk_cards = td / "risk.jsonl"

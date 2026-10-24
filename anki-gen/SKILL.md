@@ -16,8 +16,9 @@ entry point differs (`/anki-gen` vs description match); the pipeline is identica
 the contract. The full read-when map is at the end of this file. If `references/` is
 missing, work from the rules alone.
 
-**Token discipline.** Batch 10–15 cards per topic after a one-line-per-card ledger; read only the
-chosen sources, learner context, and the stage's reference; phase-split large reviews. Quality
+**Token discipline.** Batch up to 10–15 cards per topic after a one-line-per-card ledger; that is a
+write cap, not a card target. Read only the chosen sources, learner context, and the stage's
+reference; phase-split large reviews. Quality
 outranks token, call, and speed savings; never withhold useful evidence, context, or reasoning to
 reduce cost. Details: `references/authoring.md`, `references/review.md`.
 
@@ -191,7 +192,8 @@ only its opening tokens survive a long session — what is duplicated is what ge
     displayed above the question; prefixing makes a card read like a form. `[prose]`
     → **Housekeeping lives in fields**
 19. **Procedure cards test a decision, never a solution**, and the front states which decision it
-    wants. `[validate_cards Procedure-front-warn]` → **The Procedure layer**
+    wants. An L2 procedure walkthrough is a separate familiarity card, not a Procedure card.
+    `[validate_cards Procedure-front-warn]` → **The Procedure layer**
 20. **Reflow, don't hard-wrap.** Cosmetic source line breaks must not become `<br>`, or sentences
     split mid-clause. `[render.py]` → **Authoring cards: mechanics**
 21. **A candidate fact earns a card only if it is not look-up-able, has already caused a
@@ -275,24 +277,29 @@ Below, `$WORK` means `.anki-gen-temp/<topic>`; every deck artifact lives there, 
 uses `$WORK/cards.jsonl` (or the same file named `.json`).
 
 References in the table are under `references/` unless this file or `maintainers/` is named.
+Run the command in the row; a parenthetical diagnosis command is for a confirmed failure, not a
+parallel path.
 
 | Stage | Command | Gate / artifact | Reference |
 |---|---|---|---|
-| 1. Parse intent | `python3 parse_intent.py "<request>" "<cwd>"` | Read the whole JSON: `sources`, `date_filter`, `merge_target`, `audit_web`, `course_hint`, `recursive`, `deck_name`, `max_cards`, `output_path`. A lexicon: read the request yourself for the rest. `recursive` is always true; pass `--date-filter` to `pipeline.py` or use `extract_pdf.py` directly. | — |
+| 1. Parse intent | `python3 parse_intent.py "<request>" "<cwd>"` | Read the whole JSON: `date_filter`, `merge_target`, `audit_web`, `course_hint`, `recursive`, `deck_name`, `max_cards`, `output_path`. A lexicon: read the request yourself for the rest; `sources` is a fallback and may be empty. `recursive` is always true; pass `--date-filter` to `pipeline.py` or use `extract_pdf.py` directly. | — |
 | 2. Source survey | Read the request and folder | Propose sources with a reason each, then stop (beginner: proceed on stated assumptions); write `$WORK/intake.md` (deck, learner, sources, video range, images yes/no, review preference, assumptions). Deck name required; missing later → ask once. | `survey.md` |
 | 3. Deck audit | none — opt-in only | Search AnkiWeb/GitHub/Reddit; audit by hand against "DECK AUDIT"; modal outcome: generate your own. | `optional.md` |
 | 4. Extract | `python3 pipeline.py --sources <...> --out .anki-gen-temp/<topic>` (preferred); `python3 extract_pdf.py "<source>" "<cwd>/.anki-gen-temp/<topic>" --tag <tag>` (diagnosis); `--date-filter` | `sources.md` combines the batch for one read; per-source `.md` files remain for narrow checks. Single source prints content/source_type/source_path/images_count + a 3-name sample/md; batch prints a manifest with counts, samples of `<tag>` dirs and `.md` paths. Cite the source file + page, not the topic dir. | `survey.md`, `slides.md` |
 | 4b. Video/media | `python3 pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto\|yes\|no] [--model auto] [--whole-playlist \| --items 2-5] [--title "..."]`; `extract_video.py` (diagnosis) | `transcripts.md`, `video_toc.md`, optional `frames.md`/`frames.jsonl`; per-video `video_meta.json`; `pipeline_state.json`, `--resume`, `--status`; opt-in `--vision auto --vision-max 12` → `vision.jsonl` (confirm frames only). Attach `direct`; confirm `confirm` via image-vision; main model never reads frames by default (bounded kernel fallback only). | `video.md` |
 | 5. Classify | Read `$WORK/sources.md` once for documents and/or `$WORK/transcripts.md` for video (the single-source `.md` for a diagnosis run), then the CLASSIFIER prompt | Atomic concepts `{layer, topic, objects, type, source}` from content. | `prompts.md` |
 | 6. Scope gate | none | **Required artifact** `$WORK/scope_gate.md` (both halves). `pipeline.py --build` refuses without `intake.md`, `scope_gate.md` and `authoring_ledger.md` unless `--allow-missing-artifacts`. | **this file, stage 6** |
-| 7. Write | `new_cards.C`/`make_cards.py` → `$WORK/cards.jsonl`; `python3 media_index.py <work> --cards cards.jsonl --per-card 2` | `$WORK/authoring_ledger.md`, then 10–15 cards per topic; locator, glossary, why, tier-zero; media opt-in and quality bar; `$WORK/curated.json`. | `card-writing.md`, `authoring.md`, `schema.md`, `video.md` |
-| 8. Verify (static) | `python3 validate_cards.py $WORK/cards.jsonl` | Escapes, delimiters, leaked markup, computation fronts, duplicates, front-visible tag leaks, missing glossary/provenance; `--deep` adds soft answer overlap. `--json` returns all warnings; the text view caps at 20. Layer 2 is the stage-7 batch self-check or the triaged review, never a corpus audit. | `review.md`, `prompts.md` |
-| 9. Triage | Read `references/review.md`, then `python3 triage.py $WORK/cards.jsonl -o $WORK/review_plan.json` | Always; a small cross-section, not the deck. | `review.md` |
+| 7. Write | `new_cards.C`/`make_cards.py` → `$WORK/cards.jsonl`; `python3 media_index.py <work> --cards cards.jsonl --per-card 2` | `$WORK/authoring_ledger.md`, then only cards that pass rule 21, normally 4–15 per topic; 10–15 is one batch cap, not a quota. Locator, glossary, why, tier-zero; media opt-in and quality bar; `$WORK/curated.json`. | `card-writing.md`, `authoring.md`, `schema.md`, `video.md` |
+| 8. Verify + triage | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --out "$WORK"` | One call runs static checks, triage, and ROI; writes `$WORK/review_plan.json` and `$WORK/roi.txt`, then prints the quality line. Escapes, delimiters, leaked markup, computation fronts, duplicates, front-visible tag leaks, missing glossary/provenance; `--deep` adds soft answer overlap. If warnings > 0, run `validate_cards.py --json` for the exact messages and fix them before review; the text view caps at 20. Layer 2 is the stage-7 batch self-check or the triaged review, never a corpus audit. | `review.md`, `prompts.md` |
+| 9. Triage artifact | none — stage 8 wrote `review_plan.json` | Read `references/review.md`; the plan is the review subset. Run `triage.py` directly only to diagnose plan selection. Then run the semantic self-audit on that sample. | `review.md` |
 | 10. Review (web) | `python3 review_server.py --cards $WORK/cards.jsonl --plan $WORK/review_plan.json --media-root "$WORK" --out $WORK/review_feedback.jsonl --done-file $WORK/review_done` | First generation default; later changes ask; `--ask recall` second pass (default `review_recall.jsonl`); wait, read reduced log, rescope. | `review.md` |
 | 11. Build | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --build --out "$WORK" --deck-name "Name" --out-apkg ./<deck>.apkg` | Quality line; refuses objective media risks unless `--allow-media-risk`; refuses missing evidence unless `--allow-missing-artifacts`; `--merge-existing` add-only; `--media --media-root` only when opted; dossier pack unless `--no-context`. | `revision.md`, `schema.md` |
 | 12. Validate | `python3 validate_apkg.py out.apkg` | Real import — the only step that sees a deck which imports cleanly but is unreadable. | `card-writing.md` |
-| 13. Debloat (ROI) | `python3 roi_report.py $WORK/cards.jsonl`, then the DEBLOATER prompt | After *every* content change; step-10 feedback is measured and outranks the report's surface heuristics. In the main process, not a subagent. Report concept overlap and media reuse; never cap or trim automatically. | `prompts.md` |
+| 13. Debloat (ROI) | Re-run stage 8 after *every* content change; `roi_report.py $WORK/cards.jsonl --list` only when trimming | Step-10 feedback is measured and outranks the report's surface heuristics. In the main process, not a subagent. Report concept overlap and media reuse; never cap or trim automatically. | `prompts.md` |
 | 14. Cleanup | Checklist below | `.apkg` only new file; work directory deleted in full; dossier persistent outside the caller's directory; no listener left. | **this file, stage 14** |
+
+Stages 8, 9 and the first stage-13 report are one `pipeline.py --gates-only` call. Run
+`validate_cards.py`, `triage.py` or `roi_report.py` separately only to diagnose that call.
 
 ### Stage 6 — scope gate
 
@@ -302,19 +309,23 @@ recall; given → do NOT card them (rule 21), spend the deck on absences and dec
 equation. Beginner: infer "given" and put it on the **Assumed:** line. This filters the classified
 concepts before write. Required, and it must leave a file: a deck that skipped it looks identical to
 one that needed none. On the run that produced this rule, doing it by hand was the difference
-between 55 cards and 150. `pipeline.py --build` refuses without intake.md, scope_gate.md and
-authoring_ledger.md unless `--allow-missing-artifacts` is passed.
+between 55 cards and 150. Also record a soft target count — a ceiling, not a quota — and a **parked**
+list: high-ROI candidates are written first; look-up-able, low-weight, or redundant candidates are
+parked with a reason, not deleted. `pipeline.py --build` refuses without intake.md, scope_gate.md and authoring_ledger.md
+unless `--allow-missing-artifacts` is passed.
 
 ### Stage 7 — authoring, ledger, media
 
-Read only the relevant card-writing sections (the rule map is at its top), plus `authoring.md` and
-`schema.md`, then write `$WORK/cards.jsonl` (front, back, layer, topic, objects, deck, source;
+Read `$WORK/scope_gate.md`, only the relevant card-writing sections (the rule map is at its top),
+plus `authoring.md` and `schema.md`, then write `$WORK/cards.jsonl` (front, back, layer, topic, objects, deck, source;
 `cloze: true` on any `{{cN::}}`; `tier_zero: true` on the topic concept card) with a locator, a
 glossary of every symbol, a plain-English why, and a tier-zero card before each formula card.
 
-**Ledger, then batch:** write `$WORK/authoring_ledger.md` (one line per card: intent, retrieval
-target, why, source, heuristics), then 10–15 cards for the topic in one write; validate the batch.
-Avoid redundant retrieval targets and plan a soft 4–15-card topic budget; exact front/back
+**Ledger, then batch:** write `$WORK/authoring_ledger.md` as a card contract (one line per card:
+tier, intent, retrieval target, one-sentence front answer, why, symbols used and meanings, source
+evidence/`derived`, and checks), then write at most 10–15 cards for the topic in one batch. A normal
+topic is 4–15, and a 10–15-minute lecture often yields fewer; the soft target is a ceiling. Validate
+the batch, avoid redundant retrieval targets, and park what does not pass rule 21; exact front/back
 duplicates are errors. One authoring path per deck: prefer `.jsonl`; if a deck script
 (conventionally `make_cards.py`, using `new_cards.C`), write it in one pass per topic — never
 one-card edits. Use `author.py` scaffold only when there is no script; do not scaffold and write a
@@ -431,8 +442,9 @@ The **Assumed** line is not optional when you skipped a question to reduce frict
 thing between a fast default and a silently wrong deck.
 
 **Quality status is mandatory.** `0 errors` is not “done.” Report the pipeline quality line
-(media risks, ROI splits, review status) and say whether the deck was manually reviewed. If review
-was declined, say “not manually reviewed; static checks only.”
+(media risks, ROI splits, review status) and say whether the deck was manually reviewed. A
+semantic self-audit is not manual review. If review was declined, say “not manually reviewed;
+static checks only.”
 
 ## Supporting files
 
@@ -447,7 +459,7 @@ explanation, never an override. Do not read every reference up front.
 | `references/rendering.md` | only for render/hard-break/night-mode changes | MathJax delimiters, raw-string escapes, hard breaks, night-mode guard |
 | `references/prompts.md` | stages 5/7/8/13; read only that stage's prompt | classifier, writer, verifier, debloater |
 | `references/survey.md` | stage 2 and source intake | what to propose, learner-context files, deck-name ask, extraction outputs |
-| `references/review.md` | stages 9/10 and the review handoff | triage budget, score meanings, generalise/re-scope |
+| `references/review.md` | stages 8–10 and the review handoff | triage budget, score meanings, generalise/re-scope |
 | `references/revision.md` | when revising an imported deck | AnkiConnect setup, no raw DB, dossier, attach/audit/plan/apply, conflicts, destructive choices |
 | `references/video.md` | when the source is a video | transcripts, playlists, frame cues, auto-picking, legal |
 | `references/slides.md` | when the source is PowerPoint | PPTX text, notes, embedded images, vector limits |

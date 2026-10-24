@@ -456,16 +456,18 @@ def artifact_state(out: Path) -> dict[str, bool]:
 def evidence_line(cards: list[dict], out: Path) -> str:
     """A compact, human-readable evidence summary; no card text."""
     arts = artifact_state(out)
-    prov = sum(1 for c in cards
-               if str(c.get("source") or c.get("source_ref") or "").strip()
-               and any(ch.isdigit() for ch in str(c.get("source") or "")))
+    sources = [str(c.get("source") or c.get("source_ref") or "").strip()
+               for c in cards]
+    prov = sum(1 for src in sources if src and any(ch.isdigit() for ch in src))
+    derived = sum(1 for src in sources if src.lower() == "derived")
     tz_topics = {str(c.get("topic") or "") for c in cards if c.get("tier_zero")}
     topics = {str(c.get("topic") or "") for c in cards}
     media = sum(1 for c in cards if c.get("media"))
     flags = " ".join(f"{name.replace('.md', '')}={'ok' if ok else 'MISSING'}"
                      for name, ok in arts.items())
-    return (f"evidence   {flags} | provenance {prov}/{len(cards)} | "
-            f"tier-zero {len(tz_topics)}/{len(topics)} topic(s) | image cards {media}")
+    return (f"evidence   {flags} | provenance {prov}/{len(cards)} "
+            f"({derived} derived) | tier-zero {len(tz_topics)}/{len(topics)} "
+            f"topic(s) | image cards {media}")
 
 
 def main(argv: list[str] | None = None) -> int:

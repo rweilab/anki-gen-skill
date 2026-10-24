@@ -107,6 +107,9 @@ def resolve(selector: str | None = None) -> str | None:
                 if deck_dir(k).is_dir()]
         return keys[0] if len(keys) == 1 else None
     want = str(selector)
+    path = Path(want).expanduser()
+    if (path / "manifest.json").is_file():
+        return path.name
     index = read_or_rebuild_index()
     if want in index["decks"] and deck_dir(want).is_dir():
         return want
