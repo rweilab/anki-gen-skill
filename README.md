@@ -20,15 +20,17 @@ bash install.sh
 ```
 
 The installer puts both skills in `~/.claude/skills/`, verifies them, backs up
-any previous install under `~/.local/share/anki-gen/backups/`, installs the missing
-system and Python dependencies, and runs the doctor. It does not touch
-`~/.config/anki-gen` or your Anki collection.
+any previous install under `~/.local/share/anki-gen/backups/`, installs the core
+Python libraries, attempts optional image/video/local-audio support best-effort,
+and runs the doctor. It does not touch `~/.config/anki-gen` or your Anki collection.
+A failed optional feature becomes a warning, not a failed install. Setup ends with
+`Full feature set: installed` or `Full feature set: NOT installed` and lists the gaps.
 
 Homebrew and the Anki desktop app are never installed. AnkiConnect is a separate
 add-on inside Anki Desktop; the revision workflow can detect the Anki profile and
-install a pinned build only after you approve it. On macOS, Homebrew must already
-be present if a system tool is missing. On Linux, package installation uses
-`sudo` and asks for your password once.
+install a pinned build only after you approve it. On macOS, missing system tools
+or Homebrew are warnings; the core PDF path still works. On Linux, package
+installation uses `sudo` when available.
 
 Restart or reload opencode afterwards.
 
@@ -104,6 +106,6 @@ would replace the symlinks with copies.
 
 - Text-first is the default; images are opt-in.
 - `image-vision` and Gemini are optional.
-- No Whisper; videos without captions are skipped.
+- Local audio transcription is optional: faster-whisper or whisper.cpp, with the model downloaded on first use. YouTube captions and sidecar VTT/SRT work without it.
 - Anki desktop is not installed by this skill.
 - `vision-sidecar/` folders are safe to delete.

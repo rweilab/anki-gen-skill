@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Ingest YouTube video/playlist transcripts into the skill's source index.
+"""Ingest YouTube and local media transcripts into the skill's source index.
 
-No Whisper: manual captions first, auto captions fallback. Optional 720p frames
-are extracted by frames.py through the normal media path.
+YouTube uses manual captions first, then auto captions. Local media uses sidecar
+captions, then faster-whisper or whisper.cpp. Optional 720p frames are extracted
+by frames.py through the normal media path.
 """
 from __future__ import annotations
 
@@ -299,7 +300,7 @@ def _local_title(path: Path, info: dict, override: str) -> str:
 
 def local_source(source: str, work: Path, args) -> int:
     if platform.system() == "Darwin" and platform.machine() != "arm64":
-        print("extract_video.py: warn: Intel Mac local transcription is unsupported",
+        print("extract_video.py: warn: Intel Mac local transcription is best-effort",
               file=sys.stderr)
     media_list = mt.media_files(source)
     if not media_list:

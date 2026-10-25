@@ -1,0 +1,9 @@
+# Optional features. setup.sh installs these one at a time, best effort, so a
+# missing wheel or system library never blocks the core PDF/text deck path.
+# YouTube and sidecar captions work without faster-whisper.
+yt-dlp[default,deno]>=2026.8.19
+yt-dlp-ejs>=0.8.0
+deno>=2.6.6
+pillow>=12.2.0
+beautifulsoup4>=4.14.3
+faster-whisper>=1.2.1,<2

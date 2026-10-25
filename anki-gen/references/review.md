@@ -44,6 +44,45 @@ The review is the last place these heuristics are enforced. For each shown card:
 If the card fails one, fix the family it represents, not just the shown card. This
 checklist is why the review does not need to load the whole card-writing reference.
 
+### Adversarial subagent review (optional, opt-in only)
+
+This is an **optional independent read**, not human review and not a gate. Run it only when the
+caller explicitly asks for an adversarial/extra review and the harness has a read-only subagent.
+Otherwise skip it and do not ask a beginner a second question. If the harness supports it, the report
+may mention the option once; it stays off by default. Never spawn an `opencode` child.
+
+Run it after the semantic self-audit and before the web page. Give the reviewer:
+
+- the selected `cards.jsonl`;
+- `authoring_ledger.md`;
+- `scope_gate.md` and the learner calibration;
+- the cited source excerpt, not the whole corpus;
+- the checklist above, but **not** the web-review scores, comments, or `.apkg`.
+
+Coverage: all cards when the deck is ≤12; otherwise the stage-8 triaged sample plus every flagged,
+tier-zero, and anchor card. Do not make it a full-deck LLM audit by default.
+
+Use this rubric per card. Score each dimension `0 fail`, `1 warning`, `2 pass`:
+
+1. **Self-contained:** the front is answerable from this card alone; every symbol, unit, and named
+   method is defined here.
+2. **Answer-first:** the first back sentence answers the exact question; the why adds a mechanism,
+   consequence, mnemonic, or real use.
+3. **Atomicity/cloze:** one retrieval target; labeled blanks; no whole-formula or prose cloze.
+4. **Procedure:** one decision; an L2 walkthrough keeps the first and last steps visible and its
+   middle blanks answerable from context.
+5. **Evidence:** the locator supports the claim, or `derived` is genuinely self-contained.
+6. **Scope/ROI:** not look-up-able, redundant, low-weight, or already parked.
+
+Hard-fail any card with an unanswerable front, computed front, unsupported source claim, cross-card
+pointer, whole-formula/prose cloze, or Procedure card that is a worked solution. Do not average the
+scores into a percentage or reuse the learner 1–5 scale; the 98% floor is a product contract, not an
+LLM score.
+
+Ask for findings only, by card number: dimension, score, defect, evidence, rule. No rewrites, no
+scores submitted to the review log, no pass/fail certification. The main agent adjudicates, fixes
+the source, and re-runs stages 8 and 13. Report “adversarial sample review, not manual review.”
+
 ### Review a chosen subset, not the deck
 
 **Per-card adjudication does not scale.** On the first real run the user stopped after nine cards of

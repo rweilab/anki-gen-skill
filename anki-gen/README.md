@@ -17,23 +17,31 @@ user site.
 brew install python poppler pandoc ghostscript mupdf-tools ffmpeg tesseract
 "$(brew --prefix)/bin/python3" -m pip install --user --break-system-packages \
   -r requirements.txt
+# Optional image/video/local-audio libraries, best effort:
+"$(brew --prefix)/bin/python3" -m pip install --user --break-system-packages \
+  -r requirements-optional.txt
 
 # Linux (setup.sh uses sudo for the package step)
 sudo apt install python3 python3-pip poppler-utils pandoc \
   ghostscript mupdf-tools ffmpeg tesseract-ocr
 python3 -m pip install --user --break-system-packages -r requirements.txt
+# Optional image/video/local-audio libraries, best effort:
+python3 -m pip install --user --break-system-packages -r requirements-optional.txt
 
 # The Anki desktop app is separate and never installed by this skill.
 ```
 
 `scripts/setup.sh` installs only the missing system packages for macOS,
 Debian/Ubuntu, Fedora, or Arch, installs the Python libraries into the user site,
-then runs the doctor. `requirements.txt` installs `yt-dlp[default,deno]`, which
-brings the EJS solver and Deno runtime for YouTube, so no system Node install is
-needed. PyMuPDF is pinned below 2.0 for stable macOS/Linux wheels; runtime
-scripts also add Homebrew's bin directories when opencode is GUI-launched. It never installs Homebrew or Anki. On macOS a missing
-Homebrew stops with one install line; on Linux the package step prompts for
-sudo. `scripts/setup_macos.sh` is a compatibility wrapper.
+then runs the doctor. Core requires only `anki` and PyMuPDF. The optional
+`requirements-optional.txt` adds image, YouTube, and local-audio support,
+including `yt-dlp[default,deno]`/EJS, Pillow, and faster-whisper. Those are
+installed one at a time and a failure is a warning, not an install failure. Setup
+prints whether the full feature set is installed and lists any doctor gaps.
+PyMuPDF is pinned below 2.0 for stable macOS/Linux wheels; runtime scripts also
+add Homebrew's bin directories when opencode is GUI-launched. It never installs
+Homebrew or Anki. On macOS a missing Homebrew is a warning; on Linux the package
+step uses sudo when available. `scripts/setup_macos.sh` is a compatibility wrapper.
 `scripts/doctor.py` checks the result and prints platform-specific fixes.
 `INSTALL.md` in the handoff zip is the one-page user guide.
 
@@ -54,11 +62,12 @@ requests. Re-vendor with:
 
 ## If a system tool is missing
 
-Local video/audio uses ffprobe + ffmpeg and either sidecar VTT/SRT or the
-`faster-whisper` Python package. The default `--model auto` benchmarks actual
-speech once per machine and caches the model choice. Media is never uploaded.
-Apple Silicon macOS and Linux are supported; Intel Macs are not supported for
-local transcription. PDF text is tried in this order: **poppler's `pdftotext` → pymupdf → mupdf-tools
+Local video/audio uses ffprobe + ffmpeg and either sidecar VTT/SRT, faster-whisper,
+or whisper.cpp. faster-whisper is used when importable; otherwise setup.sh installs
+whisper.cpp on Apple Silicon, and on Linux when faster-whisper is unavailable.
+The whisper.cpp model downloads on first local transcription. Media is never
+uploaded. Apple Silicon macOS and mainstream Linux are the supported local-audio
+paths; Intel Macs are best-effort. PDF text is tried in this order: **poppler's `pdftotext` → pymupdf → mupdf-tools
 (`mutool`) → ghostscript (`gs`)**. If none exists, `extract_pdf.py` fails with a
 clear message instead of writing an empty extract. pymupdf is the cross-platform
 pip fallback (wheels for macOS and Linux; no system packages).

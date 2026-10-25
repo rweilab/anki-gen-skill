@@ -45,7 +45,7 @@ Optional; run only if the request asks, never offer it in the survey. No script 
 yours. (An earlier `deck_audit.py` never scored anything and shelled out to a missing binary; the
 wrapper was removed, the judgement kept.)
 
-1. Search AnkiWeb, GitHub and Reddit for decks matching `course_hint`.
+1. Search AnkiWeb, GitHub and Reddit for decks matching the course name/context.
 2. Judge the top 3–5 against *this* skill's principles — the audit rubric, so nothing repeats them:
    atomicity (rules 8, 11, 22) 30%; layer coverage and tier-zero (rules 6, 19) 25%; no computation
    prompts (rules 7, 8) 25%; provenance (rule 17) 10%; formatting (rules 2, 15) 10%.

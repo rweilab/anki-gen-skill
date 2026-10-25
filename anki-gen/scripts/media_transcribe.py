@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Local video/audio helpers: metadata, sidecars, and optional faster-whisper.
+"""Local video/audio helpers: metadata, sidecars, and local speech-to-text.
 
 No cloud calls. Captions beside the media win; otherwise faster-whisper runs
-locally. The default model choice benchmarks actual speech once per machine.
+locally when available, with whisper.cpp as the Python-version-independent
+fallback. The default model choice benchmarks actual speech once per machine.
 """
 from __future__ import annotations
 
@@ -15,7 +16,12 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
+
+from platform_paths import ensure_tool_paths
+
+ensure_tool_paths()
 
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".m4v", ".avi"}
 AUDIO_EXTS = {".m4a", ".mp3", ".wav", ".flac"}
@@ -26,6 +32,12 @@ STAMP = re.compile(
 CACHE = Path(os.environ.get("ANKI_GEN_CACHE_DIR",
                             Path.home() / ".cache" / "anki-gen"))
 BENCHMARK = CACHE / "transcription-benchmark.json"
+WHISPER_CPP_HOME = Path(os.environ.get(
+    "ANKI_GEN_WHISPER_CPP_DIR", Path.home() / ".local" / "share" / "anki-gen" / "whisper.cpp"))
+WHISPER_CPP_MODEL = CACHE / "whisper.cpp" / "ggml-base.bin"
+WHISPER_CPP_URL = ("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+                   "ggml-base.bin")
+WHISPER_CPP_SHA256 = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
 
 
 def is_media(path) -> bool:
@@ -55,7 +67,9 @@ def media_id(path: Path) -> str:
 
 def probe(path: Path) -> dict:
     if not shutil.which("ffprobe"):
-        raise RuntimeError("ffprobe not found; install ffmpeg")
+        print("media_transcribe.py: warn: ffprobe missing; metadata limited",
+              file=sys.stderr)
+        return {"duration": 0.0, "title": ""}
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries",
          "format=duration:format_tags=title", "-of", "json", str(path)],
@@ -171,7 +185,7 @@ def parse_captions(path: Path) -> list[dict]:
 
 def extract_audio(media: Path, work: Path, seconds_limit: float | None = None) -> Path:
     if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg not found; install ffmpeg")
+        raise RuntimeError("ffmpeg not found; local transcription needs ffmpeg")
     audio_dir = work / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     suffix = f"-{int(seconds_limit)}s" if seconds_limit else ""
@@ -203,8 +217,8 @@ def _load_model(name: str, device: str):
         from faster_whisper import WhisperModel
     except ImportError as e:
         raise RuntimeError(
-            "local transcription needs faster-whisper; run setup.sh or "
-            "pip install --user faster-whisper") from e
+            "faster-whisper is unavailable; run setup.sh for whisper.cpp, "
+            "or use a sidecar caption") from e
     CACHE.mkdir(parents=True, exist_ok=True)
     cached = _model_cached(name)
     if not cached:
@@ -230,6 +244,121 @@ def _audio_array(path: Path):
             raise RuntimeError("transcription audio must be mono 16-bit WAV")
         frames = wav.readframes(wav.getnframes())
     return np.frombuffer(frames, dtype="<i2").astype("float32") / 32768.0
+
+
+def whisper_cli_path() -> Path | None:
+    override = os.environ.get("ANKI_GEN_WHISPER_CLI")
+    if override:
+        path = Path(override).expanduser()
+        if path.is_file():
+            return path
+    for name in ("whisper-cli", "whisper-cpp"):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    for candidate in (WHISPER_CPP_HOME / "current" / "whisper-cli",
+                      WHISPER_CPP_HOME / "current" / "bin" / "whisper-cli"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def whisper_cpp_model_cached() -> bool:
+    return WHISPER_CPP_MODEL.is_file()
+
+
+def _ensure_whisper_cpp_model() -> Path:
+    if WHISPER_CPP_MODEL.is_file():
+        return WHISPER_CPP_MODEL
+    WHISPER_CPP_MODEL.parent.mkdir(parents=True, exist_ok=True)
+    tmp = WHISPER_CPP_MODEL.with_name(WHISPER_CPP_MODEL.name + ".part")
+    print("media_transcribe.py: downloading whisper.cpp model ggml-base.bin "
+          "(~142 MB) once...", file=sys.stderr)
+    try:
+        with urllib.request.urlopen(WHISPER_CPP_URL, timeout=60) as response, \
+                tmp.open("wb") as out:
+            shutil.copyfileobj(response, out)
+        digest = hashlib.sha256()
+        with tmp.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        if digest.hexdigest() != WHISPER_CPP_SHA256:
+            raise RuntimeError("checksum mismatch")
+        tmp.replace(WHISPER_CPP_MODEL)
+        print("media_transcribe.py: whisper.cpp model ready", file=sys.stderr)
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"local transcription model download failed: {e}") from e
+    return WHISPER_CPP_MODEL
+
+
+def _faster_whisper_available() -> bool:
+    try:
+        import faster_whisper  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _whisper_cpp_env(cli: Path) -> dict:
+    env = os.environ.copy()
+    try:
+        root = (WHISPER_CPP_HOME / "current").resolve()
+        if root in Path(cli).resolve().parents:
+            old = env.get("LD_LIBRARY_PATH", "")
+            env["LD_LIBRARY_PATH"] = str(Path(cli).parent) + (
+                os.pathsep + old if old else "")
+    except OSError:
+        pass
+    return env
+
+
+def _whisper_cpp_command(cli: Path, model: Path, audio: Path, base: Path,
+                         language: str | None, prompt: str | None) -> list[str]:
+    lang = str(language).strip() if language else "auto"
+    if not lang or lang.lower() == "none":
+        lang = "auto"
+    if lang.lower() != "auto":
+        lang = lang.split("-")[0].lower()
+    cmd = [str(cli), "-m", str(model), "-f", str(audio), "-l", lang,
+           "-osrt", "-of", str(base)]
+    if prompt:
+        cmd += ["--prompt", str(prompt)]
+    return cmd
+
+
+def _transcribe_whisper_cpp(audio: Path, work: Path, language: str | None,
+                            initial_prompt: str | None) -> tuple[list[dict], str]:
+    cli = whisper_cli_path()
+    if not cli:
+        raise RuntimeError("whisper.cpp not found; run setup.sh or install whisper-cli")
+    model = _ensure_whisper_cpp_model()
+    out_dir = work / "whisper-cpp"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    base = out_dir / audio.stem
+    srt = Path(str(base) + ".srt")
+
+    def run(prompt: str | None):
+        if srt.exists():
+            srt.unlink()
+        cmd = _whisper_cpp_command(cli, model, audio, base, language, prompt)
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=7200, env=_whisper_cpp_env(cli))
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("whisper.cpp timed out") from e
+
+    result = run(initial_prompt)
+    if (result.returncode != 0 or not srt.is_file()) and initial_prompt:
+        print("media_transcribe.py: whisper.cpp rejected the initial prompt; "
+              "retrying without it", file=sys.stderr)
+        result = run(None)
+    if result.returncode != 0 or not srt.is_file():
+        detail = (result.stderr or result.stdout or "").strip()[-500:]
+        raise RuntimeError(f"whisper.cpp failed: {detail}")
+    model_name = model.stem.removeprefix("ggml-")
+    return parse_captions(srt), f"whisper.cpp:{model_name}"
 
 
 def _run(audio: Path, model_name: str, language: str | None,
@@ -291,15 +420,27 @@ def transcribe(media: Path, work: Path, model: str = "auto",
         print(f"media_transcribe.py: empty sidecar {cue_path.name}; transcribing",
               file=sys.stderr)
     audio = extract_audio(media, work)
-    chosen = choose_model(audio, language, model, device)
-    loaded = _load_model(chosen, device)
-    segments, _ = loaded.transcribe(
-        _audio_array(audio), language=language, vad_filter=True,
-        initial_prompt=initial_prompt)
-    cues = []
-    for seg in segments:
-        text = re.sub(r"\s+", " ", str(seg.text or "")).strip()
-        if text:
-            cues.append({"start": float(seg.start), "end": float(seg.end),
-                         "text": text})
-    return cues, chosen
+    if _faster_whisper_available():
+        try:
+            chosen = choose_model(audio, language, model, device)
+            loaded = _load_model(chosen, device)
+            segments, _ = loaded.transcribe(
+                _audio_array(audio), language=language, vad_filter=True,
+                initial_prompt=initial_prompt)
+            cues = []
+            for seg in segments:
+                text = re.sub(r"\s+", " ", str(seg.text or "")).strip()
+                if text:
+                    cues.append({"start": float(seg.start), "end": float(seg.end),
+                                 "text": text})
+            return cues, chosen
+        except Exception as e:
+            if not whisper_cli_path():
+                raise
+            print(f"media_transcribe.py: faster-whisper failed ({e}); "
+                  "falling back to whisper.cpp", file=sys.stderr)
+    if whisper_cli_path():
+        return _transcribe_whisper_cpp(audio, work, language, initial_prompt)
+    raise RuntimeError(
+        "local transcription unavailable: install faster-whisper or whisper.cpp; "
+        "sidecar captions and YouTube still work")

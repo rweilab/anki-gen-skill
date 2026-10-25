@@ -263,7 +263,12 @@ def main() -> int:
         except ImportError:
             print("  ! images need Pillow: pip install pillow", file=sys.stderr)
             return 2
-    from build_native import build_with_anki
+    try:
+        from build_native import build_with_anki
+    except ImportError:
+        print("  ! anki library is required to build decks; run setup.sh or doctor",
+              file=sys.stderr)
+        return 2
     media_root = args.media_root or str(Path(args.cards_json).resolve().parent)
     try:
         info = build_with_anki(cards, str(out_path), args.deck_name,

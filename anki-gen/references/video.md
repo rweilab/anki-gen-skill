@@ -20,9 +20,11 @@ accepts `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
 `.m4a`, `.mp3`, `.wav`, `.flac` (transcript only).
 
 - A sidecar `.vtt` or `.srt` beside the media wins; no Whisper call.
-- Otherwise faster-whisper runs locally with `--model auto` (one cached
-  benchmark per machine), `--language`, `--device`, and an optional
-  `--initial-prompt` for course terms.
+- Otherwise faster-whisper runs locally when importable, with `--model auto`
+  (one cached benchmark per machine), `--language`, `--device`, and an optional
+  `--initial-prompt` for course terms. If faster-whisper is unavailable,
+  `whisper-cli` runs the same audio through whisper.cpp; its model downloads on
+  first use. YouTube does not use either backend.
 - A directory is processed as a batch. Unsupported files are skipped and reported.
 - Local IDs are hashes of path + size + mtime; transcripts are cached by file,
   model, and language.
@@ -65,8 +67,8 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 - A video with missing or rate-limited captions is still registered and frame-scanned; `video_toc.md`
   marks `no_captions`/`rate_limited` instead of discarding the video. Do not retry a hard 429 for
   minutes; mark it and recover frames.
-- Video dependencies come from `requirements.txt`: `yt-dlp[default,deno]` includes
-  the EJS solver and Deno runtime, so no system Node install is needed. The scripts
+- Video dependencies come from `requirements-optional.txt`: `yt-dlp[default,deno]`
+  includes the EJS solver and Deno runtime, so no system Node install is needed. The scripts
   call `python -m yt_dlp`, not whichever `yt-dlp` is on PATH. The scripts retry
   transient failures briefly (seconds, not 90/120) and skip/report permanent ones.
   Do not sleep, background, or poll yt-dlp. If a video still fails, reuse a cached

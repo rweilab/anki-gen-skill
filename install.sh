@@ -99,11 +99,20 @@ done
 echo
 echo "anki-gen $OLD_VERSION -> $NEW_VERSION"
 echo "User config and keys in ~/.config/anki-gen were not touched."
+SETUP_OK=1
 if [ "$NO_SETUP" = "1" ]; then
   echo "Skipped dependency setup (--no-setup)."
 else
   echo
-  bash "$DEST/anki-gen/scripts/setup.sh"
+  if ! bash "$DEST/anki-gen/scripts/setup.sh"; then
+    SETUP_OK=0
+    echo "Installed, but dependency setup is incomplete. Fix the lines above, then re-run:" >&2
+    echo "  bash $DEST/anki-gen/scripts/setup.sh" >&2
+  fi
 fi
 echo
-echo "Done. Restart/reload opencode so it discovers the skills."
+if [ "$SETUP_OK" = "0" ]; then
+  echo "anki-gen is installed with warnings; the core environment is not ready."
+else
+  echo "Installation finished. Restart/reload opencode so it discovers the skills; review the feature status above."
+fi

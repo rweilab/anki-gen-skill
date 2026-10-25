@@ -54,8 +54,11 @@ MAX_PAGE_CROPS = 120
 
 def run_cmd(cmd: List[str], cwd: str = None, input: str = None,
             timeout: int = 120) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=cwd, input=input, capture_output=True, text=True,
-                          check=False, timeout=timeout)
+    try:
+        return subprocess.run(cmd, cwd=cwd, input=input, capture_output=True,
+                              text=True, check=False, timeout=timeout)
+    except FileNotFoundError as e:
+        return subprocess.CompletedProcess(cmd, 127, "", f"{cmd[0]} not found: {e}")
 
 
 # ------------------------------------------------------------------ pymupdf noise
@@ -481,9 +484,14 @@ def extract_url(url: str, output_dir: Path, stem: str = "source") -> Dict[str, A
 
     result = run_cmd(["curl", "-sL", "--max-time", "30", url])
     html = result.stdout if result.returncode == 0 else ""
-
     if not html:
-        raise ValueError(f"Failed to fetch URL: {url}")
+        try:
+            with urlopen(url, timeout=30) as response:
+                raw = response.read()
+                charset = response.headers.get_content_charset() or "utf-8"
+                html = raw.decode(charset, errors="replace")
+        except Exception as e:
+            raise ValueError(f"Failed to fetch URL: {e}") from e
 
     result = run_cmd(["pandoc", "-f", "html", "-t", "markdown"], input=html)
     md = result.stdout if result.returncode == 0 else html

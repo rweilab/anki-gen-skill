@@ -32,7 +32,8 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - if captions fail or a visual topic has no images, use the video title/description for one
   official companion article/slides search; register it as a source, do not auto-attach its images;
 - YouTube: no Whisper; if no captions exist, skip that video and say so.
-- Local: sidecar captions first; otherwise faster-whisper locally. No cloud upload.
+- Local: sidecar captions first; otherwise faster-whisper or whisper.cpp locally.
+  No cloud upload. The whisper.cpp model downloads on first use.
 
 **Write the answers to `$WORK/intake.md` before leaving the survey.** Stages 4b,
 7 and 10 read this instead of re-asking:

@@ -14,9 +14,11 @@ bash install.sh
 ```
 
 The installer stages both skills, verifies them, backs up existing installs,
-replaces them, installs missing dependencies, and runs the doctor. It never
-touches `~/.config/anki-gen` or your decks, and it never installs Homebrew or
-Anki.
+replaces them, installs core dependencies, attempts optional features best-effort,
+and runs the doctor. Optional failures warn; they do not abort the install. Setup
+ends with `Full feature set: installed` or `Full feature set: NOT installed` and
+lists the gaps. It never touches `~/.config/anki-gen` or your decks, and it never
+installs Homebrew or Anki.
 
 Restart opencode (or reload skills) afterwards.
 
@@ -28,20 +30,22 @@ The installer already did this. To re-run it:
 bash ~/.claude/skills/anki-gen/scripts/setup.sh
 ```
 
-It installs only the missing system and Python packages, then runs the doctor
-silently. YouTube support comes from `yt-dlp[default,deno]` in the Python
-requirements, including EJS and Deno; no system Node install is needed. PyMuPDF is
-pinned below 2.0 for stable wheels. PowerPoint text/notes/embedded images are read
-without Office. macOS needs Homebrew already installed; Linux asks for sudo once. `--print-only` shows the
-commands without changing anything.
+It installs the core Python packages, attempts optional image/video/local-audio
+features best-effort, then runs the doctor. YouTube support comes from
+`yt-dlp[default,deno]` in the optional requirements, including EJS and Deno; no
+system Node install is needed. PyMuPDF is pinned below 2.0 for stable wheels.
+PowerPoint text/notes/embedded images are read without Office. macOS without
+Homebrew and Linux without sudo still get the core path; missing optional tools
+are warnings. `--print-only` shows the commands without changing anything.
 
 The Anki desktop app is separate and never installed by this skill. It is only
 needed to import the finished `.apkg`.
 
-Local recordings use ffprobe + ffmpeg and either sidecar VTT/SRT or the
-`faster-whisper` Python package. `--model auto` benchmarks actual speech once per
-machine and caches the choice. Media is never uploaded. Apple Silicon macOS and
-Linux are supported; Intel Macs are not supported for local transcription.
+Local recordings use ffprobe + ffmpeg and either sidecar VTT/SRT, faster-whisper,
+or whisper.cpp. faster-whisper is used when importable; otherwise setup.sh installs
+whisper.cpp on Apple Silicon, and on Linux when faster-whisper is unavailable.
+The whisper.cpp model downloads on first use. Media is never uploaded. Apple
+Silicon macOS and mainstream Linux are supported; Intel Macs are best-effort.
 
 | OS | System packages setup installs when missing |
 |---|---|
@@ -111,6 +115,6 @@ No auto-downloader or background updater.
 
 - Text-first is the default; images are opt-in.
 - `image-vision`/Gemini is optional and external.
-- No Whisper; videos without captions are skipped.
+- Local audio is optional: faster-whisper or whisper.cpp; the model downloads on first use. YouTube captions and sidecar VTT/SRT work without it.
 - Anki desktop is not installed by this skill.
 - `vision-sidecar/` folders are safe to delete.

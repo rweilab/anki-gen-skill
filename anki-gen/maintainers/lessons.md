@@ -8,6 +8,19 @@ Architecture/token postmortem: `MAINTAINERS.md` (not loaded by the skill).
 Behaviour changes, leading with the why; the rule or section carries the full reasoning. Kept short
 because these are the failures that are invisible until they bite.
 
+### Cold-start failure modes
+
+A fresh agent given only `SKILL.md` still tends to:
+
+- skip `intake.md`, `scope_gate.md`, or `authoring_ledger.md` because the request feels small;
+- read every reference up front instead of the current stage's section;
+- treat the 10–15 batch size as a deck target, or treat `--max` as a card cap;
+- run `validate_apkg.py` again after the pipeline already did the real import;
+- attach media because frames were extracted, although media is opt-in;
+- omit the quality/manual-review status or claim a sample review certifies the deck.
+
+These are prose-only guards. Use them in audits; do not turn them into new scripts or hard gates.
+
 - **`--merge-existing` duplicated the whole deck on re-run.** Cards already present are now skipped
   by GUID, with the count printed.
 - **A true back can still miss the answer.** A fructose-1,6-bisphosphate card asked “which

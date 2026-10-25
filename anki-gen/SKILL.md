@@ -70,6 +70,7 @@ much jargon they hear. Decide the level from the request, not by asking:
 
 **Beginner.** Infer the rest: don't gate on the source survey, don't offer the deck audit, don't
 ask about the formula sheet — infer and *state the assumptions in the report*, one line each.
+The one question is the deck name; the formula-sheet stance is inferred.
 Never narrate the pipeline, report validator warnings, or explain what a layer is. Report four
 things: **where the deck is, how many cards, what to study first, what you assumed.**
 
@@ -282,19 +283,20 @@ parallel path.
 
 | Stage | Command | Gate / artifact | Reference |
 |---|---|---|---|
-| 1. Parse intent | `python3 parse_intent.py "<request>" "<cwd>"` | Read the whole JSON: `date_filter`, `merge_target`, `audit_web`, `course_hint`, `recursive`, `deck_name`, `max_cards`, `output_path`. A lexicon: read the request yourself for the rest; `sources` is a fallback and may be empty. `recursive` is always true; pass `--date-filter` to `pipeline.py` or use `extract_pdf.py` directly. | — |
+| 1. Parse intent | `python3 parse_intent.py "<request>" "<cwd>"` | Read the JSON for `date_filter`, `merge_target`, `audit_web`, `deck_name`, and the video fields. A lexicon: read the request yourself for the rest; local sources come from the request, not this JSON. `max_cards` is deliberately not parsed; deck size is the scope-gate ceiling. | — |
 | 2. Source survey | Read the request and folder | Propose sources with a reason each, then stop (beginner: proceed on stated assumptions); write `$WORK/intake.md` (deck, learner, sources, video range, images yes/no, review preference, assumptions). Deck name required; missing later → ask once. | `survey.md` |
 | 3. Deck audit | none — opt-in only | Search AnkiWeb/GitHub/Reddit; audit by hand against "DECK AUDIT"; modal outcome: generate your own. | `optional.md` |
 | 4. Extract | `python3 pipeline.py --sources <...> --out .anki-gen-temp/<topic>` (preferred); `python3 extract_pdf.py "<source>" "<cwd>/.anki-gen-temp/<topic>" --tag <tag>` (diagnosis); `--date-filter` | `sources.md` combines the batch for one read; per-source `.md` files remain for narrow checks. Single source prints content/source_type/source_path/images_count + a 3-name sample/md; batch prints a manifest with counts, samples of `<tag>` dirs and `.md` paths. Cite the source file + page, not the topic dir. | `survey.md`, `slides.md` |
 | 4b. Video/media | `python3 pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto\|yes\|no] [--model auto] [--whole-playlist \| --items 2-5] [--title "..."]`; `extract_video.py` (diagnosis) | `transcripts.md`, `video_toc.md`, optional `frames.md`/`frames.jsonl`; per-video `video_meta.json`; `pipeline_state.json`, `--resume`, `--status`; opt-in `--vision auto --vision-max 12` → `vision.jsonl` (confirm frames only). Attach `direct`; confirm `confirm` via image-vision; main model never reads frames by default (bounded kernel fallback only). | `video.md` |
-| 5. Classify | Read `$WORK/sources.md` once for documents and/or `$WORK/transcripts.md` for video (the single-source `.md` for a diagnosis run), then the CLASSIFIER prompt | Atomic concepts `{layer, topic, objects, type, source}` from content. | `prompts.md` |
+| 5. Classify | Read `$WORK/sources.md` once for documents and/or `$WORK/transcripts.md` for video (the single-source `.md` for a diagnosis run), then the CLASSIFIER prompt | Classify in-chat; no `concepts.json` artifact is required. Do not invent one. | `prompts.md` |
 | 6. Scope gate | none | **Required artifact** `$WORK/scope_gate.md` (both halves). `pipeline.py --build` refuses without `intake.md`, `scope_gate.md` and `authoring_ledger.md` unless `--allow-missing-artifacts`. | **this file, stage 6** |
-| 7. Write | `new_cards.C`/`make_cards.py` → `$WORK/cards.jsonl`; `python3 media_index.py <work> --cards cards.jsonl --per-card 2` | `$WORK/authoring_ledger.md`, then only cards that pass rule 21, normally 4–15 per topic; 10–15 is one batch cap, not a quota. Locator, glossary, why, tier-zero; media opt-in and quality bar; `$WORK/curated.json`. | `card-writing.md`, `authoring.md`, `schema.md`, `video.md` |
-| 8. Verify + triage | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --out "$WORK"` | One call runs static checks, triage, and ROI; writes `$WORK/review_plan.json` and `$WORK/roi.txt`, then prints the quality line. Escapes, delimiters, leaked markup, computation fronts, duplicates, front-visible tag leaks, missing glossary/provenance; `--deep` adds soft answer overlap. If warnings > 0, run `validate_cards.py --json` for the exact messages and fix them before review; the text view caps at 20. Layer 2 is the stage-7 batch self-check or the triaged review, never a corpus audit. | `review.md`, `prompts.md` |
+| 7. Write | `new_cards.C`/`make_cards.py` → `$WORK/cards.jsonl`; `media_index.py` only when images are opted in | `$WORK/authoring_ledger.md`, then only cards that pass rule 21, normally 4–15 per topic; 10–15 is one batch cap, not a quota. Locator, glossary, why, tier-zero; media opt-in and quality bar; `$WORK/curated.json` is optional for documents. | `card-writing.md`, `authoring.md`, `schema.md`, `video.md` |
+| 8. Verify + triage | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --out "$WORK"` | `--out` is required even with `--gates-only`. One call runs static checks, triage, and ROI; writes `$WORK/review_plan.json` and `$WORK/roi.txt`, then prints the quality line. `--max` caps the review sample, not the deck. Escapes, delimiters, leaked markup, computation fronts, duplicates, front-visible tag leaks, missing glossary/provenance; `--deep` adds soft answer overlap. If warnings > 0, run `validate_cards.py --json` for the exact messages and fix them before review; the text view caps at 20. Layer 2 is the stage-7 batch self-check or the triaged review, never a corpus audit. | `review.md`, `prompts.md` |
 | 9. Triage artifact | none — stage 8 wrote `review_plan.json` | Read `references/review.md`; the plan is the review subset. Run `triage.py` directly only to diagnose plan selection. Then run the semantic self-audit on that sample. | `review.md` |
+| 9b. Adversarial review (optional) | none — opt-in only | If the caller explicitly asks for an adversarial/extra review and the harness has a read-only subagent, run the rubric in `review.md` on all cards (≤12) or the triaged sample plus flagged/tier-zero/anchor cards. Advisory; never manual review. Skip if unavailable; do not ask a beginner. If supported, the report may mention the option once; it stays off by default. | `review.md` |
 | 10. Review (web) | `python3 review_server.py --cards $WORK/cards.jsonl --plan $WORK/review_plan.json --media-root "$WORK" --out $WORK/review_feedback.jsonl --done-file $WORK/review_done` | First generation default; later changes ask; `--ask recall` second pass (default `review_recall.jsonl`); wait, read reduced log, rescope. | `review.md` |
 | 11. Build | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --build --out "$WORK" --deck-name "Name" --out-apkg ./<deck>.apkg` | Quality line; refuses objective media risks unless `--allow-media-risk`; refuses missing evidence unless `--allow-missing-artifacts`; `--merge-existing` add-only; `--media --media-root` only when opted; dossier pack unless `--no-context`. | `revision.md`, `schema.md` |
-| 12. Validate | `python3 validate_apkg.py out.apkg` | Real import — the only step that sees a deck which imports cleanly but is unreadable. | `card-writing.md` |
+| 12. Validate | `python3 validate_apkg.py out.apkg` — diagnosis/explicit artifact check only | Stage 11's build already runs this same real import; do not run it again just to confirm. | `card-writing.md` |
 | 13. Debloat (ROI) | Re-run stage 8 after *every* content change; `roi_report.py $WORK/cards.jsonl --list` only when trimming | Step-10 feedback is measured and outranks the report's surface heuristics. In the main process, not a subagent. Report concept overlap and media reuse; never cap or trim automatically. | `prompts.md` |
 | 14. Cleanup | Checklist below | `.apkg` only new file; work directory deleted in full; dossier persistent outside the caller's directory; no listener left. | **this file, stage 14** |
 
@@ -306,7 +308,9 @@ Stages 8, 9 and the first stage-13 report are one `pipeline.py --gates-only` cal
 The do-not-card list in `$WORK/scope_gate.md`, BOTH halves: what the formula sheet prints, and — the
 high-yield part — what it does NOT print. If a sheet is provided, ask once: memorised → card them as
 recall; given → do NOT card them (rule 21), spend the deck on absences and decisions around each
-equation. Beginner: infer "given" and put it on the **Assumed:** line. This filters the classified
+equation. If the caller says no sheet is provided, the “prints” half is empty and everything is
+recallable; rule 21 still applies, so card decisions and absences rather than a formula dump.
+Beginner: infer the sheet stance and put it on the **Assumed:** line. This filters the classified
 concepts before write. Required, and it must leave a file: a deck that skipped it looks identical to
 one that needed none. On the run that produced this rule, doing it by hand was the difference
 between 55 cards and 150. Also record a soft target count — a ceiling, not a quota — and a **parked**
@@ -389,17 +393,18 @@ The work directory is deleted in full and the review server is stopped; no sourc
 unless the caller named one.
 
 1. Stop the review server; verify nothing listens.
-2. Read `$WORK/review_handoff.md` before deleting; if a fresh review session has not read it, copy
+2. Read `$WORK/review_handoff.md` if it exists; if a fresh review session has not read it, copy
    it beside the promoted source.
 3. Delete `.anki-gen-temp/<topic>/` in full — cards.json/.jsonl, deck script, extract, video cache,
    transcripts, frames, media, ledger, review_plan.json, feedback, logs.
 4. Do NOT create a source folder or any other file in the caller's cwd to "keep the source": promote
    only to a path the caller explicitly named; otherwise delete it and say the .apkg is one-shot.
 5. Never delete or move a pre-existing file.
-6. Verify the only new entry is the .apkg; .anki-gen-temp is gone.
+6. Compare before/after: the only new entry is the .apkg; .anki-gen-temp is gone. Never clean or
+   remove pre-existing files.
 7. Remove the skill's `scripts/__pycache__` if present (bytecode scratch).
 
-**Stages 1–2 and 4–14 are mandatory; stage 3 is opt-in.** A beginner may run stage 2 silently on
+**Stages 1–2 and 4–14 are mandatory; stage 3 and stage 9b are opt-in.** A beginner may run stage 2 silently on
 stated assumptions. After any content change re-run 8 and 13 before the next build. Every defect that shipped passed the old validator, which checked only empty fields and
 cloze syntax: raw `$...$` and literal `**bold**` scored `"valid": true`.
 
@@ -426,11 +431,12 @@ easy”), never automatic rejection. The review page UI is unchanged.
 ## Reporting
 The report is the last thing the caller reads; for a beginner it is the whole experience.
 
-**Beginner — four lines, then stop:**
+**Beginner — four lines plus quality status, then stop:**
 ```
 <path/to/deck.apkg>   ·   N cards
 Study first: <the 2–3 highest-weight topics, and why>
 Assumed: <formula sheet given, not memorised — say the word if you want them carded>
+Quality: <core ready / full feature gaps; not manually reviewed unless actually reviewed>
 <optional: a one-line cut list, only if there is one>
 ```
 
@@ -443,8 +449,8 @@ thing between a fast default and a silently wrong deck.
 
 **Quality status is mandatory.** `0 errors` is not “done.” Report the pipeline quality line
 (media risks, ROI splits, review status) and say whether the deck was manually reviewed. A
-semantic self-audit is not manual review. If review was declined, say “not manually reviewed;
-static checks only.”
+semantic self-audit or adversarial subagent review is not manual review. If review was declined,
+say “not manually reviewed; static checks only.”
 
 ## Supporting files
 

@@ -9,6 +9,7 @@ PATH.
 """
 from __future__ import annotations
 
+import importlib.util
 import re
 import shutil
 import site
@@ -74,6 +75,10 @@ def runtime_args() -> list[str]:
     return ["--js-runtimes", f"{name}:{path}"] if name else []
 
 
+def available() -> bool:
+    return importlib.util.find_spec("yt_dlp") is not None
+
+
 def cmd(*args: str) -> list[str]:
     return [sys.executable, "-m", "yt_dlp", *RETRY_ARGS, *runtime_args(), *args]
 
@@ -84,6 +89,9 @@ def is_transient(stderr: str) -> bool:
 
 def run(args, timeout: int = 180, attempts: int = 3):
     """Run yt-dlp, retrying only transient failures with short pauses."""
+    if not available():
+        raise RuntimeError(
+            "yt-dlp is not installed; run setup.sh. PDF and local paths still work.")
     full = cmd(*args)
     attempts = max(1, attempts)
     for attempt in range(attempts):

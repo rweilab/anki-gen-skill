@@ -195,6 +195,22 @@ def main() -> int:
         assert web_figs[0]["source_url"].startswith("file://"), web_figs
         print("ok    web image URL/alt/figcaption and figures.json")
 
+        # Missing commands are data, not tracebacks; pandoc falls back to HTML.
+        import extract_pdf
+        missing = extract_pdf.run_cmd(["definitely-not-a-tool"])
+        assert missing.returncode == 127 and "not found" in missing.stderr, missing
+        real_run = extract_pdf.run_cmd
+        def no_pandoc(cmd, cwd=None, input=None, timeout=120):
+            if cmd[0] == "pandoc":
+                return subprocess.CompletedProcess(cmd, 127, "", "pandoc not found")
+            return real_run(cmd, cwd=cwd, input=input, timeout=timeout)
+        with mock.patch.object(extract_pdf, "run_cmd", side_effect=no_pandoc):
+            fallback = extract_pdf.extract_source(str(web / "index.html"),
+                                                  td / "web-no-pandoc", stem="web")
+        assert fallback["source_type"] == "url"
+        assert "Unit Cells" in fallback["content"], fallback
+        print("ok    missing command and pandoc fallback")
+
         # Card-driven ranking prefers the same page/slide.
         cards = td / "rank.json"
         cards.write_text(json.dumps([
@@ -270,7 +286,7 @@ def main() -> int:
     runtime, runtime_path = ytdlp.runtime()
     if runtime:
         assert runtime_path.is_file(), (runtime, runtime_path)
-    req = (ROOT / "requirements.txt").read_text()
+    req = (ROOT / "requirements-optional.txt").read_text()
     assert "yt-dlp[default,deno]" in req
     assert "yt-dlp-ejs" in req and "deno>=" in req
     assert "--js-runtimes node" not in (SCRIPTS / "frames.py").read_text()

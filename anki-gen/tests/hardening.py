@@ -126,10 +126,10 @@ def main() -> int:
 
     intent = parse_intent('make 30 cards --deck-name "My Deck" from Lec/')
     assert intent["deck_name"] == "My Deck", intent
-    assert intent["max_cards"] == 30, intent
+    assert "max_cards" not in intent and "sources" not in intent, intent
     help_run = run([sys.executable, str(SCRIPTS / "parse_intent.py"), "--help"])
     assert help_run.returncode == 0 and "Usage:" in help_run.stdout, help_run
-    print("ok    intent keeps quoted deck names, card target, and --help")
+    print("ok    intent keeps quoted deck names and --help")
 
     # Rule 26 and markdown images are structural defects, not style choices.
     pointer = dict(BASE, back="See the magnitude card for the numbers. **Why:** it catches units.")
@@ -752,6 +752,14 @@ def main() -> int:
         assert r.returncode == 0, r.stderr
         assert r"\(" not in r.stdout and "$x$" in r.stdout, r.stdout
         print("ok    sabotage detected: math renderer")
+
+        # A missing core library gives a clean feature error, not a traceback.
+        no_anki = td / "no-anki.apkg"
+        r = run([sys.executable, "-S", str(SCRIPTS / "build_apkg.py"),
+                 str(GOLDEN), str(no_anki), "--deck-name", "NO::ANKI"])
+        assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
+        assert "anki library is required" in r.stderr, r.stderr
+        print("ok    missing anki library fails cleanly")
 
         # Sabotage 4: drop source footers in the native builder.
         mut = copy_scripts(td / "mut-build")

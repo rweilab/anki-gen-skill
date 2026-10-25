@@ -42,7 +42,8 @@ find "$STAGE" -name '.anki-gen-temp' -prune -exec rm -rf {} + 2>/dev/null || tru
 for f in anki-gen/SKILL.md image-vision/SKILL.md \
          image-vision/scripts/vision_check.py \
          anki-gen/assets/mathjax/tex-svg.js anki-gen/VERSION \
-         anki-gen/requirements.txt anki-gen/scripts/setup.sh \
+         anki-gen/requirements.txt anki-gen/requirements-optional.txt \
+         anki-gen/scripts/setup.sh \
          anki-gen/scripts/setup_macos.sh anki-gen/scripts/doctor.py \
          anki-gen/scripts/visual.py anki-gen/scripts/ytdlp.py \
          anki-gen/scripts/extract_slides.py anki-gen/scripts/media_transcribe.py \

@@ -36,6 +36,22 @@ normal deck run.
   docs" section points to `maintainers/README.md`; read `maintainers/lessons.md` before changing a
   script and `maintainers/dossier-format.md` before changing dossier storage.
 
+## Independent maintainer audit
+
+Before calling a change to `SKILL.md`, references, stage flow, commands, or pipeline behavior good:
+
+1. Run `bash scripts/smoke.sh` and the focused tests. Smoke is a passability floor, not quality.
+2. Run **two read-only cold subagents** on **STEM/math-heavy** prompts: one math/formula or
+   slide-deck prompt, one physics/engineering prompt (local video optional). Ask each for the stage
+   plan, exact commands, artifacts, assumptions, and likely deviations. Do not let them edit files
+   or execute the pipeline.
+3. Use child-process dry runs for command/runtime reliability; cold agents test comprehension, not
+   execution.
+4. Do the manual code and heuristic reasoning yourself.
+5. Record findings. A subagent “looks good” is not certification and does not replace review.
+
+Do not spawn `opencode` children. Keep cold-audit work in `/tmp` and clean it up.
+
 ## Agent execution boundaries
 
 - **Do not spawn opencode child processes** (including `opencode run`, `debug`, `serve`,

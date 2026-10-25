@@ -50,7 +50,10 @@ def title_like(*texts: str) -> bool:
 
 
 def run(cmd, timeout=300):
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError as e:
+        return subprocess.CompletedProcess(cmd, 127, "", f"{cmd[0]} not found: {e}")
 
 
 def ts(value: str) -> float:
@@ -117,9 +120,6 @@ def ocr_text(path: Path) -> str:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
 
-
-def ocr_words(path: Path) -> int:
-    return len(re.findall(r"\b\w+\b", ocr_text(path)))
 
 
 def local_kind(text: str, q: dict) -> str:

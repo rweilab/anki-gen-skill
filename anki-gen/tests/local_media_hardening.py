@@ -15,7 +15,9 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import extract_video  # noqa: E402
+import frames  # noqa: E402
 import media_transcribe as mt  # noqa: E402
+import ytdlp  # noqa: E402
 
 
 def make_media(path: Path, seconds: int = 1) -> None:
@@ -81,6 +83,101 @@ def main() -> int:
             cues, source = mt.transcribe(media, work, model="base.en")
         assert source == "sidecar:vtt" and cues, (source, cues)
         print("ok    sidecar bypasses faster-whisper")
+
+        # whisper.cpp fallback: no faster-whisper, fake CLI emits a real SRT.
+        fake = td / "fake-whisper-cli"
+        fake.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "args = sys.argv\n"
+            "base = Path(args[args.index('-of') + 1])\n"
+            "Path(args[args.index('--record') + 1]).write_text(json.dumps(args))\n"
+            "Path(str(base) + '.srt').write_text("
+            "'1\\n00:00:00,000 --> 00:00:02,000\\nFake whisper.cpp transcript.\\n')\n"
+        )
+        fake.chmod(0o755)
+        model = td / "ggml-base.bin"
+        model.write_bytes(b"not a real model")
+        recorded = td / "args.json"
+        with mock.patch.object(mt, "_faster_whisper_available", return_value=False), \
+             mock.patch.object(mt, "WHISPER_CPP_MODEL", model):
+            # --record is test-only; the wrapper appends it so the production
+            # argument builder stays clean.
+            wrapper = td / "whisper-cli"
+            wrapper.write_text(
+                f"#!/usr/bin/env bash\nexec {fake} \"$@\" --record {recorded}\n")
+            wrapper.chmod(0o755)
+            with mock.patch.object(mt, "whisper_cli_path", return_value=wrapper):
+                cues, source = mt.transcribe(media, work, model="auto",
+                                             language="en", force=True)
+        assert source == "whisper.cpp:base" and cues, (source, cues)
+        assert cues[0]["text"] == "Fake whisper.cpp transcript.", cues
+        argv = json.loads(recorded.read_text())
+        assert "-m" in argv and argv[argv.index("-m") + 1] == str(model), argv
+        assert "-f" in argv and argv[argv.index("-f") + 1].endswith(".wav"), argv
+        assert argv[argv.index("-l") + 1] == "en", argv
+        assert "-osrt" in argv and "-of" in argv, argv
+        assert "-np" not in argv and "-t" not in argv, argv
+        assert "--prompt" not in argv, argv
+        with mock.patch.object(mt, "_faster_whisper_available", return_value=False), \
+             mock.patch.object(mt, "WHISPER_CPP_MODEL", model), \
+             mock.patch.object(mt, "whisper_cli_path", return_value=wrapper):
+            mt.transcribe(media, work, model="auto", language=None,
+                          initial_prompt="course terms", force=True)
+        argv = json.loads(recorded.read_text())
+        assert argv[argv.index("-l") + 1] == "auto", argv
+        assert argv[argv.index("--prompt") + 1] == "course terms", argv
+        print("ok    whisper.cpp backend args and SRT fallback")
+
+        # Missing ffprobe degrades metadata, not the transcription path.
+        with mock.patch.object(mt.shutil, "which", return_value=None):
+            assert mt.probe(media) == {"duration": 0.0, "title": ""}
+        print("ok    missing ffprobe degrades gracefully")
+
+        # Missing ffmpeg is a clear failure, not a traceback.
+        with mock.patch.object(mt.shutil, "which", return_value=None):
+            try:
+                mt.extract_audio(media, work)
+            except RuntimeError as e:
+                assert "ffmpeg" in str(e), e
+            else:
+                raise AssertionError("missing ffmpeg did not raise")
+        print("ok    missing ffmpeg fails clearly")
+
+        # No backend produces a clear error, not a traceback.
+        with mock.patch.object(mt, "_faster_whisper_available", return_value=False), \
+             mock.patch.object(mt, "whisper_cli_path", return_value=None):
+            try:
+                mt.transcribe(media, work, force=True)
+            except RuntimeError as e:
+                assert "unavailable" in str(e), e
+            else:
+                raise AssertionError("missing backend did not raise")
+        print("ok    missing local backend fails clearly")
+
+        # Optional video tooling fails with a feature message, not a traceback.
+        with mock.patch.object(ytdlp, "available", return_value=False):
+            try:
+                ytdlp.run(("--version",))
+            except RuntimeError as e:
+                assert "yt-dlp is not installed" in str(e), e
+            else:
+                raise AssertionError("missing yt-dlp did not raise")
+        with mock.patch.object(frames.subprocess, "run",
+                               side_effect=FileNotFoundError("ffmpeg")):
+            result = frames.run(["ffmpeg", "-version"])
+        assert result.returncode == 127 and "not found" in result.stderr, result
+        print("ok    missing optional video tooling fails clearly")
+
+        # Doctor has one local-audio verdict and no stale faster-whisper warning.
+        doctor = subprocess.run(
+            [sys.executable, str(SCRIPTS / "doctor.py")],
+            capture_output=True, text=True)
+        assert doctor.returncode == 0, doctor.stderr
+        assert doctor.stdout.count("Local transcription:") == 1, doctor.stdout
+        assert "warn  faster-whisper" not in doctor.stdout, doctor.stdout
+        print("ok    doctor has one local-audio verdict")
 
         # Model auto benchmark caches the choice and does not re-run.
         sample = td / "bench.wav"

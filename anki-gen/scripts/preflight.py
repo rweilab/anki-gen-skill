@@ -17,7 +17,7 @@ def check(home: Path | None = None, machine: str | None = None) -> tuple[list[st
         warnings.append(f"active skill not found at {active}; using the repo path")
     machine = machine or platform.machine()
     if platform.system() == "Darwin" and machine != "arm64":
-        warnings.append("Intel Mac: local transcription is unsupported; PDF/YouTube paths remain")
+        warnings.append("Intel Mac: local transcription is best-effort; PDF/YouTube paths remain")
     return errors, warnings
 
 

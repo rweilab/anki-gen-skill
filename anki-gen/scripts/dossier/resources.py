@@ -65,12 +65,3 @@ def add(selector: str, source_path, *, kind: str = "other",
         manifest["updated_at"] = now()
         write_json(stage / "manifest.json", manifest)
     return row
-
-
-def path(selector: str, resource_id: str) -> Path:
-    context = packer.load(selector)
-    row = next((r for r in (context or {}).get("resources") or []
-                if r.get("resource_id") == resource_id), None)
-    if not row:
-        raise FileNotFoundError(f"resource not found: {resource_id}")
-    return Path(context["path"]) / row["path"]

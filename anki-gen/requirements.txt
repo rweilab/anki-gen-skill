@@ -1,11 +1,6 @@
-# Tested with Python 3.10+; minimum versions allow patch updates.
+# Core: building decks and reading PDF/text. Tested with Python 3.10+.
 anki>=26.9.3
 pymupdf>=1.28.2,<2
-pillow>=12.2.0
-beautifulsoup4>=4.14.3
-# Explicit extras: pip may skip extras when a system yt-dlp already satisfies
-# the base requirement.
-yt-dlp[default,deno]>=2026.8.19
-yt-dlp-ejs>=0.8.0
-deno>=2.6.6
-faster-whisper>=1.2.1,<2
+
+# Optional image, YouTube, and local-transcription libraries live in
+# requirements-optional.txt and are installed best-effort by setup.sh.

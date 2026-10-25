@@ -26,6 +26,7 @@ from platform_paths import ensure_tool_paths
 ensure_tool_paths()
 
 import ytdlp
+import media_transcribe as mt  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -117,7 +118,7 @@ def line(label: str, ok: bool, detail: str, fix: str = "", core: bool = False,
 def main() -> int:
     print(f"anki-gen doctor · {os_id()} · {platform.machine()}")
     if os_id() == "macos" and platform.machine() != "arm64":
-        print("warn  unsupported Intel Mac for local transcription; PDF/YouTube paths still work")
+        print("warn  Intel Mac local transcription is best-effort; PDF/YouTube paths still work")
     print("=" * 72)
     version = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").is_file() else "unknown"
     print(f"installed version: {version}")
@@ -140,12 +141,27 @@ def main() -> int:
         ("bs4", "beautifulsoup4 (web images)", "pip install --user --break-system-packages beautifulsoup4", False),
         ("yt_dlp", "yt-dlp module (video)", 'pip install --user --break-system-packages "yt-dlp[default,deno]"', False),
         ("yt_dlp_ejs", "yt-dlp EJS (YouTube)", "pip install --user --break-system-packages yt-dlp-ejs", False),
-        ("faster_whisper", "faster-whisper (local video/audio)",
-         "pip install --user --break-system-packages faster-whisper", False),
     ):
         found = has_module(mod)
         core_ok &= line(label, found, "importable" if found else "missing",
                         fix, core=core, warn_only=not core)
+
+    faster_ok = mt._faster_whisper_available()
+    whisper_cli = mt.whisper_cli_path()
+    whisper_model = mt.whisper_cpp_model_cached()
+    if faster_ok:
+        detail = "faster-whisper"
+        local_ok = True
+    elif whisper_cli:
+        detail = "whisper.cpp" + ("" if whisper_model
+                                  else " (model downloads on first use)")
+        local_ok = True
+    else:
+        detail = "off"
+        local_ok = False
+    line("local audio", local_ok, detail,
+         "run setup.sh; captions and YouTube still work without local audio",
+         warn_only=True)
 
     for cmd, label, fix, warn in (
         ("pdftotext", "pdftotext (fast PDF text)", pkg_fix("poppler"), True),
@@ -219,13 +235,24 @@ def main() -> int:
         print("       warning: the key file is readable by others; run: chmod 600 "
               f"{key_file}")
 
+    if faster_ok:
+        stt = "faster-whisper" + (" (whisper.cpp fallback available)"
+                                  if whisper_cli else "")
+    elif whisper_cli:
+        stt = "whisper.cpp" + ("" if whisper_model
+                               else " (model downloads on first use)")
+    else:
+        stt = "off (captions and YouTube still work)"
+    print(f"Local transcription: {stt}")
+
     print("=" * 72)
     if not core_ok:
         print("Core text path is NOT ready — fix the MISS lines above.")
         return 1
     print("Core text path is ready.")
     print("Warnings are optional: images (Pillow), handwriting (image-vision), "
-          "web images (bs4), video (yt-dlp/EJS/Deno/ffmpeg/tesseract), and the Anki app.")
+          "web images (bs4), video (yt-dlp/EJS/Deno/ffmpeg/tesseract), "
+          "local audio, and the Anki app.")
     return 0
 
 

@@ -9,7 +9,7 @@ You are the CLASSIFIER. Segment source material into atomic concepts and classif
 
 **Input:** `$WORK/sources.md` for document batches and/or `$WORK/transcripts.md` for video (the
 single-source `.md` for a diagnosis run; per-source `<tag>.md` only for a narrow check),
-`course_hint` (optional), `media/` (images). Classify broadly; stage 6 filters the list before
+the course name/context from the request, `media/` (images). Classify broadly; stage 6 filters the list before
 anything is written. If `scope_gate.md` already exists (re-run), read it first.
 
 **Task:** (1) identify the course domain; (2) segment into atomic concepts — ONLY concepts

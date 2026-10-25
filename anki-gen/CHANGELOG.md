@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.2** — Installer resilience and whisper.cpp fallback for local audio
 - **v1.5.1** — Always-loaded quality gate, stricter media/video selection, and pipeline quality status
 - **v1.5.0** — Revise imported decks in Anki via AnkiConnect, with a persistent dossier and revert
 - **v1.4.2** — Recover alternate images/captions and calibrate review with score-1 evidence
@@ -13,6 +14,41 @@ Newest first. Keep the index to one line per release; details live below.
 - **v1.2** — Review fidelity, validator guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
+
+## v1.5.2 — Installer resilience and local audio
+
+### Changed
+
+**Installation and local media**
+- Setup now installs only `anki` and PyMuPDF as core. Optional image, YouTube, and
+  local-audio libraries are installed one at a time, best effort; a missing wheel
+  such as ctranslate2 on Python 3.15 no longer aborts the install.
+- Missing Homebrew, sudo, system tools, pip, or optional wheels are warnings. The
+  installer still installs the skill and reports exactly which features are off.
+- Local audio adds a whisper.cpp fallback: Apple Silicon attempts it automatically;
+  mainstream Linux uses faster-whisper when available, otherwise a distro package or
+  a user-local tarball. The model downloads and is checksum-verified on first use.
+  No Python 3.14 downgrade, venv, or PATH change is required.
+- `doctor.py` reports the active local-audio backend in one line; `media_transcribe.py`
+  falls back to limited metadata when `ffprobe` is missing, and to whisper.cpp when
+  faster-whisper fails.
+- Setup now prints `Full feature set: installed` or `Full feature set: NOT installed`
+  with every remaining doctor warning. Core decks remain usable, and optional gaps
+  do not fail the install.
+- Missing `pandoc` now falls back to raw HTML, missing `curl` uses Python's URL reader,
+  missing `yt-dlp` and `anki` produce feature/core messages instead of tracebacks, and
+  missing `ffmpeg` is reported by the frame helper rather than crashing it.
+- `parse_intent.py` no longer emits dead `sources`, `course_hint`, `recursive`,
+  `max_cards`, or `output_path` fields. Local sources come from the request; deck size
+  is the scope-gate ceiling. Stage 5 is explicitly in-chat, and stage 12 is diagnosis
+  only because stage 11 already runs the real import.
+- The no-formula-sheet case, deck-name question, media opt-in, cleanup comparison, and
+  beginner quality line are explicit in the stage map. A maintainer note records the
+  cold-start failure modes.
+- Added optional **stage 9b adversarial subagent review** for decks where the caller opts in:
+  the existing review checklist becomes a 0/1/2 rubric, the reviewer returns findings only,
+  and it never replaces human review. Added a maintainer cold-audit protocol using two
+  read-only STEM prompts plus smoke, child-process checks, and manual reasoning.
 
 ## v1.5.1 — Quality gate and media hardening
 
