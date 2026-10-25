@@ -942,8 +942,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-missing-artifacts", action="store_true",
                     help="build without intake.md/scope_gate.md/kcs.md "
                          "(draft or diagnosis only)")
+    ap.add_argument("--context", action="store_true",
+                    help="persist the deck dossier after a successful build (opt-in)")
     ap.add_argument("--no-context", action="store_true",
-                    help="do not persist the deck dossier after a successful build")
+                    help="deprecated; context is opt-in by default")
     ap.add_argument("--anki-profile", default="",
                     help="Anki profile name to record in the deck dossier")
     ap.add_argument("--per-topic", type=int, default=1)
@@ -1176,7 +1178,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not rv["required"]:
                     done += " — NOT REVIEWED"
                 lines.append(f"status     {done}")
-                if not args.no_context:
+                if args.context and not args.no_context:
                     try:
                         c = stage_context(out, Path(args.cards), args.deck_name, args.anki_profile)
                         lines.append(f"context    {c['cards']} card(s) -> {c['path']}")

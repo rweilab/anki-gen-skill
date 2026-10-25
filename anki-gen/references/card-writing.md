@@ -1,12 +1,11 @@
 # Card-writing detail
 
-The rule index is the contract; this is the working detail for rules that need more than a line.
-Read the part you are about to write against, not the whole thing.
+This is the working detail behind the ten hard rules. Read the part you are about to write
+against, not the whole thing.
 
-Rule map: 5 symbols · 6 tier-zero · 8 recallability · 10 anchors · 11 front/back length ·
-12 course language · 13 calibration · 14 retrieval success · 15 cloze · 16 backs explain ·
-17 provenance · 18 housekeeping · 19 Procedure · 26 no cross-card pointers · 27 topic/objects ·
-28 KC.
+Sections: symbols · tier-zero · anchors · front/back length · course language · calibration ·
+retrieval success · cloze · backs explain · provenance · Procedure · cross-card pointers ·
+topic/objects · KC.
 
 ### Every symbol is defined on its card
 
@@ -21,18 +20,9 @@ Code spans are the exception. A bare `X_y` outside math is a validator warning.
 
 ### Every card belongs to a KC
 
-A knowledge component is the thing being learned; a card is one retrieval rep. `kcs.md` names
-the KCs, their `requires` edges, and their source. Each card names one `kc`; `stratum` is
-optional, because the KC `type` is the preferred retrieval family (`concept`, `mechanism`,
-`condition`, `procedure`, `representation`, `error`, `schema`, `integration`, `boundary`,
-`metacognition`).
-
-A KC with no cards is a coverage gap. A card whose KC is not in the map is an orphan. A card whose
-`stratum` (if present) is a one-off label cannot be sampled or reviewed by family. A single-card
-KC is allowed when the card is a complete, high-value decision and the KC’s `why` makes the value
-case; a single-card `concept`/`mechanism` warns, while a `boundary`, `error`, `metacognition`,
-`integration`, or `anchor` single is normal. A 1:1 map warns; duplicate claims are errors. The map
-is not a second card list; it is the value and coverage contract. Do not add filler cards.
+A card is one retrieval rep; `kcs.md` owns the KC/value contract and `authoring.md` owns the
+fields. A single-card KC is allowed when the card is a complete high-value decision; the gate
+and review judge value. Do not add filler cards.
 
 ### A tier-zero card comes before the formula cards
 
@@ -160,7 +150,7 @@ unanswerable for the one topic where it mattered most, and nothing flagged it.
 
 A back that restates the front tests recall of a string. It must add at least one of: **why it
 works** (the mechanism, plain language); **an intuition or analogy** ("like a balloon: same mass,
-more volume, less dense"); **the variable glossary** (rule 5); **a boundary** (when it breaks, the
+more volume, less dense"); **the variable glossary** (hard rule 8); **a boundary** (when it breaks, the
 common error). Prefer sentences over fragments. If a student who skipped the lecture could not
 follow the back, it is too thin.
 
@@ -229,9 +219,28 @@ makes sense as a computation — ask about the *structure* of the answer.
 - ❌ "Prove that..." → ✅ "Why does the Jacobian determinant give volume scaling?"
 - ❌ "Calculate the eigenvalue of..." → ✅ "When is a matrix diagonalizable?"
 - ❌ Multi-step computation on the front → ✅ "What are the steps of Gaussian elimination?"
-  (Procedure layer, rule 19)
+  (Procedure layer)
 
 Cards test **understanding, recognition, boundaries** — never mechanical computation.
+
+### Retrieval angles and density
+
+Pick the angle that tests what is hard about *that* knowledge; do not generate one card per angle.
+
+| Angle | Asks |
+|---|---|
+| Explanation | why does this hold? |
+| Comparison | what separates two similar things? |
+| Recognition | what in the problem signals this method? |
+| Applicability | when does it hold, when does it break? |
+| Prediction | which way does the result move? |
+| Interpretation | what does this curve, plot, or result mean? |
+| Sensitivity | which way does it move, roughly how much? |
+| Limiting behaviour | what happens as a parameter goes to 0 or infinity? |
+| Sanity check | does the answer make sense; what would flag it wrong? |
+
+This is a menu, not a checklist. Most concepts want one angle; a few want two. Six near-cards
+from one topic is padding. The scope gate is the brake, not the card count.
 
 ### Every card carries a provenance footer
 
@@ -284,42 +293,12 @@ mechanism. A true explanation that never states the requested answer is a broken
 Use a glossary/next-step line for the neighbouring molecules; do not bury the answer under the
 reaction or the why.
 
-### Housekeeping lives in fields, not in visible card text
+### The topic is a chapter name
 
-Put the topic and tier in `topic` / `layer` / `tier_zero`. The note type displays the **topic** on
-the front, and Anki tags are visible metadata; treat both as part of the question. Prefixing
-fronts with `**Vacancies.**` makes a card read like a form.
-
-**Never put the answer in a front-visible tag.** A card asking “Which substitution turns this
-into a linear ODE?” must not carry `bernoulli` in `topic` or `objects`; use the chapter
-`First-Order ODEs` and, if needed, the broad bucket `odes`. Broad context is allowed; the
-specific answer, method, theorem, or named technique is not.
-
-### The topic is a chapter name, and object tags are a sniper
-
-**`topic` is the table-of-contents heading, not a card's subtopic.** `Unit Cells`,
-`Dislocations`, `XRD & Diffraction`, `Vacancies` — good. Three failures: **a layer code**
-(`topic: "L2"` is both the label printed on every card and a deck tag, so "L2" returns every
-understanding card and says nothing about the subject); **a section, not a chapter** (`Chapter 4
-defects`, `Unit 2`); **a single card or subtopic wearing a topic's name** (`The T=-(u+v)/3
-identity`, `Radians`, `Sine`, `Tangent` inside a Unit Circle deck). If several cards come from the
-same lecture or chapter, they share the same topic. A topic with 1–2 cards is usually a subtopic;
-merge it into the parent unless it is a real chapter. Roughly **4–15 cards per topic** is a healthy
-ceiling, not a quota; fewer is normal. Small decks may legitimately be one topic.
-
-**`objects` are broad buckets, not subtopics.** The topic already tags every card, so use
-`objects` for cross-topic search buckets. For an RTOS/embedded survey, examples are
-`concurrency`, `scheduling`, `memory`, `interrupts`, `multicore`, `timers`, and `rtos`; other
-decks choose their own 3–6 buckets. **0–1 is normal; two only when both
-recur across topics; zero is normal.** Do not tag a term that is already explicit in the card:
-`heap`/`stack` under Memory Management → `[]`; `queue` under Queues → `[]`;
-`mutex`/`semaphore`/`queue`/`race`/`deadlock` → `concurrency`. A broad `rtos` tag may appear on a
-good chunk of a wide survey deck. The tag is not a hint line: if naming it would answer the
-front, it does not belong there. The build drops topic/subtopic duplicates, one-topic tags, and
-one-offs, so a long list of small tags becomes a few useful buckets. Tags land flat, no namespace;
-all generated tags are lowercase (the Topic field keeps its display capitalisation). The layer code is **not** a tag — it stays a
-field for `triage.py`/`roi_report.py`. Object tags are also how "related notes" works: rule 26
-forbids a back pointing at another card, and a bucket query is the precise, never-stale version.
+`topic` is the table-of-contents heading, not a layer code, section number, or subtopic.
+`objects` is 0–2 broad cross-topic buckets; `[]` is normal. See `authoring.md` for the field
+contract. A topic with 1–2 cards is usually a subtopic; merge it into the parent unless it is a
+real chapter.
 
 ### Deck-wide uniqueness, without a card cap
 
@@ -369,7 +348,7 @@ is a guess, and a guessed target is graded wrong for the wrong reason.
 **Guardrails — all five:** (1) one decision per back — three sub-decisions is three cards; (2)
 bounded fronts — the learner reaches the decision from the state shown, not by working the
 intervening algebra; (3) `objects: ["procedural"]`, so procedural load can be filtered independently
-(`tag:procedural`), not a subdeck (rule 23); (4) density cap — a handful per topic, at recurring
+(`tag:procedural`), not a subdeck; (4) density cap — a handful per topic, at recurring
 decision points, not one per problem; (5) the "practice problem in disguise" test — a complete
 worked solution on the back is a problem-set item wearing a card's clothes, send it to practice.
 `validate_cards.py` warns on a Procedure front with no `?` — the mechanical proxy for "states its
@@ -393,7 +372,7 @@ when the learner already knows the procedure.
 
 ## Calibrate before you write a single card
 
-**Rule 5 (define every symbol) and rule 16 (backs explain) are novice-tuned.** For someone who
+**Define every symbol (hard rule 8) and answer-first backs (hard rule 7) are novice-tuned.** For someone who
 sat through the lectures the same support becomes *redundant processing* — the **expertise
 reversal effect** (Kalyuga et al. 2003): guidance essential to a novice can hurt an expert.
 Establish this first, because it changes how much a back carries:
@@ -404,7 +383,7 @@ Establish this first, because it changes how much a back carries:
 | Attended the lectures, cramming | the distinction and the trap; assume the vocabulary | only for symbols the course flags | one, at most | **a decision** — which move, which condition, which way the result moves |
 | Already strong, narrow weakness | the boundary or the exception | never | none | **the boundary** — where the limit lies |
 
-**The last column is a preference, not a formality** (rule 7). "Spot the error in this finished
+**The last column is a preference, not a formality** (hard rule 9). "Spot the error in this finished
 answer" and "which move do you make here" are both legal L3s and *not the same card*: a learner
 who rejects a diagnosis-shaped L3 reads it as a trap, not a decision. Reframe the front around
 the decision, keep the trap in the back. A 5 with "I'd rather have a procedural question" is the
@@ -423,5 +402,5 @@ scaffolding before simpler wording.
   or distinguish things named on the front — not invent the framing first.
 - **Terseness is not the goal.** Aim for no unresolvable reference, not a short front.
 
-Same test as rule 12: could a student who attended every lecture answer it, using only the
+Same test as speaking the course language: could a student who attended every lecture answer it, using only the
 lecturer's terms? If a *front* fails that, no back calibration saves it.

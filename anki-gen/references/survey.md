@@ -1,9 +1,10 @@
 # Source survey
 
-## Source survey — propose, then stop
+## Source survey — decide scope before cards
 
 The user is told **which material will be used, and why, before any cards exist.** Never start
-extracting on the strength of a directory name. Report:
+extracting on the strength of a directory name. If the caller already named the deck and the
+sources, proceed and state assumptions; stop only when scope is genuinely ambiguous. Report:
 
 | State | Why it earns a line |
 |---|---|
@@ -51,13 +52,13 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - sources: <chosen files/videos/playlists>
 - video: none | <url> | playlist | items x-z
 - images: yes | no
-- review: default | no review
+- review: default | no review (free-text note allowed)
 - assumed: <one line per assumption>
 ```
 
 These are prose context, not new parser fields. `goal` and `minutes/day` help the scope gate and
-run report; `calibration` and `reference` prevent guessing. For document sources, images default
-no unless the caller asks; when images are yes, confirm only images the cards actually need.
+run report; `calibration` and `reference` prevent guessing. Images default on for slide/video sources and off for text-only sources; the caller can say no.
+When images are on, confirm only the images the cards actually need.
 
 **Read the course's own learner context and say what you found.** For a long `STUDY-LOG.md`, read
 the header and calibration section, not the whole file. A directory carries files written
@@ -100,12 +101,12 @@ every run.
 required at build. Impose no convention. A silent `"Default"` fallback once let a valid deck land
 somewhere nobody finds. A `::` nests; Anki matches deck names case-insensitively.
 
-**Then stop and wait — unless the caller is a beginner.** For a power user, propose, take the
-answer, then EXTRACT. For a beginner, proceed on the survey's recommendation and list the
-assumptions in the report: the survey's value is that the sources are right, which the caller
-corrects from the report as cheaply as from a question. **Why this is a gate, not a summary:**
-coverage is decided here, by which sources get used — a deck built from the wrong two lectures is
-not something better cards can repair later.
+**If the caller already named the deck and the sources, proceed.** State assumptions in the
+report; do not add a blocking question. Stop and wait only when scope is genuinely ambiguous: no
+topic or source named, or a real choice between source sets. The survey's value is that the
+sources are right, which the caller corrects from the report as cheaply as from a question.
+**Why this is a gate, not a summary:** coverage is decided here, by which sources get used — a
+deck built from the wrong two lectures is not something better cards can repair later.
 
 **Scanned or handwritten sources.** If a PDF has almost no text layer but images, say so in
 the survey. The options are: read it with `image-vision` (Gemini, if available) and build from

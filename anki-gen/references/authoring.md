@@ -23,14 +23,34 @@ needs. The ten rules in `SKILL.md` are the hard floor.
 
 ## Card JSON
 
-Use the schema in `references/schema.md`. Minimum:
+Required fields: `front`, `back`, `layer`, `topic`, `deck`, `source`, `kc`. Minimum:
 
 ```json
 {"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.** **Why:** ...","layer":"L1","topic":"Voltage and Power","deck":"SCHOOL::CIRCUITS::Midterm2","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
 ```
 
 Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `evidence_quote`
-(for a card claim narrower than its KC).
+(for a card claim narrower than its KC), `stratum`.
+
+**Fields.**
+- `source` is the locator (`Slides 2 p.2`, `Lec 04 Q7`, or `derived` for self-contained math).
+  `source_ref` is a deprecated alias; do not write it. `source_url` is optional plain text.
+- `topic` is the chapter/lecture heading. `objects` is 0–2 lowercase cross-topic buckets; `[]`
+  is normal. Tags are front-visible: never put the answer, method, or theorem in either.
+- `kc` must exist in `kcs.md`. `stratum` is optional; the KC `type` is the preferred family.
+- `hash` is identity: leave it empty; it is `md5(front|back)`. Do not invent one.
+- `media` entries are `{file, side, caption, source}`; paths are relative to the media root.
+  One image per card is the default.
+
+**Shapes.** The build emits Basic and Cloze only.
+- L1 Basic: recall of a fact, definition, formula, or constant.
+- L1 reversible: a reciprocal pair, one card each direction.
+- L2 Basic: concept, why/how, derivation, or analogy.
+- L2 Cloze: only a rule-15 enumeration, one separately examinable item per deletion; never a
+  whole formula.
+- L3 Basic: boundary, failure mode, or edge case.
+- Procedure A/B: one decision per card; shapes live in `card-writing.md` under Procedure.
+No Type-in and no Image Occlusion notetype.
 
 `cards.jsonl` is JSON, not Python. Double every LaTeX backslash (`\\frac`, `\\text`). A
 single `\frac` can become a formfeed and corrupt the card. The validator catches control
@@ -85,9 +105,9 @@ a back, or an answer-leaking term in `topic`/`objects`.
 - `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards. The gate warns when the deck
   exceeds it; it never auto-cuts. Park the weaker candidate instead.
 
-## Media (opt-in)
+## Media (default by source)
 
-Images are off by default. When the caller asks for them:
+Images default on for slide and video sources, off for text-only sources. When images are on:
 
 1. Run `media_index.py "$WORK" --cards "$WORK/cards.jsonl" --per-card 2` once. It prints a
    compact ranked list.

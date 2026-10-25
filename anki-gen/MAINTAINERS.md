@@ -41,6 +41,93 @@ The skill must work in any supported directory and environment, discover usable 
 its assumptions, and individualize the deck. Minimal API calls, low token usage, and fast runs
 are goals only within that quality contract.
 
+## Design axioms
+
+These are the decisions behind the skill, not a general manifesto. Read them before changing a
+stage, reference, script, gate, or command.
+
+1. **Harness > model.** Reliability comes from context assembly, tools, state, verification, and
+   review, not from a better prompt.
+2. **Deterministic scaffolding around probabilistic work.** Routing, validation, retries,
+   permissions, and state transitions are code. The model does judgment.
+3. **One canonical path.** No parallel authoring or diagnosis path. A diagnosis script runs only
+   when the main command names the failure.
+4. **Context is a cache, not a database.** Write state to `$WORK`; read once; read only the current
+   step's reference. More systems and more context eventually mean less alignment.
+5. **One source of truth per concern.** Schema, quality rules, media policy, and review each have
+   one owner. Duplicate prose is a bug.
+6. **Independent verification beats same-context self-critique.** Gates, a fresh-context
+   adversarial reviewer, and the human review are the quality stack.
+7. **Small batches, one rewrite.** A global formatting or review change rewrites the file once,
+   never one card or one symbol at a time.
+8. **Tests are a floor, not proof.** Passing tests only show that expected paths do not
+   syntactically fail; they do not prove card quality, heuristic adherence, or alignment. The real
+   import and the human review are the evidence.
+9. **Security and agency boundaries live outside the model.** No child `opencode` processes, no
+   live collection DB, no ad hoc scripts, no unrestricted tools.
+10. **No new system without removing one.** A new artifact, command, flag, stage, or reference
+    must replace something or be justified by a measured failure.
+11. **Scale-free rules, no magic numbers.** Derive budgets and thresholds from scope or from the
+    model's own plan; do not hardcode card, KC, or tool-call quotas.
+12. **Protect the 98% quality floor.** Optimize tokens, calls, and speed only after correctness,
+    answerability, sourcing, and learner fit.
+13. **Alignment has a budget.** Every added branch, artifact, reference, or gate competes with the
+    contract for attention. Past a point, more context makes the model less likely to follow the
+    path. Prefer deleting, merging, or replacing over adding.
+
+### Decision ladder
+
+Before adding anything, walk this order:
+
+1. Does it need to exist?
+2. Is it already here in another form?
+3. Does the standard library or an existing helper cover it?
+4. Can it be one line or one command?
+5. If it must be runtime, what does it replace?
+6. Does it add a fixed quota? Make it structural and scale-free instead.
+7. Does it move a quality check earlier (a gate) rather than later (prose)?
+
+### Do not resurrect
+
+These were removed or rejected because they added surface without reliability:
+
+- the 16-stage table and persona branching
+- five authoring paths; `cards.jsonl` is the one
+- the per-card `authoring_ledger.md`
+- the hard "2+ cards per KC" rule and the anchor exception
+- default `NOT CERTIFIED` plus warning-chasing
+- diagnosis commands in the runbook
+- literal `<br>` in `cards.jsonl` and plaintext `P_0`
+- a second adversarial pass after a formatting-only change
+- editing the live skill during a deck run
+
+### Research anchors
+
+One line each; follow the link only for a deep dive.
+
+- Agent Harness Engineering survey — the system around the model is the measurable factor.
+  https://picrew.github.io/LLM-Harness/main.pdf
+- From Model Scaling to System Scaling — context governance, memory hygiene, skill routing.
+  https://doi.org/10.48550/arxiv.2605.26112
+- Meta Thin Orchestrator — deterministic routing plus isolated specialist workers.
+  https://engineering.fb.com/2026/10/19/ml-applications/thin-orchestrator-ai-agent-architecture/
+- Claude Code extension model — hooks for guarantees, skills for procedure, subagents for context
+  isolation. https://code.claude.com/docs/en/features-overview
+- SkillsBench — focused skills help procedural work; harness and context determine whether they
+  fire. https://arxiv.org/html/2602.12670
+- SWE-Pro — correctness is not efficiency; LLMs rarely find repository-level optimizations.
+  https://arxiv.org/html/2606.25530
+- DORA AI report — AI raises generation speed and moves the bottleneck to review and stability.
+  https://dora.dev/ai/gen-ai-report/
+- Agent evaluation reliability — scaffold choice is a major confound; more tasks do not fix it.
+  https://arxiv.org/html/2610.00651
+- Agentic misalignment — evaluation awareness and strategic behavior are measured risks.
+  https://alignment.anthropic.com/2026/agentic-misalignment-summer-2026/
+- AI control — treat the agent as untrusted; monitor artifacts and reasoning, keep a human gate.
+  https://arxiv.org/html/2604.15384v2
+- OWASP AI Agent Security — least privilege, sandboxing, egress control, and approval gates.
+  https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html
+
 ## Rule ownership
 
 `SKILL.md` carries ten hard rules; the detailed lessons live in `references/card-writing.md`.
@@ -57,7 +144,7 @@ This table is the ownership map, not a second rule list.
 | Answer first, then why | `card-writing.md` § answer first | `validate_cards` proxy / review |
 | Self-contained front | `card-writing.md` § fronts | `validate_cards` front-image warning / review |
 | Media bar | `authoring.md`, `video.md` | `media_index` risk audit + review |
-| KCs | `authoring.md`, `schema.md` | `validate_cards` KC checks |
+| KCs and fields | `authoring.md` | `validate_cards` KC checks |
 | Review rescope | `review.md` | `review_actions.md` build gate |
 | Build/import | `pipeline.py`, `validate_apkg.py` | build + real import |
 | Cleanup | `SKILL.md` | `smoke.sh` no-litter |

@@ -183,12 +183,20 @@ def main() -> int:
                  "--out-apkg", str(apkg)], td)
         assert r.returncode == 0, (r.stdout, r.stderr)
         assert apkg.is_file() and "validate   1 note" in r.stdout, (r.stdout, r.stderr)
-        assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
-        assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
+        assert "context    " not in r.stdout, r.stdout
+        assert not list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
         assert "quality    static 0 error(s)" in r.stdout and "READY" in r.stdout, r.stdout
         assert "status     DONE" in r.stdout, r.stdout
         assert "provenance 1/1 (0 derived)" in r.stdout, r.stdout
-        print("ok    pipeline build+validate+context and quality status")
+        context_apkg = td / "local-context.apkg"
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(cards), "--out", str(gates),
+                 "--gates-only", "--build", "--context", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(context_apkg)], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
+        assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
+        print("ok    pipeline build+validate+opt-in context and quality status")
         bad = td / "bad.jsonl"
         bad.write_text(json.dumps({
             "front": "Why does a missing source fail?",

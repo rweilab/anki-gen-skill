@@ -24,9 +24,10 @@ normal deck run.
   changes.** It includes the changelog/version check, package/shipping manifest
   check, negative fixtures, golden deck, sabotage probes, video fixtures, and
   installer test.
-- **Passing tests are a floor, not proof.** They show a path is passable, not that
-  it is correct, complete, or well-maintained. Review the control flow, failure
-  modes, user impact, and maintainability of every change.
+- **Passing tests are a floor, not proof.** They show expected paths do not
+  syntactically fail; they do not prove card quality, adherence to the skill, or
+  alignment. Review the control flow, failure modes, user impact, and maintainability
+  of every change.
 - **Docs-only changes do not need the full smoke.** For `CHANGELOG.md`/`VERSION`,
   run `python3 scripts/changelog_check.py`; for prose only, a diff check is enough.
 - **Do not silently rewrite hard-earned rules or validators.** Fold new lessons
@@ -45,20 +46,21 @@ existing one, not sit beside it. Keep `SKILL.md` under ~280 lines and ten hard r
 
 Do not edit the live skill while a deck run is active. Use a copy or finish the run first; a gate
 schema change under a running model forces rework.
+Read `MAINTAINERS.md` § Design axioms and § Research anchors before changing a stage, reference,
+script, gate, or command. Remember: more systems and more context eventually reduce alignment.
 
 ## Independent maintainer audit
 
 Before calling a change to `SKILL.md`, references, stage flow, commands, or pipeline behavior good:
 
 1. Run `bash scripts/smoke.sh` and the focused tests. Smoke is a passability floor, not quality.
-2. Run **two read-only cold subagents** on **STEM/math-heavy** prompts: one math/formula or
-   slide-deck prompt, one physics/engineering prompt (local video optional). Ask each for the stage
-   plan, exact commands, artifacts, assumptions, and likely deviations. Do not let them edit files
-   or execute the pipeline.
-3. Use child-process dry runs for command/runtime reliability; cold agents test comprehension, not
-   execution.
+2. Run the **cold dry-run** in `maintainers/cold-audit.md`: a fresh agent with no prior context
+   reads `SKILL.md` and attempts the skill end to end in `/tmp`. It should write artifacts, run the
+   real commands, and report breaks. A plan-only answer is not a dry run.
+3. Optionally run one read-only plan audit on a different source type to catch comprehension gaps.
 4. Do the manual code and heuristic reasoning yourself.
-5. Record findings. A subagent “looks good” is not certification and does not replace review.
+5. Record findings. A clean run is not certification; passing tests do not prove quality or
+   adherence.
 
 Do not spawn `opencode` children. Keep cold-audit work in `/tmp` and clean it up.
 

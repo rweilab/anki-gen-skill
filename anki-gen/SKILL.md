@@ -13,13 +13,14 @@ Harness-agnostic: plain `SKILL.md` plus `scripts/`. Paths below use
 only harness difference (`/anki-gen` vs description match).
 
 `$WORK` means `.anki-gen-temp/<filesystem-safe-topic>`, e.g. `circuits-midterm2`, not the
-deck name with `::`. Every artifact lives there. The `.apkg` is the only new file in the
-caller's directory.
+deck name with `::`. Slug it from the deck name: lowercase, replace `::` and spaces with `-`.
+Every artifact lives there. The `.apkg` is the only new file in the caller's directory.
 
 ## Quality kernel
 
 These ten rules apply to every card. Read the relevant sections of `references/card-writing.md`
-before writing; do not author from the source alone.
+before writing; do not author from the source alone. If the harness cannot select sections, read
+the file once at authoring, not at intake.
 
 1. **Source-grounded.** Every card has a locator, or `source: "derived"` for self-contained math.
 2. **One retrieval decision.** A wrong answer points to one thing to repair.
@@ -41,11 +42,12 @@ A gate passing is not a quality certificate. The review is.
 
 ## The runbook
 
-The normal path is seven steps. Do not invent a parallel one.
+The normal path is seven steps. Do not invent a parallel one. The skill is deliberately small:
+read only the current step's reference; do not read ahead. More context is not better.
 
 1. **Intake.** Read the request and the chosen sources. Open only `survey.md` and the source
-   table of contents for now; do not open `card-writing.md`, `review.md`, `schema.md`, or
-   `prompts.md` until their step. Read the learner-calibration summary, not the whole study log.
+   table of contents for now; do not open `card-writing.md`, `review.md`, or `prompts.md`
+   until their step. Read the learner-calibration summary, not the whole study log.
    Write `$WORK/intake.md`: deck name, learner context, sources, image yes/no, assumptions, and
    **your own budget** for this run (estimated extraction, authoring, review, and build calls
    based on scope). No fixed numbers.
@@ -54,12 +56,15 @@ The normal path is seven steps. Do not invent a parallel one.
 3. **Author.** Read the source table of contents and only the per-source files you need. Write
    `$WORK/scope_gate.md` with a `Ceiling: N` line and `$WORK/kcs.md`. Then write
    `$WORK/cards.jsonl` in one pass per topic. One authoring format; no deck script.
-4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`, and
-   `review_packet.md`. Fix all errors in one rewrite, then run one gates call again. Do not
-   run a separate validator after every edit.
-5. **Review.** Start the web review. Wait. Read only low scores and comments. Apply all feedback
-   in one rewrite. Run one gates call to create `review_actions.md`; fill every score-1
-   action/target, set `status: resolved`, then build.
+4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`,
+   `review_packet.md`, and `roi.txt`. Fix all errors in one rewrite, then run one gates call again.
+   Do not run a separate validator after every edit.
+5. **Review.** Start the web review. Wait. Run one adversarial subagent pass by default when a
+   read-only subagent is available; skip only if unavailable or the caller declines. If no human
+   reviewer is available, skip the page, say "not manually reviewed; static checks only," and still
+   run the adversarial pass after the gates call. Read only low scores and comments. Apply all
+   feedback in one rewrite. If feedback exists, run one gates call to create `review_actions.md`;
+   fill every score-1 action/target, set `status: resolved`, then build.
 6. **Build.** Run one build call. It validates the real import.
 7. **Cleanup.** Stop the review server, delete `$WORK` in full, leave only the `.apkg`.
 
@@ -68,21 +73,27 @@ The normal path is seven steps. Do not invent a parallel one.
 ```bash
 SKILL=~/.claude/skills/anki-gen
 
-# 1. Extract all chosen sources (foreground; one call)
+# Step 2 — extract all chosen sources (foreground; one call)
 python3 "$SKILL/scripts/pipeline.py" --sources <dirs-or-files> --out "$WORK"
 
-# 2. Gates (exact errors, review plan, ROI)
+# Step 3 — author writes scope_gate.md, kcs.md, cards.jsonl first (no command).
+# Step 3b — if images are on, index candidates once (cards.jsonl must exist).
+python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2
+# --per-card 2 is candidates, not attachments; attach one image per card.
+
+# Step 4 — gates (exact errors, review plan, ROI)
 python3 "$SKILL/scripts/pipeline.py" --cards "$WORK/cards.jsonl" --gates-only --out "$WORK"
 
-# 3. Review (one server, background; then wait)
+# Step 5 — review (one server, background; then wait)
 python3 "$SKILL/scripts/review_server.py" --cards "$WORK/cards.jsonl" \
   --plan "$WORK/review_plan.json" --media-root "$WORK" \
   --out "$WORK/review_feedback.jsonl" --done-file "$WORK/review_done"
 
-# 4. Build + real import validation (after review actions are resolved)
+# Step 6 — build + real import validation (after review actions are resolved)
 python3 "$SKILL/scripts/pipeline.py" --cards "$WORK/cards.jsonl" --gates-only --build \
   --out "$WORK" --deck-name "Deck Name" --out-apkg ./Deck.apkg
-# If images were opted in, append: --media --media-root "$WORK"
+# If images are on (default for slides/video), append: --media --media-root "$WORK"
+# If the caller wants revision context, append: --context
 ```
 
 `pipeline.py --sources` accepts directories; it excludes `$WORK` automatically. One
@@ -131,25 +142,25 @@ the deck exceeds it but never auto-cuts. The human decides.
 
 ## Media
 
-Images are opt-in and main-model-vision-free by default. Main-model vision is a last-resort
-fallback: only when image-vision has no key or its bounded retry failed, the image is
-necessary, and the batch is small. Label it unverified; never use it for bulk selection.
+Images default on for slide and video sources, off for text-only sources. Main-model vision is a last-resort fallback: only when image-vision has no key or its bounded retry failed, the image is necessary, and the batch is small. Label it unverified; never use it for bulk selection.
 
 - Write the cards first without media, or plan the media from the topic list. Run
   `python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2`
   **once**; it prints a compact ranked candidate list.
 - Attach only a candidate that shows the thing the front asks about. Prefer the full slide or
   frame; a crop needs confirmation. One image per card.
-- Batch every `confirm` image into **one** `image-vision` call (or one call per source if the
-  batch is genuinely large). The pass is `python3 ~/.claude/skills/image-vision/scripts/vision_check.py`
-  with the confirmed paths; no per-image calls, no corpus pre-confirmation, no galleries.
+- Batch every `confirm` image into **one** `image-vision` call by default (or one call per
+  source if the batch is genuinely large). The pass is
+  `python3 ~/.claude/skills/image-vision/scripts/vision_check.py` with the confirmed paths; no
+  per-image calls, no corpus pre-confirmation, no galleries.
 - If no good image exists, leave the card without one and say so. Never lower the bar to hit an
   image count.
-- If image-vision has no key or fails, do not bulk-read pixels with the main model. Leave the
-  `confirm` image unattached and report it.
+- If image-vision has no key or fails, leave the `confirm` image unattached and report it. A
+  small necessary fallback is allowed only under the last-resort rule above; label it unverified.
 
 Media entries live in `cards.jsonl` as `{file, side, caption, source}`. Rewrite the file once
-to add them; do not patch cards one at a time. Bundling is opt-in with `--media --media-root`.
+to add them; do not patch cards one at a time. Bundle with `--media --media-root`; the image
+choice follows the source default.
 For a scanned or handwritten source, use the separate `image-vision` skill first; it is the
 only bulk-pixel path, and the normal media rule still forbids main-model bulk vision.
 
@@ -168,15 +179,18 @@ and the build proceeds.
 Stop a stuck server with `curl -X POST <url>/finish`, never `pkill -f`. Score 1 is calibration
 (“known / too easy”), not automatic rejection; score 5 is the only removal verdict.
 
-The optional adversarial reviewer is opt-in. Use a read-only subagent, give it
-`$WORK/review_packet.md` only (the gates call writes it), after the web review is open, and
-ask for findings by card number. It never rewrites or certifies.
+The adversarial reviewer is the default when a read-only subagent/task tool is available. Give it
+`$WORK/review_packet.md` only (the gates call writes it), after the web review is open or after the
+gates call when the page is skipped, and ask for findings by card number. It never rewrites or certifies. Skip only when no subagent exists
+or the caller declines. Do not rerun it after a formatting-only change; render one card instead.
 
 ## Build, cleanup, report
 
 The build command above runs gates and import validation in one call. The build refuses
 missing `intake.md`, `scope_gate.md`, and `kcs.md` unless `--allow-missing-artifacts` is for a
-draft. It also refuses unresolved `review_actions.md`, media risks, or validation errors.
+draft. It also refuses unresolved `review_actions.md` when feedback exists, media risks, or
+validation errors. A dossier is not written unless `--context` is passed; the `.apkg` is the default
+output. Name the file from the deck name with `::` replaced by `-` (e.g., `COLD-TEST.apkg`).
 
 After a successful build, delete `$WORK` in full. Do not create a source folder or keep the
 deck script. Never delete a pre-existing file. Remove `scripts/__pycache__` if present.
@@ -198,7 +212,8 @@ what the review found. The `Assumed:` line is mandatory whenever you skipped a q
 ## Stop rules
 
 - One extraction. One cards write per topic batch, plus the one media rewrite and one
-  post-feedback rewrite. One gates call per batch, plus the build's internal gate. One build.
+  post-feedback rewrite. One gates call per batch, one repeat after a fix, and one after review
+  when feedback exists; the build has its own internal gate. One build.
 - No background extraction, no `nohup`, no second extractor.
 - Never spawn a child `opencode` process (including `opencode run` or `debug`) or recursively
   invoke this skill.
@@ -243,8 +258,8 @@ Read each file once, at the step named. The rules above are the contract; refere
 | File | Read | Carries |
 |---|---|---|
 | `references/card-writing.md` | before authoring | calibration, symbols, tier-zero, anchors, cloze, recallability, provenance, topic/objects, Procedure |
-| `references/authoring.md` | before authoring | `cards.jsonl` mechanics, KC map, media policy, raw strings, batching |
-| `references/schema.md` | while writing JSON | fields, kc, objects, Basic/Cloze templates |
+| `references/authoring.md` | before authoring | fields/shapes, `cards.jsonl`, KC map, media policy, raw strings, batching |
+| `references/prompts.md` | authoring | classifier and debloater only |
 | `references/review.md` | review and follow-up | triage, score meanings, review actions, rescope |
 | `references/survey.md` | intake and extraction | source survey, learner context, deck name |
 | `references/video.md` | video sources | transcripts, playlists, frames |
@@ -264,5 +279,5 @@ Never open, copy, query, or inspect the live collection DB, even read-only.
 
 Text-first. If a source is scanned/handwritten (near-empty text with images), or a figure is
 the only source for a fact, use the separate `image-vision` skill. Never build from empty
-text. Attach only on request (`--media`); the review audits it. A structure or reaction answer
-may need a verified image or a manual Anki addition.
+text. Media follows the default (slides/video on, text-only off); the review audits it. A
+structure or reaction answer may need a verified image or a manual Anki addition.

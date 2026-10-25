@@ -6,99 +6,44 @@ Review happens in a throwaway localhost page, **not in the chat** — the chat v
 card's full text through the conversation, and `y/n/e` could not express the two signals that drive
 cutting and splitting (*too hard for me*, *I already know this cold*).
 
-### Semantic self-audit (before the page)
+### Quality rubric — one rubric, three users
 
-This is a **self-audit, not independent review**. It uses the triaged sample plus every flagged
-card; do not reload the whole corpus. Read `cards.jsonl`, `kcs.md`, and the chosen
-source. For each sampled card, write one evidence line and check:
+Use this on the triaged sample plus flagged cards. The self-audit, the adversarial reviewer, and
+the human page use the same rubric; do not maintain a second checklist.
 
-1. **Cold answer:** answer the front from this card alone. If you need a sibling, flag it.
-2. **Symbols:** list every symbol/method used and where it is defined on this card. Missing → flag.
-3. **Answer and why:** the back answers the front first; the why adds a mechanism, consequence,
-   mnemonic, or real use rather than restating the front.
-4. **Evidence:** the KC evidence quote/page anchor supports the claim; otherwise flag or mark `derived`.
-5. **Procedure:** a Procedure card names one decision. An L2 familiarity walkthrough keeps the
-   first and last steps visible and its middle blanks answerable from context.
-6. **ROI:** a look-up-able, redundant, or low-weight card is parked in `scope_gate.md` with a
-   reason, not silently kept or deleted.
+1. **Source-grounded:** locator supports the claim, or `derived` is genuinely self-contained.
+2. **One retrieval decision:** a wrong answer points to one thing to repair.
+3. **Unambiguous cue:** two experts would agree; the cue does not leak the answer.
+4. **Production, not recognition:** the front does not demand a computed value.
+5. **Conditions and symbols:** assumptions, units, and every symbol are on this card.
+6. **Near-miss discrimination:** the card separates the target from a tempting alternative.
+7. **Answer first:** the first back sentence answers the front; the why adds mechanism,
+   consequence, mnemonic, or use.
+8. **MathJax symbols:** sub/superscripts are `$P_{0}$`, `$\rho_{\text{oil}}$`; no bare `P_0`.
+9. **Self-contained front:** no “shown/this circuit/the slide” without front media; no cross-card
+   pointer.
+10. **Media bar:** a full image that illustrates the card; no title/outline/crop/whitespace.
 
-Fix or park what fails; if nothing fails, say what you checked and what you did not. “Looks good”
-is not a verdict. The human page remains the authority; a self-audit does not make the deck
-manually reviewed.
+Hard-fail an unanswerable front, computed front, unsupported source claim, cross-card pointer,
+whole-formula/prose cloze, or a Procedure card that is a worked solution. Flag a missing/unknown
+`kc`, an unresolved `requires`, or a KC whose `evidence_quote` is absent from the packet excerpt.
+Flag a KC that is a card label, a generic `why`, or a single card that is a fragment. A card count
+is not evidence of KC quality.
 
-### Reviewer card-quality checklist
+**Self-audit:** run the rubric on the sampled cards, one line each. It is not independent review
+and does not certify the deck. Fix or park what fails; say what you checked and did not check.
 
-The review is the last place these heuristics are enforced. For each shown card:
-
-- front is answerable instantly from memory; no computed value on the front;
-- one retrievable fact, not "X and Y";
-- back adds a why/mechanism, not just a restatement;
-- every symbol, unit, and named method is defined on **this card**, not elsewhere in the deck;
-- source has a page/slide/question locator;
-- tier-zero/anchor exists for formula-heavy topics;
-- scope matches the intake: no formula-sheet lookups carded as recall;
-- a Procedure card names one decision; an L2 procedure walkthrough keeps the flow visible;
-- no cross-card pointers;
-- a video/image frame actually illustrates the card and has caption/source.
-
-If the card fails one, fix the family it represents, not just the shown card. This
-checklist is why the review does not need to load the whole card-writing reference.
-
-The 1–5 scale is a **quality review**, not Anki’s Again/Hard/Good/Easy scheduling scale. It is a
-sampled quality pass, not daily study.
+**Adversarial reviewer:** default when a read-only subagent is available; skip only if none exists
+or the caller declines. Start after the web review opens. Give it `$WORK/review_packet.md` only,
+one line per sampled card, findings by card number. It never rewrites or certifies. If it returns
+no output or ends on its length limit, treat it as **not run**. Do not rerun it after a
+formatting-only change; render one card instead.
 
 **Deck shape.** Does the deck contain the card family the learner asked for? If the target is
 method selection and every reviewed card is L1 recall, flag the family.
 
 **Formatting-only changes.** A render or formatting change gets a one-card visual check, not a
 full review. Reopen the review or render one card; source inspection is not a visual check.
-
-### Adversarial subagent review (optional, opt-in only)
-
-This is an **optional independent read**, not human review and not a gate. Run it only when the
-caller explicitly asks for an adversarial/extra review and the harness has a read-only subagent.
-Otherwise skip it and do not ask a beginner a second question. If the harness supports it, the report
-may mention the option once; it stays off by default. Never spawn an `opencode` child.
-
-Start the web review first. Run the adversarial reviewer while the user reviews, or after the
-first round; it must not block the first human look. Give the reviewer **only**
-`$WORK/review_packet.md`, which the gates call writes. The packet contains the selected cards,
-their KC rows and evidence quotes, the scope gate, intake calibration, and media captions.
-
-Do not give it the full `cards.jsonl`, full `sources.md`/`transcripts.md`, or all KCs. It is a
-packet review, not a full-deck LLM audit. Coverage is the packet's selected card numbers.
-Ask for one line per sampled card. If it returns no output or ends on its length limit, treat it
-as **not run**, not as a pass. Do not rerun it after a pure formatting change.
-
-The packet is generated at the gates call. If the adversarial reviewer runs during the web review,
-it sees the pre-feedback packet. If cards change, re-run the gates call to regenerate the packet
-before another adversarial pass.
-
-Use this rubric per card. Score each dimension `0 fail`, `1 warning`, `2 pass`:
-
-1. **Self-contained:** the front is answerable from this card alone; every symbol, unit, and named
-   method is defined here.
-2. **Answer-first:** the first back sentence answers the exact question; the why adds a mechanism,
-   consequence, mnemonic, or real use.
-3. **Atomicity/cloze:** one retrieval target; labeled blanks; no whole-formula or prose cloze.
-4. **Procedure:** one decision; an L2 walkthrough keeps the first and last steps visible and its
-   middle blanks answerable from context.
-5. **Evidence:** the locator supports the claim, or `derived` is genuinely self-contained.
-6. **Scope/ROI:** not look-up-able, redundant, low-weight, or already parked.
-
-Hard-fail any card with an unanswerable front, computed front, unsupported source claim, cross-card
-pointer, whole-formula/prose cloze, or Procedure card that is a worked solution. Also flag a card
-whose `kc` is missing/unknown, whose `stratum` (if present) is not a standard family, or whose `requires` does
-not resolve. Flag a KC whose `evidence_quote` is absent or absent from the packet's cited excerpt.
-Also flag a KC that is a label for one card rather than a reusable component, whose `why` is
-generic, or whose single card is a fragment rather than a complete decision. The KC map is a
-value/coverage model; a card count is not evidence of quality.
-Do not average the scores into a percentage or reuse the learner 1–5 scale; the 98% floor is a
-product contract, not an LLM score.
-
-Ask for findings only, by card number: dimension, score, defect, evidence, rule. No rewrites, no
-scores submitted to the review log, no pass/fail certification. The main agent adjudicates, fixes
-the source, and re-runs the gates and build. Report “adversarial sample review, not manual review.”
 
 ### Review a chosen subset, not the deck
 
@@ -189,7 +134,7 @@ figure is a normal score or comment — there is no separate control.
 ### `--ask recall` — the one check nothing else makes
 
 **The 1–5 scale is the primary review. This is a second pass, never the only review**; run it
-after the scale pass, or alone only when rule 8 is in doubt. Its default log is
+after the scale pass, or alone only when recallability is in doubt. Its default log is
 `review_recall.jsonl`, so it cannot overwrite the scale scores.
 
 Rule 8 is the highest-stakes rule and nothing else enforces it: `validate_cards` catches the
@@ -206,7 +151,7 @@ python3 ~/.claude/skills/anki-gen/scripts/review_server.py \
 
 Rows carry `recall: true|false`; the finish screen lists the `false` cards as rule-8 failures —
 rewrite the front to ask about the concept, or cut it. Run it as a second pass over the same plan
-when the deck is computation-heavy, or alone when rule 8 is in doubt.
+when the deck is computation-heavy, or alone when recallability is in doubt.
 
 ### Review actions (required after feedback)
 
@@ -248,7 +193,7 @@ The risk is cross-topic anchors and duplicates.
 - **2 and 3 → keep.** Do not "improve" a card rated right.
 
 **A repeatedly-failing card is diagnostic, not just under-repeated.** Diagnose before splitting; do
-not reflexively split every hard card (rule 22):
+not reflexively split every hard card:
 
 | Symptom on review | Diagnosis | Fix (rule) |
 |---|---|---|
@@ -294,7 +239,7 @@ chat before touching anything:
    patched-not-regenerated is the failure the other way. **Edit at the width the feedback has.** A
    per-card comment is a one-line edit in `cards.jsonl`; a deck-wide rule touches every card, and
    only then is a full regenerate the honest cost. A regenerate **is** still required when the rules
-   change the deck's *shape* — cuts (rule 21), new anchors or tier-zero cards, re-balancing a topic —
+   change the deck's *shape* — cuts, new anchors or tier-zero cards, re-balancing a topic —
    because those change which cards should exist.
 4. **Apply the rules to the withheld cards.** `review_plan.json`'s `second_round` names the topics,
    strata and flag patterns the subset did not show; they belong to the same families, so the same

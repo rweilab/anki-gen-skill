@@ -355,6 +355,13 @@ def main() -> int:
                              source="A control volume is fixed. Apply the steady-flow equation.")
     assert data["valid"] is True and not any("evidence_quote" in w for w in data["warnings"]), data
     print("ok    KC evidence is grounded; derived and legacy maps are handled")
+    quoted_ledger = ledger.replace(
+        "| Lec 04 p.3 | A control volume is fixed. | — |",
+        "| Lec 04 p.3 | \"A control volume is fixed.\" | — |")
+    data, _ = validate_with(kc_cards, ledger=quoted_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    print("ok    quoted evidence cells are accepted")
 
     procedure = dict(BASE, layer="Procedure",
                      front="A block on a rough incline. Determine the acceleration. Which method applies?",

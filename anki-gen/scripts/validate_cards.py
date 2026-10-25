@@ -151,6 +151,15 @@ def _norm_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip().casefold()
 
 
+def _unquote(text: str) -> str:
+    """Strip matching straight or curly quotes from a quoted evidence cell."""
+    text = str(text or "").strip()
+    for first, last in (('"', '"'), ("'", "'"), ("“", "”"), ("‘", "’")):
+        if len(text) >= 2 and text[0] == first and text[-1] == last:
+            return text[1:-1].strip()
+    return text
+
+
 def _requires(raw: str) -> list[str]:
     raw = str(raw or "").strip()
     if not raw or raw in {"-", "—", "none", "None", "[]"}:
@@ -199,7 +208,7 @@ def parse_kc_map(text: str) -> tuple[dict[str, dict], list[str], bool, bool]:
             claim = values.get("claim", "")
             why = values.get("why") or values.get("value", "")
             source = values.get("source", "")
-            evidence = values.get("evidence_quote", "")
+            evidence = _unquote(values.get("evidence_quote", ""))
             raw_requires = values.get("requires", "")
         else:
             kc_id, kc_type, claim, source = cells[:4]
@@ -278,8 +287,8 @@ def kc_findings(cards: list[dict], kc_text: str,
             out.append(("warn", f"KC {kc_id!r} has no cards; coverage gap"))
         elif count == 1 and row["type"] in {"concept", "mechanism"}:
             out.append(("warn", f"KC {kc_id!r} is a single-card {row['type']}; "
-                               "justify it in `why` or add a second retrieval angle "
-                               "only if it adds value"))
+                               "confirm the `why` is a complete value case. "
+                               "No filler card is required."))
         for req in row["requires"]:
             if req != "external" and req not in kcs:
                 out.append(("err", f"KC {kc_id!r} requires unknown KC {req!r}"))
@@ -638,7 +647,7 @@ def findings(cards):
     for topic, count in sorted(formula_topics.items()):
         if count >= 3 and topic not in tier_topics:
             add(0, "warn",
-                f"topic {topic!r} has {count} formula cards and no tier-zero "
+                f"topic {topic!r} has {count} formula-bearing cards and no tier-zero "
                 "concept card; consider one, but do not add it automatically")
     if len(cards) >= 8:
         singles = sorted(t for t, n in topics.items() if n == 1)

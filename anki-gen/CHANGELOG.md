@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.5** — Default quality path, opt-in revision context, one quality contract, and design axioms
 - **v1.5.4** — Seven-step runbook, compact KCs, exact gates, and explicit done states
 - **v1.5.3** — Review rescope gate, KC map, and evidence grounding
 - **v1.5.2** — Installer resilience and whisper.cpp fallback for local audio
@@ -29,7 +30,59 @@ These are deliberate, not forgotten:
 - **Full semantic duplicate detection and per-deck analytics.** Useful later; not on the critical
   path for the KC/review work.
 
+## v1.5.5 — Default quality path, opt-in revision context, one quality contract
+
+*This release closes the v1.5.3–v1.5.5 alignment reset: KCs made coverage concept-level, the
+16-stage spec became a seven-step runbook, and the quality path became the default so a capable
+model has fewer places to drift.*
+
+### Changed
+
+**Defaults**
+- The adversarial reviewer is now the default when a read-only subagent is available. It runs after
+  the web review opens, reads `review_packet.md` only, and never blocks the human review. Skip only
+  when no subagent exists or the caller declines. No output or a length-limit finish means not run.
+- Images default on for slide and video sources, off for text-only sources. Ambiguous images still
+  go through one batched vision pass; no per-image calls.
+- Dossier packing is opt-in with `--context`. The default build leaves only the `.apkg`; revision
+  context is explicit. `--no-context` remains accepted as a deprecated no-op.
+- No-human path: skip the web page, say "not manually reviewed; static checks only," run the
+  adversarial pass after the gates call when a subagent exists, and report `NOT REVIEWED`.
+
+**One quality contract**
+- `references/prompts.md` is reduced to the classifier and a short debloater note. The writer and
+  verifier prompts are removed; their unique retrieval-angle and density guidance moved into
+  `card-writing.md`.
+- The old schema reference is merged into `authoring.md` and deleted. `authoring.md` now owns fields,
+  card shapes, KCs, media, and batching.
+- `references/review.md` now has one 10-item quality rubric used by the self-audit, the adversarial
+  reviewer, and the human page. The duplicate self-audit and reviewer checklists are gone.
+- `references/card-writing.md` is trimmed of duplicated KC, topic, and field prose, and its stale
+  old rule numbers are replaced with the ten hard-rule references.
+- KC evidence cells accept matching straight or curly quotes; the gate strips them before checking.
+  The single-card concept warning now says no filler card is required.
+
+**Maintainer knowledge**
+- `MAINTAINERS.md` gains `## Design axioms` (including the alignment-budget axiom: more systems and
+  more context eventually reduce alignment), a decision ladder, a do-not-resurrect list, and
+  research anchors with source links.
+- `maintainers/lessons.md` gains `## Architecture failure modes` from the 89-card PH2023 run.
+- `AGENTS.md` points maintainers at the axioms and research anchors, and requires a cold dry-run
+  after smoke for runtime changes.
+- `maintainers/cold-audit.md` records the dry-run protocol: a fresh agent reads `SKILL.md` and
+  attempts the skill end to end in `/tmp`, then reports breaks and ambiguities. A clean run is not
+  certification; passing tests only show expected paths do not syntactically fail.
+- Legacy `author.py`, `new_cards.py`, and `parse_intent.py` remain available but are documented as
+  legacy/test-only; deleting them would break external scripts and is not part of this cleanup.
+
+### Notes
+
+- No deck schema bump. Existing decks and dossiers still build.
+- `VERSION` is 1.5.5.
+- No new runtime command, flag, or artifact beyond `--context`; no media or revision split.
+
 ## v1.5.4 — Seven-step runbook, compact KCs, exact gates, and explicit done states
+
 
 ### Added
 
@@ -70,7 +123,7 @@ These are deliberate, not forgotten:
 - `validate_cards.py` makes `stratum` optional; accepts `# KCs` or `## KCs`; allows single-card
   KCs with a `why`; warns on single-card `concept`/`mechanism` and 1:1 maps; errors on duplicate
   claims; and keeps legacy `authoring_ledger.md` parsing for old decks and tests.
-- `references/schema.md`, `card-writing.md`, `review.md`, and `prompts.md` now describe `kcs.md`,
+- `references/authoring.md`, `card-writing.md`, `review.md`, and `prompts.md` now describe `kcs.md`,
   optional `stratum`, and KC-level evidence quotes.
 - The pipeline `NEXT` hint and evidence line point at `kcs.md`.
 
@@ -104,6 +157,7 @@ These are deliberate, not forgotten:
 - No `VERSION` bump is implied for future changes; this section matches `VERSION` 1.5.4.
 
 ## v1.5.3 — Review rescope gate, KC map, and evidence grounding
+
 
 ### Added
 
@@ -342,6 +396,7 @@ These are deliberate, not forgotten:
 
 ## v1.5.0 — Imported-deck revision and persistent context
 
+
 ### Added
 - AnkiConnect-only revision for imported decks: attach, audit, plan, apply, snapshot, and
   revert. Unavailable AnkiConnect fails with a setup message and nonzero exit; new `.apkg`
@@ -511,6 +566,7 @@ These are deliberate, not forgotten:
 
 ## v1.4 — Visual source refinement
 
+
 ### Added
 - Shared `scripts/visual.py`: edge focus, colour, background, text-wall detection,
   and perceptual hashes; video frames and PDF raster figures use the same score.
@@ -631,6 +687,7 @@ These are deliberate, not forgotten:
 
 ## v1.3 — Video sources and shipping
 
+
 ### Added
 - `extract_video.py`: YouTube single video/playlist, videos x–z, timestamped
   transcripts, manual/auto captions, no Whisper, full
@@ -675,6 +732,7 @@ These are deliberate, not forgotten:
   the rewritten installer; no zip is built by this change.
 
 ## v1.2 — Review fidelity, guards, and token discipline
+
 
 ### Changes (before → after)
 
@@ -753,12 +811,14 @@ Only changed values or behavior are shown here; new features are listed below.
 
 ## v1.1 — macOS handoff kit
 
+
 ### Added
 - `doctor.py` and `setup_macos.sh`, user-site Python installs, manual Anki
   import, an install/package handoff zip, and the `image-vision` key-file
   fallback.
 
 ## v1.0 — Base build
+
 
 ### Local build
 - PDF/text extraction, card writing, static validation, Anki build, and a local

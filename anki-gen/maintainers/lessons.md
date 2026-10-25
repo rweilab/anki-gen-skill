@@ -132,6 +132,34 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   templates (no notetype implements them), and the lettered check labels (`A3`, `B4`) in favour of
   rule numbers.
 
+## Architecture failure modes
+
+Observed on the PH2023 v1.5.4 run; use these as audit patterns, not new gates.
+
+- **The run was 298 tool calls and 38.3M cache for 89 cards.** 76% of cache was after the first
+  review. Initial authoring was ~24%; the rest was review/fix loops.
+- **138 edits.** 16 media edits, 59 review edits, 51 MathJax edits, 9 mid-run adaptation edits.
+  The one-card edit loop is the largest avoidable cost.
+- **The MathJax pass was 51 edits for 51 symbols.** A global formatting change should be one
+  rewrite. The gate now warns on bare `X_y`, so the model can author it correctly the first time.
+- **The `<br>` fix used five builds and five gates.** The source was fixed, but the final
+  formatting was not visually re-reviewed. A formatting change needs one rendered-card check.
+- **The second adversarial pass returned zero output on a length limit.** It was not a pass.
+  Treat no-output/length-limit as not run; do not rerun after a formatting-only change.
+- **The mid-run v1.5.4 schema change forced four gates, nine edits, and a build.** Do not edit the
+  live skill during a deck run; a gate schema cannot change under a running model.
+- **The model read the full 27KB card-writing guide, 20KB review guide, and 45KB study log before
+  authoring.** It hit 220k context before the first review. Intake opens only `survey.md` and the
+  study-log calibration summary.
+- **The final built fields contain real `<br>` HTML tags and zero escaped `&lt;br>`.** That is the
+  renderer's hard-break output, not source text. The review page was not reopened after the fix;
+  that was the verification gap, not the HTML.
+- **Residual quality defects survive a clean gate.** Card 6 still had plaintext `Vsphere`/`Asphere`;
+  the first adversarial pass flagged one and it was not fixed. The one-rubric review and MathJax
+  rule exist to catch that earlier.
+- **The 89-card deck stayed under its own `Ceiling: 90` and used 23 KCs, not a 1:1 map.** The
+  KC value policy worked; the problem was post-review edit discipline, not card-count pressure.
+
 ### Review and knowledge-component lessons
 
 - **A review log that is not a build input is advice, not a loop.** The web page can be perfect and
