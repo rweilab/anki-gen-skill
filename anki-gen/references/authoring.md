@@ -57,7 +57,7 @@ single `\frac` can become a formfeed and corrupt the card. The validator catches
 characters; fix them, do not disable the check.
 
 Use the course's vocabulary. Define every symbol with units. Put the answer in the first
-back sentence, then the why. Do not put a computed value on a front, a cross-card pointer in
+back sentence, then the why. Do not put a computed final value on a front, a cross-card pointer in
 a back, or an answer-leaking term in `topic`/`objects`.
 
 ## Batching

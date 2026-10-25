@@ -59,6 +59,27 @@ model has fewer places to drift.*
   reviewer, and the human page. The duplicate self-audit and reviewer checklists are gone.
 - `references/card-writing.md` is trimmed of duplicated KC, topic, and field prose, and its stale
   old rule numbers are replaced with the ten hard-rule references.
+- `references/review.md` now checks text integrity and front/back relevance in the same rubric:
+  no vague/orphaned fragment, truncation, page furniture, broken glyph, or back that answers a
+  different question. Standard-looking symbols still count as undefined unless named on the card,
+  and cross-context pointers (“the table above”) are hard fails. The validator warns on dangling
+  endings, replacement characters, and generic fronts; semantic mismatch stays with the reviewer
+  and human.
+- Procedure review distinguishes equation selection from memory, allows problem data and an
+  equation sheet, and fails final numeric values, worked/remaining solutions, and duplicate
+  targets. A generic “calculate” cue is a FIX, not a hard fail. The validator recognizes
+  equation/formula/relation/model/first-step decisions, and the classifier no longer excludes
+  method/next-step problem-solving fronts.
+- The noisy front-similarity heuristic and the enzyme-specific answer proxy were removed. `--deep`
+  remains for answer-overlap checks; `roi_report --deep` remains the debloat path.
+- Computation-front errors now name the offending verb and suggest a method/meaning rephrase.
+  `Ceiling: N` is explicitly set before cards, from scope, so it cannot be back-filled to the
+  number just written.
+- Symbol-bearing cards without a glossary/definition line now warn instead of reporting info.
+  The detector counts simple math variables and recognizes inline `where`/`let` definitions, so a
+  formula-only back no longer counts as its own glossary.
+- Yes/no fronts with yes/no backs now warn, and the adversarial instruction explicitly fails
+  fronts that contain or cue their own answer and multiple-choice/recognition prompts.
 - KC evidence cells accept matching straight or curly quotes; the gate strips them before checking.
   The single-card concept warning now says no filler card is required.
 
@@ -67,8 +88,12 @@ model has fewer places to drift.*
   more context eventually reduce alignment), a decision ladder, a do-not-resurrect list, and
   research anchors with source links.
 - `maintainers/lessons.md` gains `## Architecture failure modes` from the 89-card PH2023 run.
-- `AGENTS.md` points maintainers at the axioms and research anchors, and requires a cold dry-run
-  after smoke for runtime changes.
+- `AGENTS.md` points maintainers at the axioms and research anchors, requires a cold dry-run
+  after smoke for runtime changes, and makes “is there a way to reduce overall complexity?” the
+  first question for every change.
+- `MAINTAINERS.md` makes the same complexity question the entry point of its complexity budget:
+  fewer systems, artifacts, commands, checks, gates, steps, and prose; if a change adds runtime
+  surface, it must name what it replaces.
 - `maintainers/cold-audit.md` records the dry-run protocol: a fresh agent reads `SKILL.md` and
   attempts the skill end to end in `/tmp`, then reports breaks and ambiguities. A clean run is not
   certification; passing tests only show expected paths do not syntactically fail.

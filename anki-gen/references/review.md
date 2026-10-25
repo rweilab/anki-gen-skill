@@ -12,20 +12,28 @@ Use this on the triaged sample plus flagged cards. The self-audit, the adversari
 the human page use the same rubric; do not maintain a second checklist.
 
 1. **Source-grounded:** locator supports the claim, or `derived` is genuinely self-contained.
-2. **One retrieval decision:** a wrong answer points to one thing to repair.
-3. **Unambiguous cue:** two experts would agree; the cue does not leak the answer.
-4. **Production, not recognition:** the front does not demand a computed value.
-5. **Conditions and symbols:** assumptions, units, and every symbol are on this card.
+2. **One retrieval decision:** a wrong answer points to one thing to repair. It is not a duplicate
+   of another card’s target; a contrastive pair is fine.
+3. **Clean, unambiguous cue:** a reader can tell what is asked; no vague or orphaned fragment,
+   truncated sentence, repeated page header/footer, broken glyph, or extraction debris.
+4. **Production, not recognition:** the front does not demand a final numeric value (basic
+   counting of visible steps/items is allowed), contain its own answer, or reduce to a yes/no or
+   multiple-choice recognition prompt. A Procedure card may show problem data and an equation sheet.
+5. **Conditions and symbols:** assumptions, units, and every symbol are on this card. A
+   standard-looking symbol is still undefined unless the card names it and its units.
 6. **Near-miss discrimination:** the card separates the target from a tempting alternative.
-7. **Answer first:** the first back sentence answers the front; the why adds mechanism,
-   consequence, mnemonic, or use.
+7. **Answer first and related:** the first back sentence answers the front; a vague front or a
+   back that answers something else is a hard fail.
 8. **MathJax symbols:** sub/superscripts are `$P_{0}$`, `$\rho_{\text{oil}}$`; no bare `P_0`.
-9. **Self-contained front:** no “shown/this circuit/the slide” without front media; no cross-card
-   pointer.
+9. **Self-contained front and back:** no “shown/this circuit/the slide” without front media; no
+   cross-card or cross-context pointer (“the table above”, “the previous result”, “the earlier
+   example”).
 10. **Media bar:** a full image that illustrates the card; no title/outline/crop/whitespace.
 
-Hard-fail an unanswerable front, computed front, unsupported source claim, cross-card pointer,
-whole-formula/prose cloze, or a Procedure card that is a worked solution. Flag a missing/unknown
+Hard-fail an unanswerable or vague front, a back unrelated to the front, obvious extraction
+debris/truncation, a computed final value, an unsupported source claim, a cross-card or
+cross-context pointer, a whole-formula/prose cloze, or a Procedure card that is a worked or
+remaining solution. Flag a missing/unknown
 `kc`, an unresolved `requires`, or a KC whose `evidence_quote` is absent from the packet excerpt.
 Flag a KC that is a card label, a generic `why`, or a single card that is a fragment. A card count
 is not evidence of KC quality.
@@ -35,9 +43,23 @@ and does not certify the deck. Fix or park what fails; say what you checked and 
 
 **Adversarial reviewer:** default when a read-only subagent is available; skip only if none exists
 or the caller declines. Start after the web review opens. Give it `$WORK/review_packet.md` only,
-one line per sampled card, findings by card number. It never rewrites or certifies. If it returns
-no output or ends on its length limit, treat it as **not run**. Do not rerun it after a
-formatting-only change; render one card instead.
+one line per sampled card: `KEEP|FIX|FAIL | card number | one-line reason`. Use the one rubric for
+source, symbols, and media, then apply this decision/overlap pass:
+
+- Reduce each front to the exact answer it demands.
+- FAIL when the demand is a final numeric value requiring computation (basic counting of visible
+  steps/items is allowed), when the back is a worked or remaining solution, when the front demands
+  more than one decision, has no explicit question, or cues its own answer, when the card is yes/no
+  or multiple-choice recognition, or when it duplicates another card’s target unless the pair is
+  contrastive. Fail the redundant duplicate, not both.
+- KEEP a card only when the front is self-contained — the equation, every symbol, and any
+  “left side/this equation” are on the card — and the back names the decision with its condition
+  or reason. Problem data and an equation sheet are allowed; Procedure cards are expected.
+- FIX a valid decision card with a generic “calculate/compute” cue, a missing selecting condition,
+  or an undefined symbol/context.
+
+It never rewrites or certifies. If it returns no output or ends on its length limit, treat it as
+**not run**. Do not rerun it after a formatting-only change; render one card instead.
 
 **Deck shape.** Does the deck contain the card family the learner asked for? If the target is
 method selection and every reviewed card is L1 recall, flag the family.

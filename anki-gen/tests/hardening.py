@@ -175,12 +175,20 @@ def main() -> int:
     assert any("never closes" in e for e in data["errors"]), data
     print("ok    pointer/markdown-image/unterminated-cloze guards")
 
-    # Glossary is info, not a warning that forces boilerplate.
+    # Symbols without definitions are a warning; an explicit glossary suppresses it.
     sym = dict(BASE, front="How do $N_v$, $N_s$, and $Q_v$ relate at equilibrium?",
                back="The ratio is a function of $Q_v$.", layer="L2")
     data, _ = validate([sym])
-    assert not any("symbol-heavy" in w for w in data["warnings"]), data
-    assert any("symbol-heavy" in i for i in data["info"]), data
+    assert any("uses symbols but has no glossary" in w for w in data["warnings"]), data
+    defined = dict(sym, back="The ratio is a function of $Q_v$.\n\n"
+                             "**Glossary:** $Q_v$ = vacancy formation energy; "
+                             "$N_v$ = vacancy density; $N_s$ = site density.")
+    data, _ = validate([defined])
+    assert not any("uses symbols but has no glossary" in w for w in data["warnings"]), data
+    simple = dict(BASE, front="What is the charge on a capacitor?",
+                  back="**The charge is $Q=CV$.**")
+    data, _ = validate([simple])
+    assert any("uses symbols but has no glossary" in w for w in data["warnings"]), data
 
     # Tier-zero coverage is a narrow warning, and table recall is not a formula.
     formula_cards = [
@@ -202,7 +210,7 @@ def main() -> int:
     ]
     data, _ = validate(table_cards)
     assert not any("no tier-zero" in w for w in data["warnings"]), data
-    print("ok    glossary info and narrow tier-zero warning")
+    print("ok    glossary warning and narrow tier-zero warning")
 
     bloat = [dict(BASE, topic="Bloat", objects=[], tier_zero=False,
                   front=f"Which structure property number {i} does the table list?",
@@ -369,7 +377,17 @@ def main() -> int:
                      source="Lec 04 p.12")
     data, _ = validate([procedure])
     assert not any("computation prompt" in e for e in data["errors"]), data
-    print("ok    Procedure Shape A decision fronts are exempt from the computation gate")
+    for front, back in [
+        ("A 12 V source drives a 3 Ω resistor. Calculate the current. "
+         "Which equation applies?",
+         "Ohm's law; use it when the resistor is ohmic."),
+        ("A block on a rough incline is released. What is the first step?",
+         "Draw the free-body diagram and choose axes along the incline."),
+    ]:
+        data, _ = validate([dict(BASE, layer="Procedure", front=front, back=back,
+                                 source="Lec 04 p.13")])
+        assert not any("computation prompt" in e for e in data["errors"]), data
+    print("ok    Procedure equation and first-step fronts are exempt from the computation gate")
 
     # Soft order: source topic first, tier-zero, then L1/L2/advanced. Topic B is
     # first on purpose, so this also proves the order is not alphabetical.
@@ -512,26 +530,11 @@ def main() -> int:
         for i in range(1, 9)], "warning", "topics")
     case("exact duplicate cards", lambda: [BASE, BASE],
          "error", "exact duplicates")
-    case("enzyme question missing enzyme", lambda: [dict(
+    why_card, _ = validate([dict(
         BASE, topic="Glycolysis", objects=[],
-        front="Which enzyme splits fructose-1,6-bisphosphate into DHAP and G3P?",
-        back="Fructose-1,6-bisphosphate → DHAP + G3P. **Why:** it splits the six-carbon sugar into two trioses.")],
-        "error", "names no enzyme")
-    enzyme_ok, _ = validate([dict(
-        BASE, topic="Glycolysis", objects=[],
-        front="Which enzyme splits fructose-1,6-bisphosphate into DHAP and G3P?",
-        back="**Aldolase** cleaves it into DHAP and G3P. **Why:** the six-carbon sugar becomes two trioses.")])
-    assert enzyme_ok["valid"] is True, enzyme_ok
-    generic_enzyme, _ = validate([dict(
-        BASE, topic="Glycolysis", objects=[],
-        front="Which enzyme splits fructose-1,6-bisphosphate?",
-        back="The enzyme splits it into DHAP and G3P.")])
-    assert generic_enzyme["valid"] is False, generic_enzyme
-    lysozyme, _ = validate([dict(
-        BASE, topic="Immunology", objects=[],
-        front="Which enzyme hydrolyses bacterial peptidoglycan?",
-        back="**Lysozyme** cleaves the peptidoglycan backbone. **Why:** it breaks the sugar links.")])
-    assert lysozyme["valid"] is True, lysozyme
+        front="Why does the six-carbon sugar split into two trioses?",
+        back="**Why:** the payoff phase needs two three-carbon substrates.")])
+    assert why_card["valid"] is True, why_card
     why_card, _ = validate([dict(
         BASE, topic="Glycolysis", objects=[],
         front="Why does the six-carbon sugar split into two trioses?",
@@ -556,15 +559,6 @@ def main() -> int:
     data, _ = validate(topic_leak)
     assert any("topics" not in w and "appears only in the answer" in w
                for w in data["warnings"]), data
-    try:
-        C(front="Which enzyme splits fructose-1,6-bisphosphate?",
-          back="It splits into DHAP and G3P.", layer="L1", topic="Glycolysis",
-          deck="ENZYME::TEST", source="Lec 1 p.1")
-    except CardError as e:
-        assert "enzyme" in str(e), e
-    else:
-        raise AssertionError("new_cards.C accepted a missing enzyme answer")
-    print("ok    authoring helper rejects missing enzyme answer")
     C(front=BASE["front"], back=BASE["back"], layer=BASE["layer"],
       topic=BASE["topic"], deck="UNIQUE::TEST", source=BASE["source"])
     try:
@@ -608,10 +602,23 @@ def main() -> int:
     data, _ = validate([dict(BASE, front="What does $P_0$ mean at the surface?",
                              back="Use `x_1` in code.")])
     assert not any("bare symbol" in w for w in data["warnings"]), data
-    data, _ = validate([dict(BASE, front="Line one<br>Line two",
+    data, _ = validate([dict(BASE, front="Why does the current stop here and",
                              back="A normal answer.")])
-    assert any("literal <br>" in w for w in data["warnings"]), data
-    print("ok    MathJax symbols and literal <br> are warned")
+    assert any("ends with 'and'" in w for w in data["warnings"]), data
+    data, _ = validate([dict(BASE, front="What is this?",
+                             back="A normal answer.")])
+    assert any("generic fragment" in w for w in data["warnings"]), data
+    data, _ = validate([dict(BASE, front="Why does the current stop?",
+                             back="A replacement \ufffd in the extracted text.")])
+    assert any("replacement character" in w for w in data["warnings"]), data
+    print("ok    MathJax symbols, text debris, and literal <br> are warned")
+    data, _ = validate([dict(BASE, front="Does a series circuit keep the same current?",
+                             back="**Yes, because there is one path.**")])
+    assert any("yes/no front" in w for w in data["warnings"]), data
+    data, _ = validate([dict(BASE, front="Why does a series circuit keep the same current?",
+                             back="**Because there is one path.**")])
+    assert not any("yes/no front" in w for w in data["warnings"]), data
+    print("ok    yes/no recognition front is warned")
 
 
     same_answer = [

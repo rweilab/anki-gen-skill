@@ -49,6 +49,14 @@ schema change under a running model forces rework.
 Read `MAINTAINERS.md` § Design axioms and § Research anchors before changing a stage, reference,
 script, gate, or command. Remember: more systems and more context eventually reduce alignment.
 
+## Complexity review
+
+For every change, feature, or implementation suggestion, ask first: **is there an implementation
+that reduces the overall complexity of the skill/repo?** Prefer fewer systems, artifacts, commands,
+checks, gates, steps, and prose — not the simplest local code at any cost, but the change that
+removes more surface than it adds. If it adds runtime surface, name what it replaces. Record the
+answer in the changelog or handoff.
+
 ## Independent maintainer audit
 
 Before calling a change to `SKILL.md`, references, stage flow, commands, or pipeline behavior good:

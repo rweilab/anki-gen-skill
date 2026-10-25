@@ -213,6 +213,12 @@ Do not implement this in v1.4.x. Notes only:
 
 ## Complexity budget
 
+**Every change starts with one question:** is there an implementation that reduces the overall
+complexity of the skill/repo — fewer systems, artifacts, commands, checks, gates, steps, and prose
+— instead of adding? If it adds runtime surface, name what it replaces. “Simple code” is not enough;
+the goal is a smaller surface a future agent can follow without drifting.
+
+
 The runtime path is deliberately small. Before adding a runtime artifact, command, or stage:
 
 1. Can an existing artifact or command carry it? Use that.

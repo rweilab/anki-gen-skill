@@ -62,7 +62,7 @@ read only the current step's reference; do not read ahead. More context is not b
 5. **Review.** Start the web review. Wait. Run one adversarial subagent pass by default when a
    read-only subagent is available; skip only if unavailable or the caller declines. If no human
    reviewer is available, skip the page, say "not manually reviewed; static checks only," and still
-   run the adversarial pass after the gates call. Read only low scores and comments. Apply all
+   run the adversarial pass after the gates call if a subagent is available. Read only low scores and comments. Apply all
    feedback in one rewrite. If feedback exists, run one gates call to create `review_actions.md`;
    fill every score-1 action/target, set `status: resolved`, then build.
 6. **Build.** Run one build call. It validates the real import.
@@ -137,8 +137,9 @@ Rules, all scale-free:
   fires; the review still judges the KC. The card’s `topic` is its scope link.
 
 A KC with no cards is a warning: remove it from the map or park it in `scope_gate.md` with a
-reason. `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards; the gate warns when
-the deck exceeds it but never auto-cuts. The human decides.
+reason. `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards. Set it **before** writing
+cards, from the caller's target/scope; do not set it to the number you just wrote. The gate warns
+when the deck exceeds it but never auto-cuts. The human decides.
 
 ## Media
 

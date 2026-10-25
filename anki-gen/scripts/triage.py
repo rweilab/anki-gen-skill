@@ -76,7 +76,7 @@ def _short(msg: str) -> str:
 def flagged_reasons(cards: list[dict]) -> dict[int, list[str]]:
     """card number -> the reasons the validators distrust it. Info lines excluded.
 
-    Exact normalized duplicates are surfaced here; soft front/answer similarity is
+    Exact normalized duplicates are surfaced here; soft answer-overlap similarity is
     intentionally not part of the default triage path.
     """
     out: dict[int, list[str]] = {}

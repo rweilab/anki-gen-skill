@@ -10,7 +10,7 @@ the deck still imported fine, it just looked broken on screen.
   4. forbidden fronts          computation demands (see FORBIDDEN below)
   5. empty / stub cards
   6. near-duplicate fronts
-  7. glossary signal           symbol card without a definitions section (info)
+  7. glossary signal           symbol card without a definitions section (warning)
   8. missing provenance        no `source`, or a source with no locator
   9. KC coverage              missing/unknown kc, unresolved requires, 1:1 map
  10. evidence quote           source-dependent quote missing or not in the extract
@@ -20,7 +20,6 @@ import json
 import re
 import sys
 from collections import Counter
-from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -102,8 +101,9 @@ def is_computation_prompt(front: str) -> str | None:
     High-precision heuristic. Catches the explicit given-data-plus-value-out shape;
     blind to computation demands phrased without given data.
     """
-    if FORBIDDEN_FRONT.search(front):
-        return "explicit computation verb"
+    match = FORBIDDEN_FRONT.search(front)
+    if match:
+        return f"explicit computation verb {match.group(0)!r}"
     f = re.sub(r"\$[^$]+\$", " MATH ", front)      # math payload is given data, not phrasing
     if GIVEN_DATA.search(f) and ASKS_VALUE.search(f) and QUANTITY.search(front):
         return "supplies given data and asks for a value out"
@@ -114,13 +114,21 @@ def is_computation_prompt(front: str) -> str | None:
 # Symbols whose meaning the exam expects you to be able to state.
 STRUCT_GLOSSARY = re.compile(
     r"\*\*(?:glossary|symbols|legend|notation)\b"
-    r"|^\s*[-*]?\s*\$?\\?[A-Za-z]_?\{?[A-Za-z0-9]*\}?\$?\s*=", re.I | re.M)
+    r"|\$[^$]+\$(?:\s*(?:,|and)\s*\$[^$]+\$)*\s+(?:is|are|denotes|means)\b"
+    r"|\blet\s+\$[^$]+\$(?:\s*(?:,|and)\s*\$[^$]+\$)*\s+be\b"
+    r"|\$[^$]+\$\s*=\s*[^$\n]*\b[a-z]{2,}\b"
+    r"|^\s*(?:[-*]\s*)?\$?\\?[A-Za-z][A-Za-z0-9_]*\$?\s*(?:=|—|:)\s+.*\b[a-z]{2,}\b",
+    re.I | re.M)
 
 TIER_ZERO = re.compile(r"tier\s*[- ]?zero|tier\s*0", re.I)
 CMP = re.compile(r'(lowest|highest|most|least|rank|among)\b', re.I)
 FORMULA = re.compile(r"\$[^$]+\$|\b(?:formula|equation)\b", re.I)
 CODE_SPAN = re.compile(r"`[^`]*`", re.S)
 MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+YES_NO_FRONT = re.compile(
+    r"^\s*(?:\*\*)?(?:is|are|does|do|can|could|will|would|should|has|have|was|were|did)\b",
+    re.I)
+YES_NO_BACK = re.compile(r"^\s*(?:\*\*)?(?:yes|no)\b", re.I)
 POINTER = re.compile(
     r"\b(?:see|refer to|check)\b[^.?!\n]{0,40}\bcard\b"
     r"|\b(?:the|this|that)\s+(?:next|previous|above|below|earlier|later)\s+card\b",
@@ -132,10 +140,18 @@ BARE_SUB = re.compile(
     r"(?<![A-Za-z0-9])(?:[A-Za-zρ]|[A-Z][A-Z]?)_"
     r"(?:[A-Za-z0-9]{1,16}|\{[A-Za-z0-9]{1,16}\})")
 HTML_BR = re.compile(r"<br\s*/?>", re.I)
+TRUNCATED_END = re.compile(
+    r"(?:[,;:(\[{\-–—/]|\b(?:and|or|of|to|with|for|in|on|by|from|as|at|the))\s*$",
+    re.I)
+GENERIC_FRONT = re.compile(
+    r"(?:why|what|how|when|where|which|who|what is (?:this|it)|"
+    r"why is (?:this|it)|explain (?:this|it))\??", re.I)
 
 PROCEDURE_DECISION = re.compile(
-    r"\b(?:which|what)\b[^?\n]{0,80}\b(?:method|principle|law|test|approach|"
-    r"technique|next step|next move|first move)\b|\bwhat are the next steps\b", re.I)
+    r"\b(?:which|what)\b[^?\n]{0,80}\b(?:method|principle|law|equation|formula|"
+    r"relation|model|test|approach|technique|next step|next move|first step|"
+    r"first move)\b|\bwhat (?:are the next steps|do you do next|should you do next)\b",
+    re.I)
 
 # Card families. `stratum` is the retrieval form; `kc` groups cards by the
 # knowledge component they practice. Keep the set small so triage and review
@@ -452,9 +468,9 @@ def findings(cards):
         front, back = str(c.get("front", "")), str(c.get("back", ""))
         layer = c.get("layer", "")
 
-        if ENZYME_ASK.search(front) and not ENZYME_NAME.search(back):
-            add(i, "err", f"{label} -- front asks which enzyme but the back names no "
-                          "enzyme (answer first, then explain)")
+        if YES_NO_FRONT.search(front) and YES_NO_BACK.search(back):
+            add(i, "warn", f"{label} -- yes/no front with a yes/no answer; ask for the "
+                          "reason or a decision, not recognition")
 
         # 1. escape corruption
         for f, t in (("front", front), ("back", back)):
@@ -586,14 +602,18 @@ def findings(cards):
                         "so, give the second question its own card.")
                     break
 
-        # 7. glossary presence on symbol-bearing cards. Info, not warning: a
-        # forced glossary on every symbol card is over-scaffolding, which hurts
-        # an expert learner. The review checklist still asks for it.
-        has_sym = len(set(SYM.findall(front) + SYM.findall(back))) >= 3
+        # 7. glossary presence on symbol-bearing cards. Warning, not a gate: a
+        # formula full of variables is not self-contained without definitions.
+        # Simple math variables count too; a formula-only back is not a glossary.
+        math_text = " ".join(MATH_SPAN.findall(front + "\n" + back))
+        math_text = re.sub(r"\\(?:text|mathrm)\{[^}]*\}", " ", math_text)
+        math_text = re.sub(r"\\[A-Za-z]+", " ", math_text)
+        math_vars = set(re.findall(r"[A-Za-zρ]", math_text))
+        has_sym = bool(set(SYM.findall(front) + SYM.findall(back)) | math_vars)
         if has_sym and layer in {"L1", "L2"} and not STRUCT_GLOSSARY.search(back):
-            add(i, "info",
-                f"{label} -- symbol-heavy card with no glossary/definition "
-                "in the back; check it during review rather than adding boilerplate")
+            add(i, "warn",
+                f"{label} -- card uses symbols but has no glossary/definition "
+                "line; name each symbol and its units on the card")
 
         # 9. unterminated cloze deletion. Anki closes at the first '}}'; a card
         # with no close at all renders the remainder as literal text. Braces
@@ -688,7 +708,6 @@ def findings(cards):
     return out
 
 
-DUPLICATE_FRONT_RATIO = 0.85
 
 
 def _norm_card(c: dict) -> tuple[str, str]:
@@ -701,9 +720,8 @@ def exact_duplicate_pairs(cards) -> list[tuple[int, int]]:
     """1-based pairs whose normalized front+back are identical.
 
     Deterministic and O(n). This is the only in-deck duplicate check on the
-    default path; near-duplicate/front-similarity heuristics are opt-in via
-    `--deep`, because on a real deck they produced contrast false positives and
-    cost more model attention than they saved.
+    default path; soft answer-overlap similarity is opt-in via `--deep`, because
+    front-only similarity produced contrast false positives on a real deck.
     """
     seen: dict[tuple[str, str], int] = {}
     out = []
@@ -714,31 +732,6 @@ def exact_duplicate_pairs(cards) -> list[tuple[int, int]]:
         else:
             seen[key] = i
     return out
-
-
-def similar_front_pairs(cards) -> list[tuple[int, int, float]]:
-    """[(i, j, ratio)] for front pairs above DUPLICATE_FRONT_RATIO, 1-based, i < j.
-
-    Deliberately a function rather than a warning emitted inline from `findings`:
-    triage.py needs the PAIRS and their ratios, not the sentence describing them.
-    It used to recover them by regex-parsing this module's message text, so
-    rewording the message would have silently stopped pairs being recombined.
-    Both readers now call this one definition.
-    """
-    out = []
-    for i in range(len(cards)):
-        for j in range(i + 1, len(cards)):
-            a, b = str(cards[i].get("front", "")), str(cards[j].get("front", ""))
-            r = SequenceMatcher(None, a, b).ratio()
-            if r > DUPLICATE_FRONT_RATIO:
-                out.append((i + 1, j + 1, r))
-    return out
-
-
-ENZYME_ASK = re.compile(r"\b(?:which|what|name)\b[^?]{0,100}\benzyme\b", re.I)
-ENZYME_NAME = re.compile(r"\b(?!enzyme\b)[a-z]{4,}(?:ase|zyme)\b", re.I)
-
-
 
 
 TAG_STOP = {
@@ -794,11 +787,11 @@ def tag_leak_findings(cards):
 
 
 def math_format_findings(cards):
-    """Warn on plain-text symbols and literal <br> in card text.
+    """Warn on plain-text symbols, literal <br>, and obvious text debris.
 
     Math and code spans are exempt: a programming deck may legitimately write
-    `x_1` inside backticks. The scan is intentionally narrow to single-letter or
-    Greek symbols with a subscript, not arbitrary snake_case prose.
+    `x_1` inside backticks. The scan is narrow on purpose; semantic front/back
+    mismatch stays with the review rubric.
     """
     out = []
     for i, c in enumerate(cards, 1):
@@ -808,6 +801,19 @@ def math_format_findings(cards):
             if br:
                 out.append((i, "warn", f"literal <br> in {field}; use a blank line "
                                       "or two trailing spaces for a hard break"))
+            if "\ufffd" in text:
+                out.append((i, "warn", f"replacement character in {field}; the source "
+                                      "extraction is garbled"))
+            truncated = TRUNCATED_END.search(text)
+            if truncated:
+                out.append((i, "warn", f"{field} ends with {truncated.group(0).strip()!r}; "
+                                      "check the extracted source and finish the sentence"))
+            if field == "front":
+                plain = re.sub(r"[^A-Za-z? ]+", " ", text)
+                plain = re.sub(r"\s+", " ", plain).strip()
+                if GENERIC_FRONT.fullmatch(plain):
+                    out.append((i, "warn", "front is only a generic fragment; ask a "
+                                          "concrete question"))
             clean = MATH_SPAN.sub(" ", text)
             clean = CODE_SPAN.sub(" ", clean)
             clean = HTML_CODE.sub(" ", clean)
@@ -851,9 +857,9 @@ def check_cards(cards, deep: bool = False, ledger_text: str | None = None,
                 source_text: str | None = None, require_kc_map: bool = False):
     """The CLI's (errors, warnings, info) view.
 
-    Exact normalized duplicates are always errors. Soft front/answer similarity
+    Exact normalized duplicates are always errors. Soft answer-overlap similarity
     is only computed with `deep=True`: it is useful for an explicit debloat pass
-    but was mostly contrast-family noise on a real deck.
+    but front-only similarity was contrast-family noise on a real deck.
 
     `ledger_text` is the kcs.md table (legacy: authoring_ledger.md) and enables the KC
     map checks; `source_text` enables evidence-quote grounding. Both are optional so standalone callers and legacy decks keep
@@ -893,8 +899,6 @@ def check_cards(cards, deep: bool = False, ledger_text: str | None = None,
     warns.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "warn")
 
     if deep:
-        for i, j, r in similar_front_pairs(cards):
-            warns.append(f"cards {i} and {j} fronts {r:.0%} similar")
         for i, j, r in similar_answer_pairs(cards):
             warns.append(f"cards {i} and {j} answers {r:.0%} overlapping; "
                          "merge or keep only if they are a contrast")
@@ -906,7 +910,7 @@ def main():
     ap.add_argument("cards_json")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--deep", action="store_true",
-                    help="also run soft front/answer similarity (opt-in debloat)")
+                    help="also run soft answer-overlap similarity (opt-in debloat)")
     ap.add_argument("--ledger", help="kcs.md (or legacy authoring_ledger.md) with a ## KCs map")
     ap.add_argument("--source", help="extracted source markdown for quote grounding")
     args = ap.parse_args()

@@ -23,10 +23,10 @@ number, single fact, or subtopic. Cards from the same lecture/chapter share the 
 is 0–2 broad cross-topic buckets; prefer `[]`. Tags are front-visible: never put the answer,
 method, theorem, or named technique in `topic` or `objects`. `kc_id` is for the KC map, not a tag.
 
-**Do not produce concepts for:** anything not explicitly in the source; problem-solving or
-computed fronts; proofs and worked examples (unless a Procedure decision card); relations the
-material does not discuss. The scope gate is the brake on volume; coverage is not a reason for
-more cards.
+**Do not produce concepts for:** anything not explicitly in the source; computed final-value
+fronts; proofs and worked examples (unless a Procedure decision card); relations the material does
+not discuss. Method- and next-step problem-solving fronts are Procedure cards, not exclusions. The
+scope gate is the brake on volume; coverage is not a reason for more cards.
 
 **Every concept has:** `source`, `layer`, `topic`, `type`, and `objects` (0–2, may be `[]`).
 

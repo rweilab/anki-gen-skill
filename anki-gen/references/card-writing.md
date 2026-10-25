@@ -307,7 +307,7 @@ retrieval targets, not about keeping a deck small:
 
 1. **One card, one retrieval.** Judge by the answer and source, not by front wording.
 2. **Contrast pairs are not duplicates.** Stack vs heap and bounded vs unbounded inversion must
-   stay separate; the validator's front similarity is only a warning.
+   stay separate; the ROI report's overlap signal is only a warning.
 3. **A scenario card must add a decision.** If it repeats a definition with a story, merge it.
 4. **An enumeration is one comparison card unless each item changes a decision.** Five heap
    variants with distinct failure modes can stay; five names with the same consequence should not.
@@ -344,6 +344,11 @@ Back:  the next bounded step only — never the remainder of the solution.
 **The front must state its demand.** A problem plus a halfway state is ambiguous about whether to
 finish, name the next step, or name the method; without the explicit question the retrieval target
 is a guess, and a guessed target is graded wrong for the wrong reason.
+
+**Equation sheets, not arithmetic.** Selecting from a visible equation sheet is Shape A: show the
+sheet and ask which equation applies and what condition selects it; exact-equation recall is L1/L2,
+not Procedure. Remove generic “calculate” instructions, and keep final numeric values in the
+problem set.
 
 **Guardrails — all five:** (1) one decision per back — three sub-decisions is three cards; (2)
 bounded fronts — the learner reaches the decision from the state shown, not by working the

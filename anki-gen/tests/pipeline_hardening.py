@@ -432,9 +432,9 @@ def main() -> int:
 
         bad = td / "bad.jsonl"
         bad.write_text(json.dumps({
-            "front": "Which enzyme splits fructose-1,6-bisphosphate?",
-            "back": "It splits into DHAP and G3P.", "layer": "L1",
-            "topic": "Glycolysis", "objects": [], "deck": "LOCAL::TEST",
+            "front": "Calculate the current when V = 12 V and R = 3 ohm.",
+            "back": "4 A.", "layer": "L1",
+            "topic": "Ohm's Law", "objects": [], "deck": "LOCAL::TEST",
             "source": "local recording @ 00:00",
         }) + "\n")
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),

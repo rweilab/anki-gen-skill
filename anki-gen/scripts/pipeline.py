@@ -871,6 +871,9 @@ def evidence_line(cards: list[dict], out: Path) -> str:
 def _fix_hint(msg: str) -> str:
     """One actionable line for the common gate errors; the validator owns the check."""
     low = msg.lower()
+    if "computation prompt in front" in low or "explicit computation verb" in low:
+        return ("if the front asks for a method or meaning, rephrase without the verb; a "
+                "numeric result belongs in a problem set, not the front")
     if "evidence_quote is not in the extracted source" in low:
         return ("use a verbatim quote from the cited page, or set the KC source to "
                 "`derived` if the claim is self-contained")
