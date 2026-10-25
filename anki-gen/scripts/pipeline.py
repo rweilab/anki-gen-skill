@@ -47,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from cardid import card_hash, last_row_per_card, load_cards  # noqa: E402
 from preflight import check as preflight            # noqa: E402
+from validate_cards import fix_for                   # noqa: E402
 
 STATE_FILE = "pipeline_state.json"
 
@@ -696,24 +697,11 @@ def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> 
     plan_path.write_text(json.dumps(plan, indent=2) + "\n")
 
     # ROI is a report, not a gate; its output goes to a file so it never enters context
-    # unless someone asks. Capture rather than print: the summary is the interface.
-    # roi_report.main() parses sys.argv itself (no argv parameter), so argv is set for
-    # the call and restored after -- the alternative is duplicating its report code.
+    # unless someone asks. The summary is the interface.
     roi_path = out / "roi.txt"
-    import io
-    import contextlib
-    buf = io.StringIO()
-    saved_argv = sys.argv
-    try:
-        sys.argv = ["roi_report.py", str(cards_path)]
-        with contextlib.redirect_stdout(buf):
-            roi_report.main()
-    except SystemExit:
-        pass
-    finally:
-        sys.argv = saved_argv
-    roi_path.write_text(buf.getvalue())
-    split_cards, restatements = _roi_risks(buf.getvalue())
+    roi_text = roi_report.report(cards)
+    roi_path.write_text(roi_text)
+    split_cards, restatements = _roi_risks(roi_text)
     media_risks = audit_cards(cards, out)
     ceiling = None
     scope_path = out / "scope_gate.md"
@@ -866,44 +854,6 @@ def evidence_line(cards: list[dict], out: Path) -> str:
     return (f"evidence   {flags} | provenance {prov}/{len(cards)} "
             f"({derived} derived) | tier-zero {len(tz_topics)}/{len(topics)} "
             f"topic(s) | image cards {media}")
-
-
-def _fix_hint(msg: str) -> str:
-    """One actionable line for the common gate errors; the validator owns the check."""
-    low = msg.lower()
-    if "computation prompt in front" in low or "explicit computation verb" in low:
-        return ("if the front asks for a method or meaning, rephrase without the verb; a "
-                "numeric result belongs in a problem set, not the front")
-    if "evidence_quote is not in the extracted source" in low:
-        return ("use a verbatim quote from the cited page, or set the KC source to "
-                "`derived` if the claim is self-contained")
-    if "need an evidence_quote" in low:
-        return "add a short verbatim `evidence_quote` to that KC row in kcs.md"
-    if "not in the kc map" in low or "unknown kc" in low:
-        return "add the KC to kcs.md or fix the card's `kc`"
-    if "missing 'kc'" in low:
-        return "add `kc` to the card; it must exist in kcs.md"
-    if "missing 'why'" in low:
-        return "add a one-line value case to that KC row (reuse, exam weight, error trap, prerequisite)"
-    if "exact same claim" in low:
-        return "merge the two KCs or make their claims genuinely distinct"
-    if "no parsable kc table" in low:
-        return "start kcs.md with `# KCs` and a pipe table; do not use a prose list"
-    if "single-card kc" in low:
-        return "merge the KC into its parent, add another card, or make it a prerequisite anchor"
-    if "every kc has exactly one card" in low:
-        return "the map is a card index; group cards under shared concepts"
-    if "missing/empty 'source'" in low or "no source. use a locator" in low:
-        return "add a page/slide/question locator, or `source: \"derived\"` for self-contained math"
-    if "control char" in low:
-        return "in JSON, double every LaTeX backslash (\\frac) or rewrite the card"
-    if "stray" in low and "$" in msg:
-        return "let the builder convert `$...$`; do not pre-convert MathJax delimiters"
-    if "front refers to an image" in low:
-        return "put the image on the front, or inline the data the front refers to"
-    if "exact duplicates" in low:
-        return "remove one of the duplicate cards"
-    return ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1088,7 +1038,7 @@ def main(argv: list[str] | None = None) -> int:
                      f"{g['warnings']} warning(s)")
         for msg in g["errs"][:20]:
             lines.append(f"error      {msg}")
-            hint = _fix_hint(msg)
+            hint = fix_for(msg)
             if hint:
                 lines.append(f"           fix: {hint}")
         if len(g["errs"]) > 20:

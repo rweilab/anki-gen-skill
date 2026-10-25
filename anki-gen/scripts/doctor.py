@@ -196,16 +196,17 @@ def main() -> int:
     core_ok &= line("MathJax asset", mathjax.is_file(), str(mathjax),
                     "re-copy the skill folder; the asset ships with it", core=True)
 
-    skill = Path.home() / ".claude" / "skills" / "anki-gen" / "SKILL.md"
+    skill = ROOT / "SKILL.md"
     core_ok &= line("anki-gen skill", skill.is_file(), str(skill),
-                    "copy anki-gen into ~/.claude/skills/", core=True)
+                    "copy anki-gen into your skills directory (default ~/.claude/skills/)",
+                    core=True)
 
-    vision = Path.home() / ".claude" / "skills" / "image-vision" / "SKILL.md"
+    vision = ROOT.parent / "image-vision" / "SKILL.md"
     line("image-vision skill", vision.is_file(), str(vision),
-         "copy image-vision into ~/.claude/skills/ (for handwritten/figures)",
+         "copy image-vision beside anki-gen (for handwritten/figures)",
          warn_only=True)
 
-    legacy = Path.home() / ".claude" / "skills" / ".backups"
+    legacy = ROOT.parent / ".backups"
     stale = list(legacy.rglob("SKILL.md")) if legacy.is_dir() else []
     line("Backups outside skills", not stale,
          f"{len(stale)} discoverable backup(s)" if stale else "ok",

@@ -116,7 +116,7 @@ def render_cards(cards: list[dict], plan_entries: list[dict] | None = None,
     the deck will show, rather than a plausible-looking approximation of it.
 
     With `plan_entries` (from triage.py), each card carries the reason it was
-    selected and is numbered by its position in cards.json rather than by its
+    selected and is numbered by its position in cards.jsonl rather than by its
     place in the subset -- so a card keeps the number every other script, and the
     feedback log, calls it by.
     """
@@ -363,7 +363,7 @@ aside h1{font-size:0.8125rem;margin:0 0 8px;font-weight:600;letter-spacing:.02em
 .icon-sun{display:none}
 :root[data-theme="dark"] .icon-moon{display:none}
 :root[data-theme="dark"] .icon-sun{display:block}
-/* The card's own number in cards.json -- under a triage plan the position in the
+/* The card's own number in cards.jsonl -- under a triage plan the position in the
    subset and the card number differ, and every other script means the latter. */
 .cardno{color:var(--muted);font-size:0.75rem;font-variant-numeric:tabular-nums}
 .bar{position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--border)}
@@ -486,7 +486,7 @@ const layer_word = (code) => LAYER_WORDS[code] || code;
 //
 // They are different axes and the difference is the point -- a card can be hard
 // AND perfectly recallable, so "how hard was that?" cannot see a front that asks
-// for a computed value. Rule 9 is the highest-stakes rule in the skill and this
+// for a computed value. The recallability test is the highest-stakes rule and this
 // is its only enforcement.
 const RECALL = MODE === 'recall';
 let cur = 0, flipped = false;
@@ -739,10 +739,10 @@ function recallSummary(){
     + '<tr><td class="n">2</td><td>No — I would have had to work it out</td><td>'+no.length+'</td></tr>'
     + '</table>'
     + (no.length
-        ? '<p>These fail rule 8: the front demands work, not recall. Rewrite them so the '
+        ? '<p>These fail the recallability test: the front demands work, not recall. Rewrite them so the '
           + 'front asks about the concept, or cut them.</p><ul>'
           + no.map(n=>'<li>card '+n+'</li>').join('') + '</ul>'
-        : '<p>No rule 8 failures in this set.</p>')
+        : '<p>No recallability failures in this set.</p>')
     + (un.length ? '<p>Not answered ('+un.length+'): '+un.join(', ')+'</p>'
                  : '<p>All cards answered.</p>');
 }
@@ -1162,7 +1162,7 @@ def load_plan(plan_path: Path, cards: list[dict]) -> list[dict]:
         elif card_hash(cards[i - 1]) != e.get("hash"):
             stale.append(f"  card {i}: the card has changed since the plan was written")
     if stale:
-        print(f"{plan_path} is out of date for this cards.json ({len(cards)} cards):\n"
+        print(f"{plan_path} is out of date for this cards.jsonl ({len(cards)} cards):\n"
               + "\n".join(stale) +
               "\nRe-run triage.py to rebuild the plan.", file=sys.stderr)
         raise SystemExit(2)
@@ -1171,7 +1171,7 @@ def load_plan(plan_path: Path, cards: list[dict]) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Local review surface for an anki-gen deck.")
-    ap.add_argument("--cards", required=True, help="cards.json to review")
+    ap.add_argument("--cards", required=True, help="cards.jsonl to review")
     ap.add_argument("--out", default=None,
                     help="feedback log (append-only); default review_feedback.jsonl, "
                          "or review_recall.jsonl with --ask recall")
@@ -1183,7 +1183,7 @@ def main() -> int:
                     help="minutes without a request before self-shutdown")
     ap.add_argument("--media-root", default=None,
                     help="root card media paths are relative to "
-                         "(default: the directory holding cards.json)")
+                         "(default: the directory holding the cards file)")
     ap.add_argument("--plan", default=None, metavar="PLAN",
                     help="review_plan.json from triage.py: review only the selected "
                          "cards, and show why each one was picked")
@@ -1211,7 +1211,7 @@ def main() -> int:
         plan_note = str(plan_obj.get("note", ""))
         # A plan recorded against a different file is worth saying out loud: the
         # hash check above still protects the reviewer, but a plan built from
-        # another cards.json usually means one of the two paths is a typo.
+        # another cards file usually means one of the two paths is a typo.
         cards_file = Path(args.cards).name
         plan_file = Path(str(plan_obj.get("cards_json") or "")).name
         if plan_file and plan_file != cards_file:

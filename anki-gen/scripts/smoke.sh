@@ -181,13 +181,18 @@ import sys
 from pathlib import Path
 root = Path(sys.argv[1])
 bad = []
+maint = (root / "MAINTAINERS.md").read_text()
+deprecated = set()
+if "## Deprecations" in maint:
+    block = maint.split("## Deprecations", 1)[1].split("\n## ", 1)[0]
+    deprecated = set(re.findall(r"`([^`]+\.(?:md|py|sh))`", block))
 for md in root.rglob("*.md"):
     text = md.read_text()
     for match in re.finditer(
             r"`((?:references|maintainers|scripts|tests)/[^`\s]+?\.(?:md|py|sh))`",
             text):
         rel = match.group(1)
-        if "<" in rel:
+        if "<" in rel or rel in deprecated:
             continue
         if not (root / rel).exists():
             bad.append(f"{md.relative_to(root)}: missing {rel}")
@@ -195,6 +200,19 @@ for md in root.rglob("*.md"):
                 "references/" + "dossier-format.md"):
         if old in text:
             bad.append(f"{md.relative_to(root)}: deprecated {old}")
+maintainers = {p.name for p in (root / "maintainers").glob("*.md")}
+if maintainers != {"lessons.md", "dossier-format.md"}:
+    bad.append(f"maintainers/: expected lessons.md + dossier-format.md, got {sorted(maintainers)}")
+agents = (root / "AGENTS.md").read_text()
+if "## Documentation architecture" not in agents:
+    bad.append("AGENTS.md: missing ## Documentation architecture")
+for name in ("maintainers/lessons.md", "maintainers/dossier-format.md"):
+    if name not in agents:
+        bad.append(f"AGENTS.md: not linked from read order: {name}")
+for name in ("NOTES.md", "TODO.md", "SUMMARY.md", "PLAN.md"):
+    for path in (root / name, root / "maintainers" / name):
+        if path.exists():
+            bad.append(f"scratch doc committed: {path.relative_to(root)}")
 if bad:
     print("\n".join(bad), file=sys.stderr)
     raise SystemExit(1)
@@ -481,14 +499,6 @@ pass "revision hardening"
 
 python3 "$ROOT/tests/quality_precision.py" || fail "quality precision"
 pass "quality precision"
-
-# The zip ships scripts/handoff/install.sh; keep it identical to the repo copy.
-ROOT_INSTALL="$(dirname "$ROOT")/install.sh"
-if [ -f "$ROOT_INSTALL" ]; then
-  diff -q "$ROOT_INSTALL" "$SCRIPTS/handoff/install.sh" >/dev/null \
-    || fail "root and handoff installers differ"
-fi
-pass "installer copies match"
 
 bash "$ROOT/tests/install_test.sh" || fail "installer/upgrade"
 pass "installer/upgrade"

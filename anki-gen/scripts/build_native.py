@@ -260,7 +260,7 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
             # internal kind and returns every understanding card in the deck --
             # the opposite of what a tag is for. Tags are also the ONLY way to
             # pull up "every card about FCC"; they stand in for cross-links
-            # (rule 26 forbids a back pointing at another card).
+            # (the no-cross-card-pointers rule forbids a back pointing at another card).
             tags = [_tag(c["topic"])] + [_tag(o) for o in (c.get("objects") or [])]
             tags = list(dict.fromkeys(tags))  # dedupe, keep order
             media_field = ",".join(media_names)

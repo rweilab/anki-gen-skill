@@ -323,7 +323,7 @@ retrieval targets, not about keeping a deck small:
 
 ### The Procedure layer tests *decisions*, never solutions
 
-Rule 8 stands. The Procedure layer is the specification of what a procedural card *may* ask — the
+The recallability test stands. The Procedure layer is the specification of what a procedural card *may* ask — the
 retrieval target is always a **decision**, never a worked result. Two shapes, no others:
 
 **Shape A — method selection.**

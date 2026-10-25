@@ -8,13 +8,23 @@ description: Generate evidence-based Anki flashcards from lecture notes, PDFs, P
 Generate atomic, evidence-based Anki cards from STEM material, review them in a local page,
 and build an `.apkg`.
 
-Harness-agnostic: plain `SKILL.md` plus `scripts/`. Paths below use
-`~/.claude/skills/anki-gen/`; substitute the skill directory if moved. The entry point is the
-only harness difference (`/anki-gen` vs description match).
+Harness-agnostic: plain `SKILL.md` plus `scripts/`. `SKILL` is the directory containing this
+file; on this install it is `~/.claude/skills/anki-gen`, but `.opencode/skills/anki-gen` and
+`.agents/skills/anki-gen` work the same. The entry point is the only harness difference
+(`/anki-gen` vs description match).
 
 `$WORK` means `.anki-gen-temp/<filesystem-safe-topic>`, e.g. `circuits-midterm2`, not the
 deck name with `::`. Slug it from the deck name: lowercase, replace `::` and spaces with `-`.
 Every artifact lives there. The `.apkg` is the only new file in the caller's directory.
+
+## Route first
+
+- **New deck** from sources: follow the seven-step runbook below.
+- **Existing imported deck / spin-off**: read `references/revision.md`; use
+  `scripts/revision.py` and AnkiConnect. Do not run the generation path.
+  Never open, copy, query, or inspect the live collection DB, even read-only.
+- **Scanned or handwritten source**: use the separate `image-vision` skill first,
+  then the runbook.
 
 ## Quality kernel
 
@@ -47,7 +57,8 @@ read only the current step's reference; do not read ahead. More context is not b
 
 1. **Intake.** Read the request and the chosen sources. Open only `survey.md` and the source
    table of contents for now; do not open `card-writing.md`, `review.md`, or `prompts.md`
-   until their step. Read the learner-calibration summary, not the whole study log.
+   until their step. Read the learner-calibration fields in `survey.md`; if no learner context
+   exists, assume beginner/cold and state it. Do not read the whole study log.
    Write `$WORK/intake.md`: deck name, learner context, sources, image yes/no, assumptions, and
    **your own budget** for this run (estimated extraction, authoring, review, and build calls
    based on scope). No fixed numbers.
@@ -71,7 +82,7 @@ read only the current step's reference; do not read ahead. More context is not b
 ### Commands
 
 ```bash
-SKILL=~/.claude/skills/anki-gen
+SKILL="<the directory containing this SKILL.md>"
 
 # Step 2 — extract all chosen sources (foreground; one call)
 python3 "$SKILL/scripts/pipeline.py" --sources <dirs-or-files> --out "$WORK"
@@ -152,7 +163,7 @@ Images default on for slide and video sources, off for text-only sources. Main-m
   frame; a crop needs confirmation. One image per card.
 - Batch every `confirm` image into **one** `image-vision` call by default (or one call per
   source if the batch is genuinely large). The pass is
-  `python3 ~/.claude/skills/image-vision/scripts/vision_check.py` with the confirmed paths; no
+  `python3 "$SKILL/../image-vision/scripts/vision_check.py"` with the confirmed paths; no
   per-image calls, no corpus pre-confirmation, no galleries.
 - If no good image exists, leave the card without one and say so. Never lower the bar to hit an
   image count.
@@ -259,26 +270,14 @@ Read each file once, at the step named. The rules above are the contract; refere
 | File | Read | Carries |
 |---|---|---|
 | `references/card-writing.md` | before authoring | calibration, symbols, tier-zero, anchors, cloze, recallability, provenance, topic/objects, Procedure |
-| `references/authoring.md` | before authoring | fields/shapes, `cards.jsonl`, KC map, media policy, raw strings, batching |
+| `references/authoring.md` | before authoring | fields/shapes, `cards.jsonl`, KC map, media policy, JSON escaping, batching |
 | `references/prompts.md` | authoring | classifier and debloater only |
 | `references/review.md` | review and follow-up | triage, score meanings, review actions, rescope |
 | `references/survey.md` | intake and extraction | source survey, learner context, deck name |
 | `references/video.md` | video sources | transcripts, playlists, frames |
 | `references/slides.md` | PowerPoint sources | PPTX text, notes, embedded images |
-| `references/rendering.md` | render/hard-break changes | MathJax, raw strings, night mode |
+| `references/rendering.md` | render/hard-break changes | MathJax, JSON escaping, night mode |
 | `references/optional.md` | when relevant | programming decks, known gaps, deck audit |
 | `references/revision.md` | imported decks only | AnkiConnect, snapshots, revert |
 | `references/getting-started.md` | no sources found | beginner intro |
 | `README.md` | setup | dependencies, MathJax |
-
-## Imported decks
-
-Read `references/revision.md` and use the supported AnkiConnect path.
-Never open, copy, query, or inspect the live collection DB, even read-only.
-
-## Image-heavy or handwritten sources
-
-Text-first. If a source is scanned/handwritten (near-empty text with images), or a figure is
-the only source for a fact, use the separate `image-vision` skill. Never build from empty
-text. Media follows the default (slides/video on, text-only off); the review audits it. A
-structure or reaction answer may need a verified image or a manual Anki addition.

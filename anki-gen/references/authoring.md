@@ -1,7 +1,8 @@
 # Authoring cards: mechanics
 
 One authoring format: `$WORK/cards.jsonl`. One line per card. No deck script, no
-`make_cards.py`, no ad hoc Python patches.
+`make_cards.py`, no ad hoc Python patches. `cards.json` is still read for old work dirs;
+new runs write `cards.jsonl`.
 
 Write the whole file in one pass per topic. To change a card, rewrite the file (or the
 affected topic batch) in one write. Never shuttle the source through a shell

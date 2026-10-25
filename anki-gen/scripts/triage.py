@@ -35,12 +35,12 @@ labels each one with the axis it serves, so the reviewer knows what question it 
      "entries": [{"i": 5, "n": 5, "hash": ..., "topic": ..., "layer": ...,
                   "kind": "risk|format|breadth|depth", "reasons": [...]}]}
 
-`i` and `n` are the 1-based card number in cards.json -- the numbering validate_cards,
+`i` and `n` are the 1-based card number in cards.jsonll -- the numbering validate_cards,
 roi_report and `--show N` all use. Cards are addressed by topic+hash everywhere else; the
 number is a display convenience, and any insert shifts it.
 
-    python3 triage.py cards.json
-    python3 triage.py cards.json --per-topic 2 --max 30 -o review_plan.json
+    python3 triage.py cards.jsonl
+    python3 triage.py cards.jsonll --per-topic 2 --max 30 -o review_plan.json
 """
 from __future__ import annotations
 

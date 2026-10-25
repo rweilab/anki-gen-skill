@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Parse a natural-language request into a structured intent dict.
+"""DEPRECATED: kept for compatibility; use cards.jsonl and pipeline.py. Removal target: 2.0.
+
+Parse a natural-language request into a structured intent dict.
 
 A lexicon, not a parser: it catches the obvious shapes (a date filter, a
 --deck-name, a path to merge into) and the model reads the request itself for

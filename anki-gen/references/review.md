@@ -1,5 +1,7 @@
 # Review flow
 
+Commands use `$SKILL` for the directory containing `SKILL.md`.
+
 ## REVIEW — the local review page
 
 Review happens in a throwaway localhost page, **not in the chat** — the chat version pushed every
@@ -72,10 +74,11 @@ full review. Reopen the review or render one card; source inspection is not a vi
 **Per-card adjudication does not scale.** On the first real run the user stopped after nine cards of
 fifty-five — and their edits generalised to the whole deck anyway, so the other forty-six bought
 nothing. The `pipeline.py --gates-only` call picks the set and **always** runs, any deck size;
-even a small deck gets its flagged cards surfaced.
+even a small deck gets its flagged cards surfaced. Set `SKILL` to the directory containing
+`SKILL.md`.
 
 ```bash
-python3 ~/.claude/skills/anki-gen/scripts/pipeline.py --cards $WORK/cards.jsonl \
+python3 "$SKILL/scripts/pipeline.py" --cards $WORK/cards.jsonl \
     --gates-only --out "$WORK"
 ```
 
@@ -159,12 +162,13 @@ figure is a normal score or comment — there is no separate control.
 after the scale pass, or alone only when recallability is in doubt. Its default log is
 `review_recall.jsonl`, so it cannot overwrite the scale scores.
 
-Rule 8 is the highest-stakes rule and nothing else enforces it: `validate_cards` catches the
-explicit "given data, value out" shape and is blind to the rest. Difficulty and *recallability* are
-different axes — a card can be hard and perfectly recallable — so this mode asks a binary question:
+The recallability test is the highest-stakes rule and nothing else enforces it: `validate_cards`
+catches the explicit "given data, value out" shape and is blind to the rest. Difficulty and
+*recallability* are different axes — a card can be hard and perfectly recallable — so this mode
+asks a binary question:
 
 ```bash
-python3 ~/.claude/skills/anki-gen/scripts/review_server.py \
+python3 "$SKILL/scripts/review_server.py" \
     --cards $WORK/cards.jsonl --plan $WORK/review_plan.json --ask recall \
     --out $WORK/review_recall.jsonl
 ```
@@ -201,7 +205,7 @@ The risk is cross-topic anchors and duplicates.
 
 ### How to apply it
 
-- **5 → drop it.** Remove the card from the source of truth — the emitting script, or `cards.json`
+- **5 → drop it.** Remove the card from the source of truth — the emitting script, or `cards.jsonl`
   when there is none. That is the whole mechanism.
 - **1 → rescope the topic, not just the card.** “Easy” means the learner already knows it; use
   it to rebalance scope and difficulty, merge/re-level trivial variants, or protect an anchor.
@@ -276,7 +280,7 @@ widely. But a summary that rewrote all 61 cards in response to one comment has f
 it spent a full rebuild on a one-line change, which is how review rounds stop happening.
 
 **Removing a rejected card.** Score 5 means the card should not exist, so **remove it from the
-source of truth** — the emitting script, or `cards.json`. No second mechanism: a hash list was tried
+source of truth** — the emitting script, or `cards.jsonl`. No second mechanism: a hash list was tried
 and removed, because a re-scope *rewrites card text*, so a rejected card re-emitted a word different
 carries a new hash and slips the filter — it protected only the case that was never the risk (an
 unmodified re-run) while enabling a stale list to drop live notes. **A 5 is a verdict on whether the

@@ -66,8 +66,9 @@ ${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-uuid>/
 `<deck-uuid>` is stable for the dossier's whole life. `index.json` is a rebuildable
 cache, not the source of truth.
 
-`pipeline.py --build` packs automatically after a successful build, before stage
-14 removes `.anki-gen-temp`. `--no-context` disables it. The dossier holds only distilled context: authored card records, live Anki state,
+`pipeline.py --build --context` packs after a successful build, before the work
+tree is removed. Without `--context`, no dossier is written; `--no-context` is a
+deprecated no-op. The dossier holds only distilled context: authored card records, live Anki state,
 topic takeaways, course style/notation, learner preferences, deck-shape decisions,
 future work, source anchors/hashes, media-candidate metadata, adaptive previews,
 revision logs, and snapshots. `cards.jsonl` is authored identity/context;

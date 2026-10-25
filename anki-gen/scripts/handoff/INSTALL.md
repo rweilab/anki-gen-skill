@@ -15,7 +15,9 @@ bash install.sh
 
 The installer stages both skills, verifies them, backs up existing installs,
 replaces them, installs core dependencies, attempts optional features best-effort,
-and runs the doctor. Optional failures warn; they do not abort the install. Setup
+and runs the doctor. Set `ANKI_GEN_SKILLS_DIR=~/.config/opencode/skills` (or
+`.agents/skills`) for a different harness; the default stays `~/.claude/skills`.
+Optional failures warn; they do not abort the install. Setup
 ends with `Full feature set: installed` or `Full feature set: NOT installed` and
 lists the gaps. It never touches `~/.config/anki-gen` or your decks, and it never
 installs Homebrew or Anki.

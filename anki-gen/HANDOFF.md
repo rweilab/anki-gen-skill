@@ -10,7 +10,8 @@ The builder creates an `.apkg`; importing it into Anki is manual.
 
 The installer upgrades safely: it stages both skills, verifies `SKILL.md`, backs
 up the old install, preserves `~/.config/anki-gen`, installs the missing
-dependencies, and runs the doctor. It never installs Homebrew or Anki.
+dependencies, and runs the doctor. It never installs Homebrew or Anki. The default
+install path is `~/.claude/skills`; set `ANKI_GEN_SKILLS_DIR` for another harness.
 
 Dependency setup, the OS matrix, Gemini key, update steps, and usage are in
 `INSTALL.md` inside the handoff zip.

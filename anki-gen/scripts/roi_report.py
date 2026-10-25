@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ROI / debloat report for cards.json.
+"""ROI / debloat report for cards.jsonl.
 
 The goal is NOT "make cards smaller". Minimum Information Principle over-applied
 strips cards until they carry no context, which is its own failure mode. The two
@@ -18,11 +18,12 @@ splitting them multiplies review count for no gain. Splitting is only correct wh
 the items are independently examinable.
 
 This script measures the mechanical signals. It does not decide; see the DEBLOATER
-prompt in SKILL.md, which turns these numbers into accept/reject decisions.
+prompt in `references/prompts.md`, which turns these numbers into accept/reject decisions.
 """
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sys
@@ -153,6 +154,149 @@ def topic_of(c) -> str:
     return str(c.get("topic") or "untopiced")
 
 
+def report(cards, weights=None, deep=False, as_json=False) -> str:
+    weights = weights or {}
+    n = len(cards)
+
+    # ---- coverage by topic (weighted only if the caller supplied weights) ----
+    ch = Counter(topic_of(c) for c in cards)
+    media_ch = Counter(topic_of(c) for c in cards if c.get("media"))
+    coverage = []
+    for k in sorted(ch, key=lambda t: -ch[t]):
+        got = ch[k] / n
+        want = weights.get(k)
+        coverage.append((k, ch[k], got, want, (got / want) if want else None,
+                         media_ch[k]))
+
+    # ---- bundle candidates --------------------------------------------------
+    bundles, keep_chunks = [], []
+    for i, c in enumerate(cards, 1):
+        items = items_in_back(c["back"])
+        if items < 3:
+            continue
+        (keep_chunks if always_together(c["front"], c["back"]) else bundles).append(
+            (i, items, c["topic"]))
+
+    red = redundancy(cards) if deep else []
+    inter = interference(cards) if deep else []
+    overlap = similar_answer_pairs(cards) if deep else []
+    cost = cost_fn(cards)
+    rep = repeated_content(cards)
+
+    anchors = []
+    for i, c in enumerate(cards, 1):
+        if c.get("tier_zero") or re.search(
+                r"\b(is defined|are the four|what is a|distinguishes|means)\b",
+                c["front"], re.I):
+            anchors.append((i, c["front"][:70]))
+
+    if as_json:
+        return json.dumps({
+            "cards": n,
+            "coverage": coverage,
+            "bundle_candidates": bundles,
+            "keep_together": keep_chunks,
+            "redundant_pairs": red,
+            "interference_pairs": inter,
+            "answer_overlap": overlap,
+            "restatement": [(k, w, wh) for k, w, wh in rep],
+            "costliest": cost[:12],
+            "anchors": anchors,
+        }, indent=2, default=str) + "\n"
+
+    out = io.StringIO()
+
+    def p(*args, **kwargs):
+        print(*args, file=out, **kwargs)
+
+    p(f"ROI / DEBLOAT REPORT — {n} cards")
+    p("=" * 78)
+
+    weighted = bool(weights)
+    p("\nCOVERAGE BY TOPIC" + (" (weighted)" if weighted else ""))
+    if not weighted:
+        p("  no exam weights supplied — counts only, no coverage verdict.")
+        p("  pass --exam-weights FILE to compare against an expected weight.")
+    hdr = f"  {'topic':<28}{'cards':>6}{'share':>8}{'media':>7}"
+    if weighted:
+        hdr += f"{'weight':>9}   verdict"
+    p(hdr)
+    for k, cnt, got, want, ratio, media in coverage:
+        line = f"  {k[:27]:<28}{cnt:>6}{got*100:>7.0f}%{media:>7}"
+        if weighted:
+            if want is None:
+                verdict = "no weight given"
+            elif ratio < 0.6:
+                verdict = f"UNDER by {1/ratio:.1f}x"
+            elif ratio > 1.8:
+                verdict = f"OVER by {ratio:.1f}x"
+            else:
+                verdict = "ok"
+            w = f"{want*100:.0f}%" if want else "-"
+            line += f"{w:>9}   {verdict}"
+        p(line)
+    no_media = sorted(k for k in ch if not media_ch[k])
+    media_refs = sum(len(c.get("media") or []) for c in cards)
+    media_unique = len({m.get("file") if isinstance(m, dict) else str(m)
+                        for c in cards for m in (c.get("media") or [])})
+    p(f"\nMEDIA: {sum(media_ch.values())}/{n} cards, {media_refs} refs / "
+      f"{media_unique} unique files"
+      + (f"; topics without images: {', '.join(no_media)}" if no_media else ""))
+
+    CAP = 8
+    p(f"\nRESTATEMENT FLAGS — {len(rep)} total (candidates, not verdicts)")
+    for kind, what, who in rep[:CAP]:
+        p(f"  {kind:<9} cards {who}  {what!r}")
+    if len(rep) > CAP:
+        p(f"  ... {len(rep) - CAP} more suppressed. Most repeats are REQUIRED "
+          f"duplication — a glossary repeats on every card that uses it, and "
+          f"worked examples echo their setup — so check by value ownership "
+          f"(which card owns this fact?), not by count.")
+    if not rep:
+        p("  none")
+
+    if deep:
+        p(f"\nREDUNDANCY (answer subsumed by a sibling) — {len(red)} pair(s)")
+        for i, j, r in red[:15]:
+            p(f"  card {i} ~ card {j}  ({r})")
+
+        p(f"\nINTERFERENCE (near-identical fronts compete) — {len(inter)} pair(s)")
+        for i, j, r in inter[:15]:
+            p(f"  card {i} ~ card {j}  ({r})")
+
+        p(f"\nANSWER OVERLAP (same ground; merge or justify a contrast) — {len(overlap)} pair(s)")
+        for i, j, r in overlap[:15]:
+            p(f"  card {i} ~ card {j}  ({r:.0%})")
+        if not overlap:
+            p("  none")
+    else:
+        p("\nPAIRWISE SIMILARITY: skipped (pass --deep for an explicit debloat pass)")
+
+    p(f"\nSPLIT CANDIDATES ({len(bundles)}) — independent facts sharing one schedule")
+    for i, items, topic in bundles[:CAP]:
+        p(f"  card {i:>3}  {items} items  [{topic}]")
+    if len(bundles) > CAP:
+        p(f"  ... {len(bundles) - CAP} more suppressed. Apply the real test to each: "
+          f"does knowing one imply knowing the others? If yes it is a CHUNK and "
+          f"splitting only multiplies review count. Only independently examinable "
+          f"items are worth splitting.")
+    if not bundles:
+        p("  none")
+
+    p(f"\nKEEP AS ONE CHUNK ({len(keep_chunks)}) — items transfer together")
+    for i, items, topic in keep_chunks[:12]:
+        p(f"  card {i:>3}  {items} items  [{topic}]")
+
+    p("\nCOSTLIEST BREADS (review time, paid every review)")
+    for i, b, f in cost[:8]:
+        p(f"  card {i:>3}  back {b:>3}w  front {f:>2}w")
+
+    p(f"\nANCHORS ({len(anchors)}) — cheap cards that unlock siblings; protect these")
+    for i, f in anchors[:12]:
+        p(f"  card {i:>3}  {f}")
+    return out.getvalue()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cards_json")
@@ -198,156 +342,7 @@ def main():
     if args.exam_weights:
         weights = json.loads(Path(args.exam_weights).read_text())
 
-    # ---- coverage by topic (weighted only if the caller supplied weights) ----
-    ch = Counter(topic_of(c) for c in cards)
-    media_ch = Counter(topic_of(c) for c in cards if c.get("media"))
-    coverage = []
-    for k in sorted(ch, key=lambda t: -ch[t]):
-        got = ch[k] / n
-        want = weights.get(k)
-        coverage.append((k, ch[k], got, want, (got / want) if want else None,
-                         media_ch[k]))
-
-    # ---- bundle candidates --------------------------------------------------
-    bundles, keep_chunks = [], []
-    for i, c in enumerate(cards, 1):
-        items = items_in_back(c["back"])
-        if items < 3:
-            continue
-        (keep_chunks if always_together(c["front"], c["back"]) else bundles).append(
-            (i, items, c["topic"]))
-
-    # B5: these thresholds deliberately differ from validate_cards.py, which flags
-    # near-identical FRONTS (>0.85) as a defect. `interference` here is a softer
-    # >0.72 signal that two fronts COMPETE for the same retrieval cue. Different
-    # questions, so different bars -- the two are not expected to agree on a given
-    # pair, and one firing without the other is not a bug.
-    red = redundancy(cards) if args.deep else []
-    inter = interference(cards) if args.deep else []
-    overlap = similar_answer_pairs(cards) if args.deep else []
-    cost = cost_fn(cards)
-    rep = repeated_content(cards)
-
-    # ---- anchors: cards other cards depend on ------------------------------
-    # A card that defines a term used elsewhere is high ROI: low review cost,
-    # unlocks several siblings.
-    # B2: the `tier_zero` field IS the anchor marker -- the writer sets it, and the
-    # phrase heuristic alone missed every real anchor on a deck that had nine of
-    # them: it printed ANCHORS (0) and then told the reader to protect nothing.
-    # Anchor-ness is a field, not a guess about wording.
-    anchors = []
-    for i, c in enumerate(cards, 1):
-        if c.get("tier_zero") or re.search(
-                r"\b(is defined|are the four|what is a|distinguishes|means)\b",
-                c["front"], re.I):
-            anchors.append((i, c["front"][:70]))
-
-    if args.json:
-        print(json.dumps({
-            "cards": n,
-            "coverage": coverage,
-            "bundle_candidates": bundles,
-            "keep_together": keep_chunks,
-            "redundant_pairs": red,
-            "interference_pairs": inter,
-            "answer_overlap": overlap,
-            "restatement": [(k,w,wh) for k,w,wh in rep],
-            "costliest": cost[:12],
-            "anchors": anchors,
-        }, indent=2, default=str))
-        return 0
-
-    print(f"ROI / DEBLOAT REPORT — {n} cards")
-    print("=" * 78)
-
-    weighted = bool(weights)
-    print("\nCOVERAGE BY TOPIC" + (" (weighted)" if weighted else ""))
-    if not weighted:
-        # State plainly what this section is NOT doing. The old hardcoded table,
-        # when it matched no card, printed a screenful of "unscored" rows that read
-        # like findings.
-        print("  no exam weights supplied — counts only, no coverage verdict.")
-        print("  pass --exam-weights FILE to compare against an expected weight.")
-    hdr = f"  {'topic':<28}{'cards':>6}{'share':>8}{'media':>7}"
-    if weighted:
-        hdr += f"{'weight':>9}   verdict"
-    print(hdr)
-    for k, cnt, got, want, ratio, media in coverage:
-        line = f"  {k[:27]:<28}{cnt:>6}{got*100:>7.0f}%{media:>7}"
-        if weighted:
-            if want is None:
-                verdict = "no weight given"
-            elif ratio < 0.6:
-                verdict = f"UNDER by {1/ratio:.1f}x"
-            elif ratio > 1.8:
-                verdict = f"OVER by {ratio:.1f}x"
-            else:
-                verdict = "ok"
-            w = f"{want*100:.0f}%" if want else "-"
-            line += f"{w:>9}   {verdict}"
-        print(line)
-    no_media = sorted(k for k in ch if not media_ch[k])
-    media_refs = sum(len(c.get("media") or []) for c in cards)
-    media_unique = len({m.get("file") if isinstance(m, dict) else str(m)
-                        for c in cards for m in (c.get("media") or [])})
-    print(f"\nMEDIA: {sum(media_ch.values())}/{n} cards, {media_refs} refs / "
-          f"{media_unique} unique files"
-          + (f"; topics without images: {', '.join(no_media)}" if no_media else ""))
-
-    # B3: a flat count is unusable at volume -- one real deck produced 42 restatement
-    # and 34 split flags on a deck that was already correct, and triaging that noise
-    # cost more than the report saved. Cap hard, and say how many were withheld.
-    CAP = 8
-    print(f"\nRESTATEMENT FLAGS — {len(rep)} total (candidates, not verdicts)")
-    for kind, what, who in rep[:CAP]:
-        print(f"  {kind:<9} cards {who}  {what!r}")
-    if len(rep) > CAP:
-        print(f"  ... {len(rep) - CAP} more suppressed. Most repeats are REQUIRED "
-              f"duplication — a glossary repeats on every card that uses it, and "
-              f"worked examples echo their setup — so check by value ownership "
-              f"(which card owns this fact?), not by count.")
-    if not rep:
-        print("  none")
-
-    if args.deep:
-        print(f"\nREDUNDANCY (answer subsumed by a sibling) — {len(red)} pair(s)")
-        for i, j, r in red[:15]:
-            print(f"  card {i} ~ card {j}  ({r})")
-
-        print(f"\nINTERFERENCE (near-identical fronts compete) — {len(inter)} pair(s)")
-        for i, j, r in inter[:15]:
-            print(f"  card {i} ~ card {j}  ({r})")
-
-        print(f"\nANSWER OVERLAP (same ground; merge or justify a contrast) — {len(overlap)} pair(s)")
-        for i, j, r in overlap[:15]:
-            print(f"  card {i} ~ card {j}  ({r:.0%})")
-        if not overlap:
-            print("  none")
-    else:
-        print("\nPAIRWISE SIMILARITY: skipped (pass --deep for an explicit debloat pass)")
-
-    print(f"\nSPLIT CANDIDATES ({len(bundles)}) — independent facts sharing one schedule")
-    for i, items, topic in bundles[:CAP]:
-        print(f"  card {i:>3}  {items} items  [{topic}]")
-    if len(bundles) > CAP:
-        print(f"  ... {len(bundles) - CAP} more suppressed. Apply the real test to each: "
-              f"does knowing one imply knowing the others? If yes it is a CHUNK and "
-              f"splitting only multiplies review count. Only independently examinable "
-              f"items are worth splitting.")
-    if not bundles:
-        print("  none")
-
-    print(f"\nKEEP AS ONE CHUNK ({len(keep_chunks)}) — items transfer together")
-    for i, items, topic in keep_chunks[:12]:
-        print(f"  card {i:>3}  {items} items  [{topic}]")
-
-    print(f"\nCOSTLIEST BREADS (review time, paid every review)")
-    for i, b, f in cost[:8]:
-        print(f"  card {i:>3}  back {b:>3}w  front {f:>2}w")
-
-    print(f"\nANCHORS ({len(anchors)}) — cheap cards that unlock siblings; protect these")
-    for i, f in anchors[:12]:
-        print(f"  card {i:>3}  {f}")
+    print(report(cards, weights, args.deep, as_json=args.json), end="")
     return 0
 
 

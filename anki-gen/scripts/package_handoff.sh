@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"                 # .../anki-gen
-SKILLS_PARENT="$(dirname "$SKILL_DIR")"              # .../skills
+SKILLS_PARENT="$(dirname "$SKILL_DIR")"              # repo root (contains image-vision/, install.sh)
 CHECK=0
 if [ "${1:-}" = "--check" ]; then CHECK=1; shift; fi
 OUT="${1:-$HOME/Downloads/anki-gen-handoff.zip}"
@@ -27,7 +27,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 cp -R "$SKILL_DIR" "$STAGE/anki-gen"
 cp -R "$SKILLS_PARENT/image-vision" "$STAGE/image-vision"
-cp "$SCRIPT_DIR/handoff/install.sh" "$STAGE/install.sh"
+cp "$SKILLS_PARENT/install.sh" "$STAGE/install.sh"
 cp "$SCRIPT_DIR/handoff/INSTALL.md" "$STAGE/INSTALL.md"
 cp "$SKILL_DIR/VERSION" "$STAGE/VERSION"
 chmod +x "$STAGE/install.sh"
@@ -39,33 +39,30 @@ find "$STAGE" -name '*.bak' -delete 2>/dev/null || true
 find "$STAGE" -name '.backup*' -prune -exec rm -rf {} + 2>/dev/null || true
 find "$STAGE" -name '.anki-gen-temp' -prune -exec rm -rf {} + 2>/dev/null || true
 
-for f in anki-gen/SKILL.md image-vision/SKILL.md \
-         image-vision/scripts/vision_check.py \
-         anki-gen/assets/mathjax/tex-svg.js anki-gen/VERSION \
-         anki-gen/requirements.txt anki-gen/requirements-optional.txt \
-         anki-gen/scripts/setup.sh \
-         anki-gen/scripts/setup_macos.sh anki-gen/scripts/doctor.py \
-         anki-gen/scripts/visual.py anki-gen/scripts/ytdlp.py \
-         anki-gen/scripts/extract_slides.py anki-gen/scripts/media_transcribe.py \
-         anki-gen/scripts/preflight.py anki-gen/scripts/pipeline.py \
-         anki-gen/scripts/platform_paths.py anki-gen/scripts/anki_connect.py \
-         anki-gen/scripts/deck_context.py anki-gen/scripts/revision.py \
-         anki-gen/scripts/dossier/__init__.py anki-gen/scripts/dossier/store.py \
-         anki-gen/scripts/dossier/resources.py \
-         anki-gen/scripts/revision_ops/__init__.py \
-         anki-gen/references/slides.md anki-gen/references/revision.md \
-         anki-gen/maintainers/README.md anki-gen/maintainers/lessons.md \
-         anki-gen/maintainers/cold-audit.md anki-gen/maintainers/dossier-format.md \
-         anki-gen/scripts/handoff/install.sh anki-gen/HANDOFF.md \
-         anki-gen/AGENTS.md install.sh INSTALL.md VERSION; do
+for f in anki-gen/SKILL.md image-vision/SKILL.md install.sh INSTALL.md VERSION \
+         anki-gen/AGENTS.md anki-gen/MAINTAINERS.md \
+         anki-gen/maintainers/lessons.md anki-gen/maintainers/dossier-format.md; do
   if [ ! -f "$STAGE/$f" ]; then
     echo "Packaging check failed: missing $f" >&2
     exit 1
   fi
 done
 
+junk="$(find "$STAGE" \( -name '__pycache__' -o -name '.DS_Store' -o -name '*.bak' \
+     -o -name '.anki-gen-temp' -o -name '.git' \) -print)"
+if [ -n "$junk" ]; then
+  echo "Packaging check failed: junk or work files in stage" >&2
+  exit 1
+fi
+secrets="$(find "$STAGE" -type f \( -name '*.key' -o -name 'gemini.key' \
+     -o -name '.env' -o -name '.env.*' \) -print)"
+if [ -n "$secrets" ]; then
+  echo "Packaging check failed: secret-looking file in stage" >&2
+  exit 1
+fi
+
 if [ "$CHECK" = "1" ]; then
-  echo "package check ok: both skills, installer, setup, doctor, docs, VERSION"
+  echo "package check ok: both skills, installer, docs, VERSION"
   exit 0
 fi
 

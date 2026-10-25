@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Put the deck's shape on disk before the cards are written.
+"""DEPRECATED: kept for compatibility; use cards.jsonl and pipeline.py. Removal target: 2.0.
+
+Put the deck's shape on disk before the cards are written.
 
 The authoring step is the expensive one, and most of it is duplicated: the deck gets
 composed in reasoning, then composed again in the file. The cause is uncertainty -- how

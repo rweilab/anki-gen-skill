@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Card media: one normal form, one path guard, one HTML snippet, one resize.
 
-`media` in cards.json accepts either a string (legacy: file only) or
+`media` in cards.jsonl accepts either a string (legacy: file only) or
 `{file, side, caption, source}`. Both the builder and the review page read the
 same list here, so a string cannot mean one thing in the deck and another in
 review. Attaching is opt-in at the build (`--media`); this module does not decide

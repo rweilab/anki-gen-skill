@@ -23,7 +23,7 @@ and works offline. Requirements: nothing beyond the standard library.
 
 SAFE AUTHORING
 --------------
-If you build cards.json from Python source, write LaTeX in RAW strings. A non-raw
+If you use the legacy Python authoring path, write LaTeX in RAW strings; the canonical cards.jsonl path uses JSON escapes. A non-raw
 string silently corrupts LaTeX, because these are Python escapes:
 
     \\t  -> TAB      breaks \\text{}, \\times, \\theta

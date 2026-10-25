@@ -22,7 +22,9 @@ bash install.sh
 The installer puts both skills in `~/.claude/skills/`, verifies them, backs up
 any previous install under `~/.local/share/anki-gen/backups/`, installs the core
 Python libraries, attempts optional image/video/local-audio support best-effort,
-and runs the doctor. It does not touch `~/.config/anki-gen` or your Anki collection.
+and runs the doctor. Set `ANKI_GEN_SKILLS_DIR=~/.config/opencode/skills` (or
+`.agents/skills`) to install for a different harness; the default stays
+`~/.claude/skills`. It does not touch `~/.config/anki-gen` or your Anki collection.
 A failed optional feature becomes a warning, not a failed install. Setup ends with
 `Full feature set: installed` or `Full feature set: NOT installed` and lists the gaps.
 

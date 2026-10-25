@@ -77,3 +77,40 @@ from context export unless `--include-snapshots` is passed.
 file into `resources/` and records its hash, size, kind, role, and metadata.
 Resources are included in archives; `snapshots/` is excluded from context export
 unless `--include-snapshots` is passed.
+
+## v1.5 implementation map
+
+Start here before reading the revision code:
+
+| Need | Read |
+|---|---|
+| CLI flags and output | `scripts/revision.py` |
+| One revision verb | `scripts/revision_ops/<verb>.py` |
+| Snapshot, sizes, delete, prune | `scripts/revision_ops/snapshot.py` |
+| Shared note/schedule/conflict helpers | `scripts/revision_ops/common.py` |
+| Atomic storage and locks | `scripts/dossier/store.py` |
+| Record and manifest format | `scripts/dossier/model.py`, `manifest.py` |
+| Behavior index | `tests/revision_hardening.py`, `tests/README.md` |
+
+Data flow: `attach` writes state, `plan` writes a plan, `apply` writes snapshot +
+affected backup + apply log, and `revert` reads the backup + apply log. Old state
+is never duplicated in `snapshot.json`.
+
+## Deferred: v1.5 deck revisions
+
+**v1.5 status:** implemented in `scripts/dossier/`, `scripts/revision_ops/`,
+`scripts/deck_context.py`, `scripts/revision.py`, and `scripts/anki_connect.py`. The notes
+below remain the rationale and the boundaries.
+
+Do not implement this in v1.4.x. Notes only:
+
+- An `.apkg` import merges by note GUID; it does not replace the collection.
+  Existing notes can update while keeping scheduling/history; new notes are
+  added; notes absent from the package are not deleted. `.colpkg` replaces the
+  whole collection and is not the revision mechanism.
+- Current note IDs are `md5(front|back)` (`cardid.py`). A stable explicit `hash`
+  is required before editing existing notes, or Anki sees a new note.
+- The future revision path needs: GUID extraction/migration, revision reports
+  (`added`/`updated`/`unchanged`/`retired`), note-type compatibility checks, and
+  optional AnkiConnect cleanup. `--merge-existing` is add-only and must not be
+  presented as an update path.

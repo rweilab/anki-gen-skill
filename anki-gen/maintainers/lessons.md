@@ -1,6 +1,7 @@
 # Regression lessons
 
-Architecture/token postmortem: `MAINTAINERS.md` (not loaded by the skill).
+This file owns regression lessons and architecture history. Read it before changing a script.
+Do not use it as a runtime reference.
 
 ## Regression lessons
 
@@ -79,7 +80,7 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   third tag restating its topic. `validate_cards.py` enforces the cap, rejects a layer code in
   `topic`, flags an object that duplicates the topic (Anki folds tags case-insensitively and would
   drop it), and reports the object census to catch singleton tags.
-- **Object tags are how "related notes" works.** Rule 26 forbids a back pointing at another card; a
+- **Object tags are how "related notes" works.** The no-cross-card-pointers rule forbids a back pointing at another card; a
   related-notes footer is the same thing and goes stale. "Every card about FCC" is a tag query.
 - **Status lines while it runs.** Short plain-language status is encouraged at every level, replacing
   "never narrate the pipeline"; what stays banned is *jargon* narration — stage numbers, layer codes,
@@ -99,7 +100,7 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   file in the caller's cwd, the work directory is deleted in full, and a hand-authored source is
   promoted only to a caller-named path — never to a folder the agent invents. (A run that left a
   `midterm1_deck/` folder behind is why this is a checklist.)
-- **Rule 26, no cross-card pointers.** Only *stale* pointers were called out before, missing the
+- **No cross-card pointers.** Only *stale* pointers were called out before, missing the
   structural case: the reference resolves to nothing on the one screen where it is needed.
 - **The formula sheet is a question, not a rule.** "Do not card what the sheet prints" is wrong for
   a reference deck. The high-value half survives: when the sheet is given, the deck's mass moves to
@@ -199,3 +200,102 @@ Observed on the PH2023 v1.5.4 run; use these as audit patterns, not new gates.
   call and wait.
 - **A one-card KC is not automatically a card label.** It is allowed when the `why` is specific and
   the card is a complete decision; single-card `concept`/`mechanism` KCs are flagged for review.
+
+## Architecture history
+
+### What the experimental skill tried to do
+
+Location: `~/.claude/skills/anki-experimental/` (archived ALPHA). Read this
+summary instead of loading the whole experimental skill.
+
+**Goal:** keep per-card reasoning and heuristics while cutting total processed
+tokens, unique input, and peak context. The thesis was that a long chat
+re-sends its whole history on every step; small, fresh batch contexts should
+avoid that.
+
+**Intended control flow:**
+
+```text
+ingest.py  -> chunks.jsonl + FTS5 source index + toc/meta
+           -> facts.jsonl (compact source map, one row per fact)
+           -> packet.py per 8–12-card topic
+                (rules + stage card + scope + facts + source excerpts + deck state)
+           -> ledger.md + cards.jsonl
+           -> author.py validation -> state.py
+           -> review.py (1–5 only) -> audit.py (static full-deck page)
+           -> build.py (Anki-native, optional media) -> cleanup
+```
+
+**Components:**
+
+- `ingest.py` — text/PDF ingest, FTS5 chunks, optional figure extraction and
+  one-image vision for near-empty pages.
+- `page.py` — token-light source pager; returns only the chunks for a query.
+- `packet.py` — the control-flow leash: one compact batch packet containing the
+  rules, stage card, scope, facts, excerpts, and deck state.
+- `facts.py`, `state.py` — compact fact table and deck state.
+- `author.py` — schema/media/ledger validation.
+- `review.py` — localhost 1–5 review with hash-keyed feedback.
+- `audit.py` — static whole-deck dashboard with filters, flags, images, ledger,
+  and export.
+- `build.py` — Anki-native Basic/Cloze build with import check and optional
+  media bundling.
+- `figures.py` / `vision.py` — opt-in figure list/description and one-image
+  Gemini transcription outside the main context.
+
+**What was different from base:** base favors one emitting script, a full
+corpus/deck context, and a broad validator. Experimental favored many small
+contexts, a compressed fact table, packet-per-batch rules, and a human audit
+page.
+
+**What the DSA run actually did:** one session, one 23.8 KB packet, nine topic
+ledgers, cards written through bash/Python snippets, and a broader topic scope.
+That is not the fresh-context-per-batch flow above, so the architecture was not
+cleanly tested.
+
+### Experimental ALPHA postmortem
+
+Source: `SCHOOL-DSA-Base.apkg` and `SCHOOL-DSA-Experimental.apkg` in
+`~/syncthing/RAM/old_syncthing/coding/DSA`, sessions
+`ses_ea69c33f2ffeXcJTXvWN3AbwFx` and `ses_ea6a2c0a2ffeN272yyrcUZtrB0`.
+
+| Observation | Evidence |
+|---|---|
+| Total processing and cost were effectively tied. | Base 234,855 input / 3.62M cache / $0.0703; experimental 226,588 / 3.97M / $0.0692. Total tokens 275k vs 265k; cost −1.6%. |
+| The experimental peak was lower, but it used more steps and cache. | Peak 121k vs 89k; messages 48 vs 75; bash 47 vs 60; cache +9.5%. |
+| One emitting script was efficient at this deck size. | Base 2 writes (48.8k script + 7k ledger); experimental 9 topic ledgers + 60 bash calls. |
+| Compression correlated with less why/source. | Base 107 `Why:` and 106 source footers; experimental 0 `Why:` and 90 sources. |
+| Reasoning fell while output rose. | Base 20,386 reasoning / 19,970 output; experimental 14,052 / 24,736. |
+| The quality comparison was confounded by scope. | Base leaned complexity/arrays/lists/stacks; experimental added trees, BSTs, hash tables, postfix. |
+| The stateless thesis was not cleanly tested. | Experimental ran one session, read one 23.8k packet, and wrote cards through bash/Python snippets rather than fresh batch contexts. |
+| Peak context alone is not a success metric. | Lower peak coexisted with higher cache and more steps. |
+| Validator breadth is cheap quality. | Base `validate_cards` ~22.6 KB vs experimental `author` ~5.6 KB; experimental missed why/coverage checks. |
+| Projected savings were not evidence. | The 80% projection did not appear; the measured total was 3.6% lower at 1.6% lower cost. |
+| New subsystems did not help this deck. | Media/vision/audit were unused or weaker than the base equivalents for DSA. |
+| Salvage value is separate from architecture value. | The static audit UI and OS/install matrix are token-neutral; the authoring pipeline was not better. |
+
+### What this does and does not say
+
+It does **not** prove compression is always bad. It shows that at ~120 cards,
+with this execution, compression shifted cost into more steps and cache while
+reducing why/source. The 99-card/17M-cache case is a different regime; the
+threshold is still unmeasured.
+
+It does suggest that **step count, why/source preservation, and validator
+breadth** belong in the success metric alongside total tokens and cost.
+
+### If this is retried
+
+Use a controlled A/B: same source, same topic list, same target card count, same
+model/settings. Run fresh contexts per 8–12-card batch, write `cards.jsonl`
+directly, and compare total tokens, cache, messages, cost, why/source coverage,
+validator findings, reasoning/card, and blind quality. Do not compare decks with
+different scope.
+
+### Possible salvage
+
+- Static whole-deck audit page (filters, validator flags, duplicates, images,
+  ledger, flag export) — human QC, no model tokens.
+- Cross-platform install/doctor matrix.
+
+Neither salvage item justifies reusing the experimental authoring pipeline.

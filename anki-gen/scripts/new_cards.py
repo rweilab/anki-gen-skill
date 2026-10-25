@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Author cards so the cheap mistakes fail on the line that made them.
+"""DEPRECATED: kept for compatibility; use cards.jsonl and pipeline.py. Removal target: 2.0.
+
+Author cards so the cheap mistakes fail on the line that made them.
 
 WHY THIS EXISTS (and why it is not another validator)
 -----------------------------------------------------

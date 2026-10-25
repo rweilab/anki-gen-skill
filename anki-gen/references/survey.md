@@ -64,8 +64,8 @@ When images are on, confirm only the images the cards actually need.
 the header and calibration section, not the whole file. A directory carries files written
 for whoever works in it — `AGENTS.md`, `CLAUDE.md`, `STUDY-LOG.md`, `README`, notes-to-self.
 Nothing else in the pipeline opens them, and they are the cheapest source of the two signals that
-decide what a deck is *for*: what has already caused a recurring error (rule 21's second
-criterion), and the learner's level (the calibration table). A `STUDY-LOG.md` saying "I keep mixing
+decide what a deck is *for*: what has already caused a recurring error (the value-case test's
+second criterion), and the learner's level (the calibration table). A `STUDY-LOG.md` saying "I keep mixing
 up wt% and at%" is worth more than another lecture deck. Report anything that changes scope or
 scaffolding — or say plainly that none were found.
 
@@ -97,7 +97,7 @@ already exists for a popular course — rare enough to be a sentence in the requ
 every run.
 
 **Deck naming is the caller's.** Ask for it here too, suggesting a shape:
-`SCHOOL::CIRCUITS::TOPIC`. Their answer is the name, flat included (rule 23); `--deck-name` is
+`SCHOOL::CIRCUITS::TOPIC`. Their answer is the name, flat included; `--deck-name` is
 required at build. Impose no convention. A silent `"Default"` fallback once let a valid deck land
 somewhere nobody finds. A `::` nests; Anki matches deck names case-insensitively.
 
@@ -110,5 +110,6 @@ deck built from the wrong two lectures is not something better cards can repair 
 
 **Scanned or handwritten sources.** If a PDF has almost no text layer but images, say so in
 the survey. The options are: read it with `image-vision` (Gemini, if available) and build from
-the transcription, or skip that source. Do not propose a deck from empty text.
+the transcription, or skip that source. Do not propose a deck from empty text. A structure or
+reaction answer may need a verified image or a manual Anki addition.
 

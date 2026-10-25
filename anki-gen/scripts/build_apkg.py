@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build .apkg from cards.json, with optional merge into an existing deck.
+"""Build .apkg from cards.jsonl, with optional merge into an existing deck.
 
 Text handling is delegated to render.py, which converts markdown to HTML and
 rewrites LaTeX to the delimiters Anki's bundled MathJax actually understands.
@@ -9,7 +9,7 @@ The deck is written through Anki's own library (build_native.py): it creates the
 notetypes and the cards itself, so the collection it exports always has a schema
 Anki accepts. An earlier version also carried a second, genanki-based writer as a
 fallback; it was removed in full rather than kept for reference, because it could
-not produce a cloze deck that Anki 26 opens (see rule 15) and it made `genanki` a
+not produce a cloze deck that Anki 26 opens (see card-writing.md § cloze) and it made `genanki` a
 hard import for every caller of this module, including `build_native`.
 """
 import argparse
@@ -206,7 +206,7 @@ def main() -> int:
                     help="bundle card media (opt-in; off by default)")
     ap.add_argument("--media-root", default=None,
                     help="root the card media paths are relative to "
-                         "(default: the directory holding cards.json)")
+                         "(default: the directory holding the cards file)")
     args = ap.parse_args()
 
     cards = load_cards(args.cards_json)

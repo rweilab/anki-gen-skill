@@ -8,7 +8,7 @@ trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/stage" "$W/home/.config/anki-gen" "$W/home/.claude/skills"
 cp -R "$ROOT" "$W/stage/anki-gen"
 cp -R "$SKILLS/image-vision" "$W/stage/image-vision"
-cp "$ROOT/scripts/handoff/install.sh" "$W/stage/install.sh"
+cp "$SKILLS/install.sh" "$W/stage/install.sh"
 cp "$ROOT/scripts/handoff/INSTALL.md" "$W/stage/INSTALL.md"
 cp "$ROOT/VERSION" "$W/stage/VERSION"
 printf 'test-key\n' > "$W/home/.config/anki-gen/gemini.key"
@@ -24,7 +24,6 @@ grep -q '^faster-whisper' "$W/stage/anki-gen/requirements-optional.txt" || exit 
 ! grep -q '^faster-whisper' "$W/stage/anki-gen/requirements.txt" || exit 1
 grep -q 'requirements-optional.txt' "$W/stage/anki-gen/scripts/setup.sh" || exit 1
 grep -q 'Full feature set' "$W/stage/anki-gen/scripts/setup.sh" || exit 1
-cmp -s "$SKILLS/install.sh" "$ROOT/scripts/handoff/install.sh" || exit 1
 bash "$W/stage/anki-gen/scripts/setup.sh" --print-only > "$W/print-only.txt"
 grep -q 'requirements-optional.txt' "$W/print-only.txt" || exit 1
 run_install

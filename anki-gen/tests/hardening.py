@@ -136,7 +136,14 @@ def main() -> int:
     assert (maintainers.index("1. correctness")
             < maintainers.index("3. token and API-call efficiency")
             < maintainers.index("4. speed")), "quality priority order changed"
-    assert "quality contract in `MAINTAINERS.md`" in (ROOT / "AGENTS.md").read_text()
+    agents = (ROOT / "AGENTS.md").read_text()
+    assert "quality contract in `MAINTAINERS.md`" in agents
+    assert "## Documentation architecture" in agents
+    for name in ("AGENTS.md", "MAINTAINERS.md", "maintainers/lessons.md",
+                 "maintainers/dossier-format.md"):
+        assert name in agents, f"maintainer doc not in read order: {name}"
+    assert not (ROOT / "maintainers" / "README.md").exists()
+    assert not (ROOT / "maintainers" / "cold-audit.md").exists()
     print("ok    execution and quality guardrails present")
 
     # Identity follows content, never a stale explicit hash.

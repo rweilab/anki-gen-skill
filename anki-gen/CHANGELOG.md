@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.6** — One maintainer read order, one installer, route-first runbook, and gate plumbing cleanup
 - **v1.5.5** — Default quality path, opt-in revision context, one quality contract, and design axioms
 - **v1.5.4** — Seven-step runbook, compact KCs, exact gates, and explicit done states
 - **v1.5.3** — Review rescope gate, KC map, and evidence grounding
@@ -29,6 +30,54 @@ These are deliberate, not forgotten:
   not overwrite them.
 - **Full semantic duplicate detection and per-deck analytics.** Useful later; not on the critical
   path for the KC/review work.
+
+## v1.5.6 — One source for maintainers, one installer, route-first runbook
+
+*This release is a safe-20% hygiene pass: it removes parallel paths and duplicated ownership
+without changing card generation, artifacts, or field contracts.*
+
+### Changed
+
+**Maintainer docs**
+- `AGENTS.md` is now the single maintainer entry point: read order, documentation architecture,
+  change workflow, cold audit, and boundaries.
+- `MAINTAINERS.md` keeps the quality contract, design axioms, rule ownership, and deprecations;
+  duplicate boundaries/changelog/index and experimental postmortem moved out.
+- `maintainers/lessons.md` owns regression lessons and architecture history.
+- `maintainers/dossier-format.md` owns revision schema and the v1.5 implementation map.
+- Removed `maintainers/README.md` and `maintainers/cold-audit.md`; their content is in `AGENTS.md`.
+- Added `MAINTAINERS.md` § Deprecations with removal targets. Legacy authoring scripts are
+  frozen, not wrapped.
+
+**Runtime and docs**
+- `SKILL.md` starts with a route-first block: new deck, existing imported deck/spin-off, or
+  handwritten source.
+- `SKILL` is now the skill directory, not a hardcoded `~/.claude/skills/anki-gen`.
+- `references/revision.md` now matches the code: `--context` is opt-in; `--no-context` is a
+  deprecated no-op.
+- `cards.jsonl` is canonical in docs; `cards.json` remains accepted for old work dirs.
+- `references/rendering.md` describes JSON escaping, not Python raw strings.
+- Stale old rule numbers were replaced with section names.
+
+**Installer and packaging**
+- One root `install.sh`; removed the duplicate `scripts/handoff/install.sh` and the copy-sync test.
+- `package_handoff.sh` now checks invariants and rejects junk/secret files instead of maintaining
+  a per-file allowlist.
+- Installer default remains `~/.claude/skills`; `ANKI_GEN_SKILLS_DIR` is documented for
+  `.opencode/skills` and `.agents/skills`.
+
+**Internal**
+- `roi_report.report()` is a pure function; `pipeline.py` no longer swaps `sys.argv` or captures
+  stdout.
+- Gate fix hints moved to `validate_cards.fix_for()`.
+- `preflight.py` resolves backups from the skill root, with a `~/.claude/skills` fallback.
+
+### Compatibility
+
+- No changes to `.apkg` output, card schema, `deck`, `scope_gate.md`, `review_actions.md`, or
+  existing flags.
+- `cards.json` and old work directories remain readable.
+- No new compatibility shims.
 
 ## v1.5.5 — Default quality path, opt-in revision context, one quality contract
 

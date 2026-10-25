@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static checks on cards.json, before anything is built.
+"""Static checks on cards.jsonl, before anything is built.
 
 Run this every time. Every failure below was a real bug that shipped unnoticed:
 the deck still imported fine, it just looked broken on screen.
@@ -591,7 +591,7 @@ def findings(cards):
         #
         # Paragraph-scoped on purpose. A question in the SAME paragraph as a deletion
         # is usually that blank's own prompt ("**Which symbol?** ... {{c1::[uvw]}}"),
-        # which rule 6 requires -- flagging those was a false positive on a real deck.
+        # which the tier-zero rule requires -- flagging those was a false positive on a real deck.
         # Only a question in a paragraph with NO deletion is a second target.
         if is_cloze_flag:
             for para in re.split(r"\n\s*\n", front):
@@ -648,13 +648,13 @@ def findings(cards):
         if POINTER.search(CODE_SPAN.sub("", back)):
             add(i, "err",
                 f"{label} -- back points at another card; write the information "
-                "in this card instead (rule 26)")
+                "in this card instead (no cross-card pointers)")
 
     layers = Counter(c.get("layer") for c in cards)
     topics = Counter(c.get("topic") for c in cards)
     add(0, "info", f"{len(cards)} cards | layers {dict(layers)}")
 
-    # Rule 6: a formula-bearing topic needs one concept card before its formulas.
+    # A formula-bearing topic needs one concept card before its formulas.
     # Warning only, and only from three formula cards up: a two-card topic is often
     # intentional, and the model must not add a card just to silence a checker.
     formula_topics = Counter(
@@ -903,6 +903,44 @@ def check_cards(cards, deep: bool = False, ledger_text: str | None = None,
             warns.append(f"cards {i} and {j} answers {r:.0%} overlapping; "
                          "merge or keep only if they are a contrast")
     return errs, warns, info
+
+
+def fix_for(message: str) -> str:
+    """One actionable line for a gate error; the validator owns the check and the fix."""
+    low = message.lower()
+    if "computation prompt in front" in low or "explicit computation verb" in low:
+        return ("if the front asks for a method or meaning, rephrase without the verb; a "
+                "numeric result belongs in a problem set, not the front")
+    if "evidence_quote is not in the extracted source" in low:
+        return ("use a verbatim quote from the cited page, or set the KC source to "
+                "`derived` if the claim is self-contained")
+    if "need an evidence_quote" in low:
+        return "add a short verbatim `evidence_quote` to that KC row in kcs.md"
+    if "not in the kc map" in low or "unknown kc" in low:
+        return "add the KC to kcs.md or fix the card's `kc`"
+    if "missing 'kc'" in low:
+        return "add `kc` to the card; it must exist in kcs.md"
+    if "missing 'why'" in low:
+        return "add a one-line value case to that KC row (reuse, exam weight, error trap, prerequisite)"
+    if "exact same claim" in low:
+        return "merge the two KCs or make their claims genuinely distinct"
+    if "no parsable kc table" in low:
+        return "start kcs.md with `# KCs` and a pipe table; do not use a prose list"
+    if "single-card kc" in low:
+        return "merge the KC into its parent, add another card, or make it a prerequisite anchor"
+    if "every kc has exactly one card" in low:
+        return "the map is a card index; group cards under shared concepts"
+    if "missing/empty 'source'" in low or "no source. use a locator" in low:
+        return "add a page/slide/question locator, or `source: \"derived\"` for self-contained math"
+    if "control char" in low:
+        return "in JSON, double every LaTeX backslash (\\frac) or rewrite the card"
+    if "stray" in low and "$" in message:
+        return "let the builder convert `$...$`; do not pre-convert MathJax delimiters"
+    if "front refers to an image" in low:
+        return "put the image on the front, or inline the data the front refers to"
+    if "exact duplicates" in low:
+        return "remove one of the duplicate cards"
+    return ""
 
 
 def main():

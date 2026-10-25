@@ -4,7 +4,7 @@
 
 **Math goes through Anki's bundled MathJax, using `\( ... \)` inline and `\[ ... \]` display.** The
 `$...$` / `$$...$$` form is **not enabled by default** and renders literally. Always write `$...$`
-in cards.json; the builder converts to Anki's delimiters.
+in cards.jsonl; the builder converts to Anki's delimiters.
 
 **Subscripts and superscripts are MathJax, not underscores.** Write `$P_{0}$`, `$v_{0y}$`,
 `$A_{1}$`; use `\text{}` for descriptive words: `$\rho_{\text{oil}}$`, `$V_{\text{disp}}$`.
@@ -29,14 +29,14 @@ it inherits the host theme's (light-on-light, invisible). Include a `.night_mode
 override block; if neither matches, the hardcoded light colours stand and nothing is lost.
 
 **Anki renders no markdown.** A field is HTML: `**bold**`, `*italic*`, `|tables|`, `- lists` appear
-literally unless converted. The builder handles it — write markdown in cards.json, get HTML in the
-deck. **Do not route math through SVG** (rule 25): MathJax gives selectable text, keeps the .apkg
-small, works offline.
+literally unless converted. The builder handles it — write markdown in cards.jsonl, get HTML in the
+deck. **Do not route math through SVG** (MathJax, not SVG): MathJax gives selectable text, keeps
+the .apkg small, works offline.
 
-**Use raw strings for all card text.** Non-raw strings silently corrupt LaTeX; these are Python
-escapes:
+**JSON escape traps.** In `cards.jsonl`, a single backslash starts a JSON escape. Write `\\frac`,
+not `\frac`; the latter becomes a formfeed and corrupts the card:
 
-| Written | Becomes | Breaks |
+| In JSON | Becomes | Breaks |
 |---|---|---|
 | `\t` | TAB | `\text{}`, `\times`, `\theta` |
 | `\f` | formfeed | `\frac` |

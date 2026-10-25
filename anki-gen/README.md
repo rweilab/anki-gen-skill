@@ -2,9 +2,14 @@
 
 This file is for setting the skill up once. The model does not need it during a normal run.
 
-Maintainers: read `AGENTS.md` for the dev workflow and `MAINTAINERS.md` before architectural or token-efficiency changes. Neither is loaded by `SKILL.md` during a normal run. Tests: `bash scripts/smoke.sh` now includes negative fixtures, a golden deck, sabotage/mutation probes from `tests/hardening.py`, offline video fixtures from `tests/video_hardening.py`, adversarial PPTX fixtures from `tests/slides_hardening.py`, local-media/pipeline fixtures, and
-AnkiConnect revision/dossier fixtures from `tests/revision_hardening.py` and
-`tests/context_hardening.py`. On failure it prints the line, work directory, relevant hints, and logs; use `KEEP_WORK=1` to keep the fixture and `SMOKE_DEBUG=1` for a trace.
+Maintainers: read `AGENTS.md` for the dev workflow and read order. It points to
+`MAINTAINERS.md`, `maintainers/lessons.md`, and `maintainers/dossier-format.md`.
+None are loaded by `SKILL.md` during a normal run. Tests: `bash scripts/smoke.sh`
+now includes negative fixtures, a golden deck, sabotage/mutation probes from
+`tests/hardening.py`, offline video fixtures from `tests/video_hardening.py`,
+adversarial PPTX fixtures from `tests/slides_hardening.py`, local-media/pipeline
+fixtures, and AnkiConnect revision/dossier fixtures from `tests/revision_hardening.py`
+and `tests/context_hardening.py`. On failure it prints the line, work directory, relevant hints, and logs; use `KEEP_WORK=1` to keep the fixture and `SMOKE_DEBUG=1` for a trace.
 
 **Python 3.10+ is required** (the `anki` package). On Homebrew Python,
 `pip install --user` without `--break-system-packages` is blocked (PEP 668);
@@ -93,7 +98,7 @@ figures and tight page/slide crops for captioned vector diagrams; web extraction
 `alt`/`figcaption`/heading and a source URL. `media_index.py <workdir>` prints a compact
 candidate list, or `--cards cards.jsonl` ranks the best few per card. Candidates are never
 auto-attached. Build with
-`build_apkg.py cards.json Deck.apkg --deck-name NAME --media --media-root <workdir>`.
+`build_apkg.py cards.jsonl Deck.apkg --deck-name NAME --media --media-root <workdir>`.
 For the one-call path, `pipeline.py --work <workdir> --out-apkg Deck.apkg`; a `.apkg`
 passed to `--work`/`--out` is rejected. Images
 require Pillow; over-cap files are downscaled, not dropped.
