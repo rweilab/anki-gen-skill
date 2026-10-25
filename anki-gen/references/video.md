@@ -9,9 +9,10 @@ Opt-in. Use when the user provides a YouTube video/playlist, a local recording, 
 single-source diagnosis path. Long runs print `[media i/n]` and `[video i/n]` progress, keep
 `video_meta.json` current after each video, and write `$WORK/pipeline_state.json`; rerun with
 `--resume` and use `--status` to see completed, partial, failed, and interrupted work.
-`pipeline.py --vision auto --vision-max 12` is the opt-in bounded confirmation pass over
-`confirm` frames only; it writes `vision.jsonl`. Do not sleep or poll yt-dlp; the scripts retry briefly and report skipped
-videos.
+Confirmation is card-driven **after** the card text exists: confirm only a frame you are about to
+attach, not the corpus. Prefer `direct` frames; if many candidates need confirmation, prioritize
+front/answer-critical diagrams and leave decorative backs unconfirmed. There is no image mode and no
+fixed image count. `pipeline.py --vision` is an advanced diagnosis pass, not the normal path.
 
 ## Local recordings
 
@@ -103,9 +104,9 @@ The picker is two-stage:
   scan and keep one best frame per visual cluster;
 - collapse near-identical frames only inside that cue, never across different
   cues or cards;
-- `direct` → attach. `confirm` → confirm through `image-vision` when a key
-  exists; otherwise attach only when the cue explicitly names a visual and the
-  frame is visually strong. `skip` stays in `frames.jsonl`.
+- `direct` → attach. `confirm` → confirm through `image-vision` or explicit
+  caller approval; a cue naming a visual is not approval. `skip` stays in
+  `frames.jsonl`.
 - `frames.py --sweep 00:00-02:30 --every 10` is the bounded chapter scan; use it
   instead of a long series of manual `--at` calls. `frames.md` lists canonical
   frames; alternates stay in `frames.jsonl`.

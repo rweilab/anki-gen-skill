@@ -5,7 +5,8 @@ Read the part you are about to write against, not the whole thing.
 
 Rule map: 5 symbols · 6 tier-zero · 8 recallability · 10 anchors · 11 front/back length ·
 12 course language · 13 calibration · 14 retrieval success · 15 cloze · 16 backs explain ·
-17 provenance · 18 housekeeping · 19 Procedure · 26 no cross-card pointers · 27 topic/objects.
+17 provenance · 18 housekeeping · 19 Procedure · 26 no cross-card pointers · 27 topic/objects ·
+28 KC.
 
 ### Every symbol is defined on its card
 
@@ -13,6 +14,25 @@ If a front or back contains symbols, the back defines each with units — `N` = 
 lattice sites, with the required density units named. "Identify all variables" is an exam
 objective, so a formula card without the glossary tests half the thing. `validate_cards` reports (info, not a warning) symbol-heavy L1/L2 cards with no
 structural glossary or definition line; the review checklist still asks for one.
+
+Write symbols in MathJax, not plain text: `$P_{0}$`, not `P_0`; `$\rho_{\text{oil}}$`, not
+`ρ_obj`; `$V_{\text{sphere}}$`, not `Vsphere`. Use `\text{}` for descriptive word subscripts.
+Code spans are the exception. A bare `X_y` outside math is a validator warning.
+
+### Every card belongs to a KC
+
+A knowledge component is the thing being learned; a card is one retrieval rep. `kcs.md` names
+the KCs, their `requires` edges, and their source. Each card names one `kc`; `stratum` is
+optional, because the KC `type` is the preferred retrieval family (`concept`, `mechanism`,
+`condition`, `procedure`, `representation`, `error`, `schema`, `integration`, `boundary`,
+`metacognition`).
+
+A KC with no cards is a coverage gap. A card whose KC is not in the map is an orphan. A card whose
+`stratum` (if present) is a one-off label cannot be sampled or reviewed by family. A single-card
+KC is allowed when the card is a complete, high-value decision and the KC’s `why` makes the value
+case; a single-card `concept`/`mechanism` warns, while a `boundary`, `error`, `metacognition`,
+`integration`, or `anchor` single is normal. A 1:1 map warns; duplicate claims are errors. The map
+is not a second card list; it is the value and coverage contract. Do not add filler cards.
 
 ### A tier-zero card comes before the formula cards
 
@@ -216,10 +236,11 @@ Cards test **understanding, recognition, boundaries** — never mechanical compu
 ### Every card carries a provenance footer
 
 Source-dependent claims cite where they came from with a locator; a repeatedly-failing card must
-say where to read around it, and "the lecture" lets the learner find nothing. It goes in `source`;
-the builder renders it as a quiet footer. `validate_cards.py` **errors** when `source` is missing,
-unless it is the explicit `derived` marker, and warns when a real source has no page, slide,
-question, or chapter.
+say where to read around it, and "the lecture" lets the learner find nothing. The locator goes in
+`source`; the builder renders it as a quiet footer. The knowledge component in `kcs.md` carries
+the `evidence_quote`; the gate checks that quote against the extracted corpus. `derived` is the only
+exemption. `validate_cards.py` **errors** when a card's `source` is missing, and warns when a real
+source has no page, slide, question, or chapter.
 
 ```
 Ch 4 · Lec 10 Q7

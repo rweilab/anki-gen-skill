@@ -6,6 +6,11 @@
 `$...$` / `$$...$$` form is **not enabled by default** and renders literally. Always write `$...$`
 in cards.json; the builder converts to Anki's delimiters.
 
+**Subscripts and superscripts are MathJax, not underscores.** Write `$P_{0}$`, `$v_{0y}$`,
+`$A_{1}$`; use `\text{}` for descriptive words: `$\rho_{\text{oil}}$`, `$V_{\text{disp}}$`.
+Bare `P_0`, `ρ_obj`, or `V_{sphere}` is a validator warning; concatenated names such as
+`Vsphere` are a review defect. Code spans are exempt.
+
 **Deliberate line breaks inside a paragraph: use the markdown hard-break signal.** `render.py`
 re-flows wrapped source lines into single paragraphs; to force a break — needed for
 one-fact-per-line cloze fronts — end the source line with **two spaces** (`  \n`) or a trailing
@@ -15,7 +20,9 @@ backslash (`\n`). Both are honoured as `<br>`:
     coordination number: {{c2::12}}  
     APF: {{c3::0.74}}  
 
-Soft wraps re-flow; hard breaks are preserved.
+Soft wraps re-flow; hard breaks are preserved. A literal `<br>` in `cards.jsonl` is a warning:
+use a blank line for a paragraph or the two-space signal for a deliberate break. The built HTML
+will contain `<br>` tags; that is the renderer's output, not source text.
 
 **CSS night-mode guard.** Every element with a custom `background` MUST have an explicit `color`, or
 it inherits the host theme's (light-on-light, invisible). Include a `.night_mode` / `.nightMode`

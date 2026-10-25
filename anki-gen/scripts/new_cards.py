@@ -75,7 +75,7 @@ class CardError(ValueError):
 def C(front: str, back: str, *, layer: str, topic: str, deck: str, source: str,
       cloze: bool = False, tier_zero: bool = False, media: list | None = None,
       objects: list | None = None, hash: str = "", strict: bool = True,
-      **extra) -> dict:
+      kc: str = "", stratum: str = "", **extra) -> dict:
     """Build one card, checking it as it is built.
 
     The keyword-only signature is deliberate: `layer`, `topic`, `deck` and
@@ -97,6 +97,10 @@ def C(front: str, back: str, *, layer: str, topic: str, deck: str, source: str,
             "deck": deck, "source": source, "cloze": bool(cloze),
             "tier_zero": bool(tier_zero), "media": list(media or []),
             "objects": list(objects or []), "hash": hash}
+    if kc:
+        card["kc"] = kc
+    if stratum:
+        card["stratum"] = stratum
     card.update(extra)
 
     for key in REQUIRED:
@@ -184,13 +188,14 @@ CARDS = [
       back=r"""<the answer>
 
 **Why:** <the mechanism, 1-3 sentences>""",
-      layer="L2", topic="<Topic>", deck=DECK, source="<Lec 07 p.14>"),
+      layer="L2", topic="<Topic>", deck=DECK, source="<Lec 07 p.14>",
+      kc="<topic.knowledge_component>", stratum="mechanism"),
 
     # A tier_zero concept card belongs before each topic's formula cards.
     C(front=r"<the question a student has before meeting any notation>",
       back=r"<plain language first, then the equation>",
       layer="L2", topic="<Topic>", deck=DECK, source="<Lec 07 p.9>",
-      tier_zero=True),
+      tier_zero=True, kc="<topic.anchor>", stratum="concept"),
 ]
 
 if __name__ == "__main__":

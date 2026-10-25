@@ -200,8 +200,6 @@ def main() -> int:
     ap.add_argument("--deck-name", required=True,
                     help="the deck name; ::-separated segments make a nested tree "
                          "(e.g. SCHOOL::CIRCUITS::OPAMPS)")
-    ap.add_argument("--strict", action="store_true",
-                    help="kept for compatibility; static validation is now the default")
     ap.add_argument("--allow-invalid", action="store_true",
                     help="build despite validate_cards.py errors (diagnosis only)")
     ap.add_argument("--media", action="store_true",

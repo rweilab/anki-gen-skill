@@ -57,6 +57,28 @@ def validate(cards, scripts=SCRIPTS, deep=False):
             raise AssertionError(f"validator did not emit JSON: {r.stdout}\n{r.stderr}") from e
 
 
+def validate_with(cards, ledger=None, source=None):
+    """Run the CLI with the optional KC map and source corpus."""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        p = root / "cards.json"
+        p.write_text(json.dumps(cards))
+        cmd = [sys.executable, str(SCRIPTS / "validate_cards.py"), str(p), "--json"]
+        if ledger is not None:
+            lp = root / "authoring_ledger.md"
+            lp.write_text(ledger)
+            cmd += ["--ledger", str(lp)]
+        if source is not None:
+            sp = root / "sources.md"
+            sp.write_text(source)
+            cmd += ["--source", str(sp)]
+        r = run(cmd)
+        try:
+            return json.loads(r.stdout), r
+        except json.JSONDecodeError as e:
+            raise AssertionError(f"validator did not emit JSON: {r.stdout}\n{r.stderr}") from e
+
+
 def case(name, factory, kind, needle):
     cards = factory()
     data, _ = validate(cards)
@@ -127,6 +149,7 @@ def main() -> int:
     intent = parse_intent('make 30 cards --deck-name "My Deck" from Lec/')
     assert intent["deck_name"] == "My Deck", intent
     assert "max_cards" not in intent and "sources" not in intent, intent
+    assert "video_frames" not in intent, intent
     help_run = run([sys.executable, str(SCRIPTS / "parse_intent.py"), "--help"])
     assert help_run.returncode == 0 and "Usage:" in help_run.stdout, help_run
     print("ok    intent keeps quoted deck names and --help")
@@ -188,6 +211,158 @@ def main() -> int:
     data, _ = validate(bloat)
     assert any("has 16 cards" in w for w in data["warnings"]), data
     print("ok    topic bloat warning")
+
+    ledger = """# Authoring ledger
+
+## KCs
+| kc_id | type | claim | source | evidence_quote | requires |
+|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Lec 04 p.3 | A control volume is fixed. | — |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | Lec 04 p.12 | Apply the steady-flow equation. | thermo.control_volume |
+"""
+    kc_cards = [
+        dict(BASE, front="What is a control volume?",
+             back="A fixed region in space. **Why:** mass flows through it.",
+             kc="thermo.control_volume", stratum="concept", source="Lec 04 p.3"),
+        dict(BASE, front="Which equation applies to a steady-flow device?",
+             back="The steady-flow energy equation. **Why:** mass and energy balance.",
+             kc="thermo.steady_flow", stratum="procedure", source="Lec 04 p.12"),
+        dict(BASE, front="Why does the steady-flow equation need a control volume?",
+             back="It balances mass and energy across that fixed region. **Why:** the bookkeeping needs a boundary.",
+             kc="thermo.steady_flow", stratum="mechanism", source="Lec 04 p.12"),
+    ]
+    data, _ = validate_with(kc_cards, ledger=ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    print("ok    KC map links cards and resolves prerequisites")
+
+    data, _ = validate_with([dict(kc_cards[0], kc="")], ledger=ledger,
+                             source="A control volume is fixed.")
+    assert any("missing 'kc'" in e for e in data["errors"]), data
+    data, _ = validate_with([dict(kc_cards[0], kc="thermo.unknown")], ledger=ledger,
+                             source="A control volume is fixed.")
+    assert any("not in the KC map" in e for e in data["errors"]), data
+    bad_ledger = """# Authoring ledger
+
+## KCs
+| kc_id | type | claim | source | evidence_quote | requires |
+|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Lec 04 p.3 | A control volume is fixed. | — |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | Lec 04 p.12 | Apply the steady-flow equation. | thermo.missing |
+"""
+    data, _ = validate_with([kc_cards[1], kc_cards[2]], ledger=bad_ledger,
+                             source="Apply the steady-flow equation.")
+    assert any("requires unknown KC" in e for e in data["errors"]), data
+    data, _ = validate_with([kc_cards[0]], ledger=ledger,
+                             source="A control volume is fixed.")
+    assert any("has no cards" in w for w in data["warnings"]), data
+    print("ok    KC coverage and dependency failures are caught")
+
+    flat_ledger = """# Authoring ledger
+
+## KCs
+| kc_id | type | claim | source | evidence_quote | requires |
+|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Lec 04 p.3 | A control volume is fixed. | — |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | Lec 04 p.12 | Apply the steady-flow equation. | — |
+"""
+    flat_cards = [kc_cards[0], kc_cards[1]]
+    data, _ = validate_with(flat_cards, ledger=flat_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    assert any("every KC has exactly one card" in w for w in data["warnings"]), data
+    assert any("single-card concept" in w for w in data["warnings"]), data
+    print("ok    flat KC map warns instead of forcing filler")
+
+    why_ledger = """# KCs — Thermodynamics
+
+| kc | type | claim | why | requires | evidence_quote | source |
+|---|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Reused by every balance | — | A control volume is fixed. | Lec 04 p.3 |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | One-card method choice | thermo.control_volume | Apply the steady-flow equation. | Lec 04 p.12 |
+"""
+    data, _ = validate_with(kc_cards, ledger=why_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    assert not any("missing 'why'" in e for e in data["errors"]), data
+    print("ok    h1 KCs table with why parses and validates")
+    both_heading = why_ledger.replace("# KCs — Thermodynamics",
+                                      "# KCs — Thermodynamics\n\n## KCs")
+    data, _ = validate_with(kc_cards, ledger=both_heading,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    print("ok    h1 and h2 KCs headings both parse")
+
+    data, _ = validate_with(kc_cards, ledger=why_ledger.replace("Reused by every balance", "—"),
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert any("missing 'why'" in e for e in data["errors"]), data
+    print("ok    missing why is an error")
+
+    dup = why_ledger.replace("Apply the steady-flow equation. | One-card method choice",
+                             "A control volume is fixed. | One-card method choice")
+    data, _ = validate_with(kc_cards, ledger=dup,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert any("exact same claim" in e for e in data["errors"]), data
+    print("ok    duplicate KC claims are rejected")
+
+    boundary_card = dict(kc_cards[0], front="Why is a control volume useful?",
+                         back="It gives the balance a fixed boundary. **Why:** the bookkeeping needs a region.",
+                         kc="thermo.boundary", stratum="boundary")
+    boundary_ledger = """# KCs — Boundary
+
+| kc | type | claim | why | requires | evidence_quote | source |
+|---|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Reused by every balance | — | A control volume is fixed. | Lec 04 p.3 |
+| thermo.boundary | boundary | A control volume gives a balance a fixed boundary. | Single high-value boundary case | thermo.control_volume | A control volume is fixed. | Lec 04 p.3 |
+"""
+    data, _ = validate_with([kc_cards[0], dict(kc_cards[0], front="Why does a control volume help a balance?",
+                                               back="It fixes the region. **Why:** the boundary is the bookkeeping device.",
+                                               kc="thermo.control_volume"), boundary_card],
+                             ledger=boundary_ledger,
+                             source="A control volume is fixed.")
+    assert data["valid"] is True, data
+    assert not any("single-card boundary" in w for w in data["warnings"]), data
+    print("ok    single-card boundary KC is allowed")
+    no_stratum = [dict(kc_cards[1], stratum=""), dict(kc_cards[2], stratum="")]
+    data, _ = validate_with(no_stratum, ledger=ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    print("ok    stratum is optional when the KC type carries the family")
+
+    bad_quote_ledger = ledger.replace("A control volume is fixed. | —",
+                                      "Entropy always decreases. | —")
+    data, _ = validate_with(kc_cards, ledger=bad_quote_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert any("not in the extracted source" in e for e in data["errors"]), data
+    missing_quote_ledger = ledger.replace("A control volume is fixed. | —", "— | —")
+    data, _ = validate_with(kc_cards, ledger=missing_quote_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert any("need an evidence_quote" in e for e in data["errors"]), data
+    derived_ledger = ledger.replace("Lec 04 p.3 | A control volume is fixed.",
+                                    "derived | —")
+    data, _ = validate_with(kc_cards, ledger=derived_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True, data
+    legacy_ledger = """# Authoring ledger
+
+## KCs
+| kc_id | type | claim | source | requires |
+|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Lec 04 p.3 | — |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | Lec 04 p.12 | thermo.control_volume |
+"""
+    data, _ = validate_with(kc_cards, ledger=legacy_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert data["valid"] is True and not any("evidence_quote" in w for w in data["warnings"]), data
+    print("ok    KC evidence is grounded; derived and legacy maps are handled")
+
+    procedure = dict(BASE, layer="Procedure",
+                     front="A block on a rough incline. Determine the acceleration. Which method applies?",
+                     back="Use Newton's second law with a friction component. **Why:** the net force sets the acceleration.",
+                     source="Lec 04 p.12")
+    data, _ = validate([procedure])
+    assert not any("computation prompt" in e for e in data["errors"]), data
+    print("ok    Procedure Shape A decision fronts are exempt from the computation gate")
 
     # Soft order: source topic first, tier-zero, then L1/L2/advanced. Topic B is
     # first on purpose, so this also proves the order is not alphabetical.
@@ -420,6 +595,17 @@ def main() -> int:
     print("ok    authoring helper reports all batch errors and refuses to write")
 
     print("ok    front-visible tag leak warning")
+    data, _ = validate([dict(BASE, front="What does P_0 mean at the surface?",
+                             back="Use $P_0$ and `x_1` in prose.")])
+    assert any("bare symbol 'P_0'" in w for w in data["warnings"]), data
+    data, _ = validate([dict(BASE, front="What does $P_0$ mean at the surface?",
+                             back="Use `x_1` in code.")])
+    assert not any("bare symbol" in w for w in data["warnings"]), data
+    data, _ = validate([dict(BASE, front="Line one<br>Line two",
+                             back="A normal answer.")])
+    assert any("literal <br>" in w for w in data["warnings"]), data
+    print("ok    MathJax symbols and literal <br> are warned")
+
 
     same_answer = [
         dict(BASE, topic="Scheduling", front="How is the next task chosen?",
@@ -507,12 +693,16 @@ def main() -> int:
 
         good_apkg = td / "golden.apkg"
         r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(GOLDEN),
-                 str(good_apkg), "--deck-name", "GOLDEN::TEST", "--strict"])
+                 str(good_apkg), "--deck-name", "GOLDEN::TEST"])
         assert r.returncode == 0, r.stderr
         r = run([sys.executable, str(SCRIPTS / "validate_apkg.py"), str(good_apkg)])
         assert r.returncode == 0, r.stderr
         assert "5 notes" in r.stdout, r.stdout
-        print("ok    golden build/import")
+        no_anki = run([sys.executable, "-S", str(SCRIPTS / "validate_apkg.py"),
+                       str(good_apkg)])
+        assert no_anki.returncode == 3, (no_anki.stdout, no_anki.stderr)
+        assert "STRUCTURAL ONLY — NOT IMPORT-VALIDATED" in (no_anki.stdout + no_anki.stderr), no_anki
+        print("ok    golden build/import and missing-anki honesty")
 
         # A corrected card must not keep an old explicit hash and be skipped by
         # merge. If this fails, the fix silently never reaches Anki.
@@ -551,7 +741,7 @@ def main() -> int:
                  str(td / "invalid.apkg"), "--deck-name", "INVALID::TEST",
                  "--allow-invalid"])
         assert r.returncode == 0, r.stderr
-        print("ok    strict build by default with diagnosis escape")
+        print("ok    build validation is default with diagnosis escape")
 
         # Cloze: one deletion is one card; two distinct deletions are two cards.
         # The old check was inert, and its count comparison would have failed the
@@ -716,14 +906,14 @@ def main() -> int:
         assert "missing-a.png" in r.stderr and "missing-b.png" in r.stderr, r.stderr
         print("ok    missing media is reported together")
 
-        # The tag leak must stop a strict build, not merely print a warning.
+        # The tag leak must stop a build, not merely print a warning.
         leak_path = td / "leak.json"
         leak_path.write_text(json.dumps(tag_leak))
         leaked_apkg = td / "leaked.apkg"
         r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(leak_path),
-                 str(leaked_apkg), "--deck-name", "LEAK::TEST", "--strict"])
+                 str(leaked_apkg), "--deck-name", "LEAK::TEST"])
         assert r.returncode == 1 and not leaked_apkg.exists(), (r.returncode, r.stderr)
-        print("ok    strict build rejects answer-bearing tags")
+        print("ok    build validation rejects answer-bearing tags")
 
         # Sabotage 1: disable the source check; the missing-source fixture should now pass.
         mut = copy_scripts(td / "mut-source")
@@ -767,7 +957,7 @@ def main() -> int:
                [('src = str(c.get("source") or c.get("source_ref") or "")', 'src = ""')])
         bad_apkg = td / "bad.apkg"
         r = run([sys.executable, str(mut / "build_apkg.py"), str(GOLDEN),
-                 str(bad_apkg), "--deck-name", "GOLDEN::TEST", "--strict"])
+                 str(bad_apkg), "--deck-name", "GOLDEN::TEST"])
         assert r.returncode == 0, r.stderr
         with tempfile.TemporaryDirectory() as extract:
             with zipfile.ZipFile(bad_apkg) as z:

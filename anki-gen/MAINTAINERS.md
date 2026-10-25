@@ -43,48 +43,29 @@ are goals only within that quality contract.
 
 ## Rule ownership
 
-One owner per rule. `SKILL.md` keeps the one-line contract; the owner reference carries the
-explanation; the code gate is the check that can fail. “Prose” means the owner text plus review is
-the enforcement. Duplicates are point-of-use guards, not second definitions.
+`SKILL.md` carries ten hard rules; the detailed lessons live in `references/card-writing.md`.
+This table is the ownership map, not a second rule list.
 
-Owner references are under `references/` unless the cell names `SKILL.md`, `AGENTS.md`, `scripts/`,
-or a `maintainers/` path.
+| Contract | Owner | Code gate / review |
+|---|---|---|
+| Source-grounded or `derived` | `card-writing.md` § provenance | `validate_cards` source + KC evidence |
+| One retrieval decision | `card-writing.md` § recallability | `validate_cards` / review |
+| Unambiguous cue, no leak | `card-writing.md` § recallability | `validate_cards` tag leak / review |
+| Production, not recognition | `card-writing.md` § recallability | `validate_cards` computation front |
+| Conditions, units, symbols | `card-writing.md` § symbols | glossary info / review |
+| Near-miss discrimination | `card-writing.md` | review / adversarial review |
+| Answer first, then why | `card-writing.md` § answer first | `validate_cards` proxy / review |
+| Self-contained front | `card-writing.md` § fronts | `validate_cards` front-image warning / review |
+| Media bar | `authoring.md`, `video.md` | `media_index` risk audit + review |
+| KCs | `authoring.md`, `schema.md` | `validate_cards` KC checks |
+| Review rescope | `review.md` | `review_actions.md` build gate |
+| Build/import | `pipeline.py`, `validate_apkg.py` | build + real import |
+| Cleanup | `SKILL.md` | `smoke.sh` no-litter |
 
-| Rule/behavior | SKILL contract | Owner reference | Code gate | Duplicates |
-|---|---|---|---|---|
-| Quality kernel | SKILL top | `card-writing.md`, `authoring.md` (media) | `validate_cards`; pipeline `quality` (report) | stage 7/11; short prompt guards |
-| 1 Import vs syntax | Rule 1 | `card-writing.md` build note | `validate_apkg.py` import test | stage 12 |
-| 2 MathJax delimiters | Rule 2 | `rendering.md` | `render.py`; `validate_cards` stray-`$` | — |
-| 3 No markdown | Rule 3 | `rendering.md` | `render.py` | — |
-| 4 Raw strings | Rule 4 | `rendering.md`, `authoring.md` | `validate_cards` control-char | authoring mechanics |
-| 5 Every symbol | Rule 5 | `card-writing.md` § symbols | `validate_cards` glossary info | WRITER/VERIFIER prompts |
-| 6 Tier-zero | Rule 6 | `card-writing.md` § tier-zero | `tier_zero` field/build order (signal) | WRITER prompt |
-| 7 Forbidden patterns fronts | Rule 7 | `card-writing.md` § recallability | `validate_cards.is_computation_prompt` | WRITER prompt; calibration |
-| 8 No computed front | Rule 8 | `card-writing.md` § recallability | same; review `--ask recall` | WRITER/VERIFIER prompts |
-| 9 No machine split | Rule 9 | `authoring.md` mechanics | prose | VERIFIER prompt |
-| 10 Anchors | Rule 10 | `card-writing.md` § anchors | `roi_report.py` anchors (signal) | WRITER prompt |
-| 11 Answer first | Rule 11 | `card-writing.md` § answer first | `validate_cards` answer-alignment (enzyme proxy) | WRITER prompt; review checklist |
-| 12 Course language | Rule 12 | `card-writing.md` § course language | prose | WRITER prompt |
-| 13 Calibration | Rule 13 | `card-writing.md` § calibration | prose | WRITER prompt; review |
-| 14 Retrieval success | Rule 14 | `card-writing.md` § retrieval success | `roi_report.py` costliest (signal); review | stage 13 |
-| 15 Cloze enumerations | Rule 15 | `card-writing.md` § cloze | `build_native.check_cloze_braces` | WRITER prompt |
-| 16 Backs explain | Rule 16 | `card-writing.md` § backs | prose | kernel; WRITER/DEBLOATER |
-| 17 Provenance | Rule 17 | `card-writing.md` § provenance | `validate_cards` source checks | WRITER prompt; `schema.md` |
-| 18 Housekeeping fields | Rule 18 | `card-writing.md` § housekeeping | prose | WRITER prompt |
-| 19 Procedure | Rule 19 | `card-writing.md` § Procedure | `validate_cards` Procedure-front-warn | WRITER prompt |
-| 20 Reflow | Rule 20 | `authoring.md`, `rendering.md` | `render.py` | — |
-| 21 Cardability/scope | Rule 21; stage 6 | `card-writing.md` scope budget | stage 6 artifact | CLASSIFIER prompt |
-| 22 Debloat | Rule 22 | `prompts.md` DEBLOATER | `roi_report.py` (signal) | review score semantics |
-| 23 One deck, named | Rule 23 | `survey.md` deck naming; `card-writing.md` § topic | prose | stage 2 |
-| 24 Full front/back | Rule 24 | `review.md` | `review_server.py` | — |
-| 25 No katex | Rule 25 | `rendering.md` | prose | — |
-| 26 No cross-card pointers | Rule 26 | `card-writing.md` § no cross-card pointers | prose | WRITER/DEBLOATER |
-| 27 Topic/objects | Rule 27 | `card-writing.md` § topic/objects | `validate_cards` topic-is-layer-code/objects-count/tag-leak | CLASSIFIER/WRITER prompts |
-| Media | kernel; stage 7 | `authoring.md`; `video.md` | `frames.py`, `media_index.py`, pipeline media risk | kernel; stage 7; video |
-| Review | stage 10 | `review.md` | `triage.py`, `review_server.py`, pipeline review status | stage 10 |
-| Revision | Revising an imported deck | `revision.md` | `revision.py`, `anki_connect.py` | — |
-| Cleanup | stage 14 | `SKILL.md` stage 14; `AGENTS.md` no-litter | `smoke.sh` no-litter | `output.md` retired |
-| Gates | stage map | `scripts/` | `validate_cards`, `validate_apkg`, `roi_report`, `pipeline.py` | stage map |
+The KC model is scale-free: a KC is a concept, not a card. Single-card KCs are allowed when
+the card is a complete high-value decision and the `why` makes the value case. A single-card
+`concept`/`mechanism` warns; a 1:1 map warns; exact duplicate claims are errors. The gate does
+not force filler cards; the review judges value.
 
 ## Change discipline
 
@@ -142,6 +123,21 @@ Do not implement this in v1.4.x. Notes only:
   (`added`/`updated`/`unchanged`/`retired`), note-type compatibility checks, and
   optional AnkiConnect cleanup. `--merge-existing` is add-only and must not be
   presented as an update path.
+
+## Complexity budget
+
+The runtime path is deliberately small. Before adding a runtime artifact, command, or stage:
+
+1. Can an existing artifact or command carry it? Use that.
+2. Can it be a reference or a maintainer-only tool instead? Prefer that.
+3. If it must be runtime, what does it replace? Additions should delete or strengthen
+   something; do not add a parallel diagnosis path.
+4. Does it introduce a fixed card, KC, call, or time quota? If yes, make it structural and
+   scale-free instead. The model writes its own budget in `intake.md` from scope.
+5. Does every quality lesson it carries have an owner: gate, reference, or review?
+
+`SKILL.md` stays under ~280 lines and ten hard rules. A gate should use the same
+`validate_cards` checks; a second validator call is a regression.
 
 ## Changelog discipline
 

@@ -407,7 +407,7 @@ def main() -> int:
         apkg = td / "video.apkg"
         r = subprocess.run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(cards),
                             str(apkg), "--deck-name", "VIDEO::TEST", "--media",
-                            "--media-root", str(work), "--strict"],
+                            "--media-root", str(work)],
                            capture_output=True, text=True)
         assert r.returncode == 0, (r.stdout, r.stderr)
         r = subprocess.run([sys.executable, str(SCRIPTS / "validate_apkg.py"), str(apkg)],

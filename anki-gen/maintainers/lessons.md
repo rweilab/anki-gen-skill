@@ -12,7 +12,7 @@ because these are the failures that are invisible until they bite.
 
 A fresh agent given only `SKILL.md` still tends to:
 
-- skip `intake.md`, `scope_gate.md`, or `authoring_ledger.md` because the request feels small;
+- skip `intake.md`, `scope_gate.md`, or `kcs.md` because the request feels small;
 - read every reference up front instead of the current stage's section;
 - treat the 10–15 batch size as a deck target, or treat `--max` as a card cap;
 - run `validate_apkg.py` again after the pipeline already did the real import;
@@ -131,3 +131,43 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   directory was never created), `schemas/intent.json` (read by nothing), Image Occlusion and Type-in
   templates (no notetype implements them), and the lettered check labels (`A3`, `B4`) in favour of
   rule numbers.
+
+### Review and knowledge-component lessons
+
+- **A review log that is not a build input is advice, not a loop.** The web page can be perfect and
+  the deck still unchanged. `review_actions.md` is the missing handoff: score 1 rescopes, score 5
+  removes, score 4 diagnoses, and the build refuses an unresolved file.
+- **A locator is not evidence.** `source: "Lec 04 p.12"` proves only that a citation string exists.
+  The `evidence_quote` check is what catches a plausible claim the extract does not support.
+- **`tier_zero` is not a prerequisite graph.** It is one anchor boolean. `kcs.md` and its
+  `requires` edges are the actual coverage/dependency contract; do not grow another boolean.
+- **Do not turn KC into a second ontology.** One compact table in `kcs.md`, one `kc` per card and an optional
+  `stratum`; the KC `type` is the preferred family. If a field does not improve coverage, review rescoping, or
+  grounding, it does not belong.
+
+### v1.5.4 alignment lessons
+
+- **A large action space is the failure mode.** The 1.5.3 run used 161 tool calls, 29.7M cache, and
+  312k peak context for 53 cards. The cause was not the model; it was the 16-stage table, five
+  authoring paths, diagnosis commands, and the per-card ledger all looking legitimate.
+- **A compact KC map is not a ledger.** `kcs.md` is a concept-level value/coverage model. Single-card
+  KCs are allowed when the card is a complete high-value decision; `why` is the value case. A
+  1:1 map warns; duplicate claims are errors. Do not force filler cards to satisfy a count.
+- **One gate surface.** `pipeline.py --gates-only` prints exact errors with fixes and writes
+  `gates.json`; a second validator call is a regression.
+- **No magic numbers.** The model writes its budget from scope in `intake.md`; runtime rules are
+  structural and scale-free.
+
+### v1.5.3 build-cycle lessons
+
+- **A 147-call run is an alignment failure, not a model failure.** The skill's ~25-step budget was
+  not enforced by the normal path. One extraction call, `.jsonl`, one gates call, one packet, one
+  build; if a command does not advance an artifact or resolve a gate, do not run it.
+- **A full-deck/full-source adversarial prompt wastes the reviewer.** Give it `review_packet.md`
+  only. The reviewer is a heuristic checker, not a corpus reader.
+- **Image-vision is a time-intensive tool, not a media default.** Confirm only images about to be
+  attached, after card text exists. No mode, no fixed count; card need is the budget.
+- **A source read while extraction is running is a partial read.** Use one synchronous extraction
+  call and wait.
+- **A one-card KC is not automatically a card label.** It is allowed when the `why` is specific and
+  the card is a complete decision; single-card `concept`/`mechanism` KCs are flagged for review.

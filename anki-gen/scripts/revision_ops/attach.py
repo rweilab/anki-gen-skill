@@ -40,7 +40,7 @@ def _reconstruct(ac: AnkiConnect, notes: list[dict], deck_name: str):
             "content_hash_alg": "md5", "layer": f.get("Layer", ""),
             "topic": topic, "deck": deck_name, "objects": tags[1:],
             "tier_zero": False, "cloze": "cloze" in model(note).lower(),
-            "stratum": "", "retrieval_target": "", "why": "",
+            "stratum": "", "kc": "", "retrieval_target": "", "why": "",
             "source": source, "source_url": "", "media": [],
             "review_score": None, "extra": {},
         }

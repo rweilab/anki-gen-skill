@@ -12,6 +12,8 @@ the deck still imported fine, it just looked broken on screen.
   6. near-duplicate fronts
   7. glossary signal           symbol card without a definitions section (info)
   8. missing provenance        no `source`, or a source with no locator
+  9. KC coverage              missing/unknown kc, unresolved requires, 1:1 map
+ 10. evidence quote           source-dependent quote missing or not in the extract
 """
 import argparse
 import json
@@ -123,6 +125,194 @@ POINTER = re.compile(
     r"\b(?:see|refer to|check)\b[^.?!\n]{0,40}\bcard\b"
     r"|\b(?:the|this|that)\s+(?:next|previous|above|below|earlier|later)\s+card\b",
     re.I)
+
+MATH_SPAN = re.compile(r"\$[^$]+\$", re.S)
+HTML_CODE = re.compile(r"<code>.*?</code>", re.I | re.S)
+BARE_SUB = re.compile(
+    r"(?<![A-Za-z0-9])(?:[A-Za-zρ]|[A-Z][A-Z]?)_"
+    r"(?:[A-Za-z0-9]{1,16}|\{[A-Za-z0-9]{1,16}\})")
+HTML_BR = re.compile(r"<br\s*/?>", re.I)
+
+PROCEDURE_DECISION = re.compile(
+    r"\b(?:which|what)\b[^?\n]{0,80}\b(?:method|principle|law|test|approach|"
+    r"technique|next step|next move|first move)\b|\bwhat are the next steps\b", re.I)
+
+# Card families. `stratum` is the retrieval form; `kc` groups cards by the
+# knowledge component they practice. Keep the set small so triage and review
+# grouping cannot drift into one-off labels.
+STRATA = {
+    "concept", "mechanism", "condition", "procedure", "representation",
+    "error", "schema", "integration", "boundary", "metacognition",
+}
+KC_HEADING = re.compile(r"(?mi)^(#{1,2})\s+KCs\b.*$")
+
+
+def _norm_text(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip().casefold()
+
+
+def _requires(raw: str) -> list[str]:
+    raw = str(raw or "").strip()
+    if not raw or raw in {"-", "—", "none", "None", "[]"}:
+        return []
+    return [x.strip().strip("`") for x in re.split(r"[,;]", raw) if x.strip()]
+
+
+def parse_kc_map(text: str) -> tuple[dict[str, dict], list[str], bool, bool]:
+    """Read the compact `KCs` table from kcs.md (legacy: authoring_ledger.md).
+
+    New format: `kc | type | claim | why | requires | evidence_quote | source`.
+    `type` is optional. Legacy 5-column maps without `why`/`evidence_quote` still
+    parse, but get no value or evidence check. The heading may be `# KCs` or
+    `## KCs`; the table ends at the next h1/h2 heading.
+    """
+    matches = list(KC_HEADING.finditer(text or ""))
+    if not matches:
+        return {}, [], False, False
+    match = matches[-1]
+    block = (text or "")[match.end():]
+    block = re.split(r"(?m)^#{1,2}\s+", block, maxsplit=1)[0]
+    rows: dict[str, dict] = {}
+    duplicates: list[str] = []
+    header: list[str] | None = None
+    has_evidence = False
+    has_why = False
+    for line in block.splitlines():
+        line = line.strip()
+        if not line or line.startswith("```"):
+            continue
+        cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        if cells[0].lower() in {"kc_id", "kc", "id"}:
+            header = [c.lower() for c in cells]
+            has_evidence = "evidence_quote" in header
+            has_why = "why" in header or "value" in header
+            continue
+        if all(re.fullmatch(r":?-{3,}:?", c) for c in cells if c):
+            continue
+        if header:
+            values = {name: (cells[i] if i < len(cells) else "")
+                      for i, name in enumerate(header)}
+            kc_id = values.get("kc_id") or values.get("kc") or values.get("id", "")
+            kc_type = values.get("type", "")
+            claim = values.get("claim", "")
+            why = values.get("why") or values.get("value", "")
+            source = values.get("source", "")
+            evidence = values.get("evidence_quote", "")
+            raw_requires = values.get("requires", "")
+        else:
+            kc_id, kc_type, claim, source = cells[:4]
+            why = ""
+            evidence = ""
+            raw_requires = cells[4] if len(cells) >= 5 else ""
+        kc_id = str(kc_id or "").strip()
+        if not kc_id:
+            continue
+        if kc_id in rows:
+            duplicates.append(kc_id)
+        rows[kc_id] = {
+            "type": str(kc_type or "").strip(),
+            "claim": str(claim or "").strip(),
+            "why": str(why or "").strip(),
+            "source": str(source or "").strip(),
+            "evidence_quote": str(evidence or "").strip(),
+            "requires": _requires(raw_requires),
+        }
+    return rows, duplicates, has_evidence, has_why
+
+
+def kc_findings(cards: list[dict], kc_text: str,
+                source_text: str | None = None,
+                require_map: bool = False) -> list[tuple[str, str]]:
+    """KC value/coverage checks.
+
+    Hard errors are structural: missing map, missing/unknown kc, duplicate id,
+    missing claim/why, exact duplicate claim, unresolved requires, ungrounded
+    evidence. Single-card KCs and a 1:1 map are warnings; value is judged by the
+    adversarial and human reviews, not by a card count.
+    """
+    kcs, duplicates, has_evidence, has_why = parse_kc_map(kc_text or "")
+    if not kcs:
+        if require_map:
+            return [("err", "kcs.md has no parsable KC table; start it with "
+                            "`# KCs` or `## KCs` and a pipe table")]
+        return []
+    out: list[tuple[str, str]] = []
+    if require_map and not has_why:
+        out.append(("err", "kcs.md is missing the `why` column; every KC needs a "
+                           "one-line value case"))
+    if require_map and not has_evidence:
+        out.append(("err", "kcs.md is missing the `evidence_quote` column; use "
+                           "`derived` for self-contained KCs"))
+    for kc_id in duplicates:
+        out.append(("err", f"duplicate KC id {kc_id!r} in the KC map"))
+    counts: dict[str, int] = {}
+    for i, card in enumerate(cards, 1):
+        kc_id = str(card.get("kc") or "").strip()
+        label = f"card {i}: {str(card.get('front', ''))[:52]!r}"
+        if not kc_id:
+            out.append(("err", f"{label} -- missing 'kc'; every card names a KC"))
+        elif kc_id not in kcs:
+            out.append(("err", f"{label} -- kc {kc_id!r} is not in the KC map (kcs.md)"))
+        else:
+            counts[kc_id] = counts.get(kc_id, 0) + 1
+        stratum = str(card.get("stratum") or "").strip()
+        if stratum and stratum not in STRATA:
+            out.append(("warn", f"{label} -- unknown stratum {stratum!r}; use one of "
+                               f"{', '.join(sorted(STRATA))}, or omit it and use the KC type"))
+
+    if len(kcs) > 1 and all(counts.get(kc_id, 0) == 1 for kc_id in kcs):
+        out.append(("warn", "every KC has exactly one card; the map mirrors the deck. "
+                           "Inspect for card labels; one-card KCs are allowed when the "
+                           "card is a complete high-value decision."))
+
+    for kc_id, row in kcs.items():
+        count = counts.get(kc_id, 0)
+        if not row["claim"]:
+            out.append(("err", f"KC {kc_id!r} -- missing 'claim'"))
+        if has_why and row["why"].strip().lower() in {"", "-", "—", "none", "n/a", "na"}:
+            out.append(("err", f"KC {kc_id!r} -- missing 'why'; state why this KC is "
+                               "worth remembering"))
+        if count == 0:
+            out.append(("warn", f"KC {kc_id!r} has no cards; coverage gap"))
+        elif count == 1 and row["type"] in {"concept", "mechanism"}:
+            out.append(("warn", f"KC {kc_id!r} is a single-card {row['type']}; "
+                               "justify it in `why` or add a second retrieval angle "
+                               "only if it adds value"))
+        for req in row["requires"]:
+            if req != "external" and req not in kcs:
+                out.append(("err", f"KC {kc_id!r} requires unknown KC {req!r}"))
+
+    seen_claims: dict[str, str] = {}
+    for kc_id, row in kcs.items():
+        key = _norm_text(row["claim"])
+        if not key:
+            continue
+        if key in seen_claims:
+            out.append(("err", f"KCs {seen_claims[key]!r} and {kc_id!r} have the exact "
+                               "same claim; they are one KC, not two"))
+        else:
+            seen_claims[key] = kc_id
+
+    if source_text and has_evidence:
+        corpus = _norm_text(source_text)
+        for kc_id, row in kcs.items():
+            src = str(row.get("source") or "").strip()
+            if src.lower() in DERIVED_SOURCES:
+                continue
+            quote = str(row.get("evidence_quote") or "").strip()
+            if not quote or quote in {"-", "—", "none", "None", "[]"}:
+                out.append(("err", f"KC {kc_id!r} -- source-dependent KCs need an "
+                                   "evidence_quote in kcs.md"))
+                continue
+            norm = _norm_text(quote)
+            if len(norm) < 20:
+                out.append(("warn", f"KC {kc_id!r} -- evidence_quote is very short"))
+            if norm not in corpus:
+                out.append(("err", f"KC {kc_id!r} -- evidence_quote is not in the "
+                                   "extracted source"))
+    return out
 
 
 def findings(cards):
@@ -307,7 +497,8 @@ def findings(cards):
 
         # 4. computation demands -- explicit verbs and implicit prompts alike
         why = is_computation_prompt(front)
-        if why and layer != "L3":
+        procedure_decision = layer == "Procedure" and bool(PROCEDURE_DECISION.search(front))
+        if why and layer != "L3" and not procedure_decision:
             add(i, "err", f"{label} -- computation prompt in front ({why}); a front "
                           "must be answerable from memory, not by working it out")
         # B4: a computation verb in a BACK is fine by the skill's own scoping rule --
@@ -593,6 +784,33 @@ def tag_leak_findings(cards):
     return out
 
 
+def math_format_findings(cards):
+    """Warn on plain-text symbols and literal <br> in card text.
+
+    Math and code spans are exempt: a programming deck may legitimately write
+    `x_1` inside backticks. The scan is intentionally narrow to single-letter or
+    Greek symbols with a subscript, not arbitrary snake_case prose.
+    """
+    out = []
+    for i, c in enumerate(cards, 1):
+        for field in ("front", "back"):
+            text = str(c.get(field, ""))
+            br = HTML_BR.search(text)
+            if br:
+                out.append((i, "warn", f"literal <br> in {field}; use a blank line "
+                                      "or two trailing spaces for a hard break"))
+            clean = MATH_SPAN.sub(" ", text)
+            clean = CODE_SPAN.sub(" ", clean)
+            clean = HTML_CODE.sub(" ", clean)
+            m = BARE_SUB.search(clean)
+            if m:
+                token = m.group(0)
+                out.append((i, "warn", f"bare symbol {token!r} in {field}; write it "
+                                      "in MathJax, e.g. $P_{0}$ (use _{\text{...}} "
+                                      "for word subscripts)"))
+    return out
+
+
 def similar_answer_pairs(cards) -> list[tuple[int, int, float]]:
     """[(i, j, containment)] for same-topic/source cards whose answers overlap.
 
@@ -620,12 +838,17 @@ def similar_answer_pairs(cards) -> list[tuple[int, int, float]]:
     return out
 
 
-def check_cards(cards, deep: bool = False):
+def check_cards(cards, deep: bool = False, ledger_text: str | None = None,
+                source_text: str | None = None, require_kc_map: bool = False):
     """The CLI's (errors, warnings, info) view.
 
     Exact normalized duplicates are always errors. Soft front/answer similarity
     is only computed with `deep=True`: it is useful for an explicit debloat pass
     but was mostly contrast-family noise on a real deck.
+
+    `ledger_text` is the kcs.md table (legacy: authoring_ledger.md) and enables the KC
+    map checks; `source_text` enables evidence-quote grounding. Both are optional so standalone callers and legacy decks keep
+    working.
     """
     fs = findings(cards)
     errs = [m for _, s, m in fs if s == "err"]
@@ -633,9 +856,28 @@ def check_cards(cards, deep: bool = False):
     warns = [m for _, s, m in fs if s == "warn" and not (m in seen or seen.add(m))]
     info = [m for _, s, m in fs if s == "info"]
 
+    kcs, _, _, _ = parse_kc_map(ledger_text or "")
+    extra = kc_findings(cards, ledger_text or "", source_text=source_text,
+                        require_map=require_kc_map)
+    for sev, msg in extra:
+        if sev == "err":
+            errs.append(msg)
+        elif sev == "warn":
+            warns.append(msg)
+        else:
+            info.append(msg)
+    if kcs:
+        info.append(f"KC map: {len(kcs)} KC(s) | "
+                    f"{sum(1 for c in cards if c.get('kc'))}/{len(cards)} "
+                    "card(s) linked")
+
     for i, j in exact_duplicate_pairs(cards):
         errs.append(f"cards {i} and {j} are exact duplicates "
                     "(same normalized front and back)")
+
+    math_findings = math_format_findings(cards)
+    warns.extend(f"card {i}: {msg}" for i, sev, msg in math_findings
+                 if sev == "warn")
 
     tag_findings = tag_leak_findings(cards)
     errs.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "err")
@@ -656,10 +898,17 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--deep", action="store_true",
                     help="also run soft front/answer similarity (opt-in debloat)")
+    ap.add_argument("--ledger", help="kcs.md (or legacy authoring_ledger.md) with a ## KCs map")
+    ap.add_argument("--source", help="extracted source markdown for quote grounding")
     args = ap.parse_args()
 
     cards = load_cards(args.cards_json)
-    errs, warns, info = check_cards(cards, deep=args.deep)
+    ledger = Path(args.ledger).read_text() if args.ledger else None
+    source = Path(args.source).read_text() if args.source else None
+    require_map = bool(args.ledger and Path(args.ledger).name == "kcs.md")
+    errs, warns, info = check_cards(cards, deep=args.deep, ledger_text=ledger,
+                                    source_text=source,
+                                    require_kc_map=require_map)
 
     if args.json:
         print(json.dumps({"valid": not errs, "errors": errs, "warnings": warns,

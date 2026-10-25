@@ -719,7 +719,7 @@ function scaleSummary(){
     rows += '<tr><td class="n">'+k+'</td><td>'+LABEL[k]+'</td><td>'+(counts[k]||0)+'</td></tr>';
   });
   return '<table><tr><th></th><th>Score</th><th>Cards</th></tr>'+rows+'</table>' +
-    (cuts.length ? '<p>Proposed for cutting (scored Easy — the agent will show these for approval):</p><ul>'
+    (cuts.length ? '<p>Rescope candidates (scored Easy — merge, re-level, replace, or keep as anchor; no auto-cut):</p><ul>'
         + cuts.map(n=>'<li>card '+n+'</li>').join('') + '</ul>' : '') +
     (unscored.length ? '<p>Not scored ('+unscored.length+'): '+unscored.join(', ')+'</p>'
         : '<p>All cards scored.</p>');

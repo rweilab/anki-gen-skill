@@ -9,14 +9,14 @@ cutting and splitting (*too hard for me*, *I already know this cold*).
 ### Semantic self-audit (before the page)
 
 This is a **self-audit, not independent review**. It uses the triaged sample plus every flagged
-card; do not reload the whole corpus. Read `cards.jsonl`, `authoring_ledger.md`, and the chosen
+card; do not reload the whole corpus. Read `cards.jsonl`, `kcs.md`, and the chosen
 source. For each sampled card, write one evidence line and check:
 
 1. **Cold answer:** answer the front from this card alone. If you need a sibling, flag it.
 2. **Symbols:** list every symbol/method used and where it is defined on this card. Missing → flag.
 3. **Answer and why:** the back answers the front first; the why adds a mechanism, consequence,
    mnemonic, or real use rather than restating the front.
-4. **Evidence:** the ledger quote/page anchor supports the claim; otherwise flag or mark `derived`.
+4. **Evidence:** the KC evidence quote/page anchor supports the claim; otherwise flag or mark `derived`.
 5. **Procedure:** a Procedure card names one decision. An L2 familiarity walkthrough keeps the
    first and last steps visible and its middle blanks answerable from context.
 6. **ROI:** a look-up-able, redundant, or low-weight card is parked in `scope_gate.md` with a
@@ -44,6 +44,15 @@ The review is the last place these heuristics are enforced. For each shown card:
 If the card fails one, fix the family it represents, not just the shown card. This
 checklist is why the review does not need to load the whole card-writing reference.
 
+The 1–5 scale is a **quality review**, not Anki’s Again/Hard/Good/Easy scheduling scale. It is a
+sampled quality pass, not daily study.
+
+**Deck shape.** Does the deck contain the card family the learner asked for? If the target is
+method selection and every reviewed card is L1 recall, flag the family.
+
+**Formatting-only changes.** A render or formatting change gets a one-card visual check, not a
+full review. Reopen the review or render one card; source inspection is not a visual check.
+
 ### Adversarial subagent review (optional, opt-in only)
 
 This is an **optional independent read**, not human review and not a gate. Run it only when the
@@ -51,16 +60,19 @@ caller explicitly asks for an adversarial/extra review and the harness has a rea
 Otherwise skip it and do not ask a beginner a second question. If the harness supports it, the report
 may mention the option once; it stays off by default. Never spawn an `opencode` child.
 
-Run it after the semantic self-audit and before the web page. Give the reviewer:
+Start the web review first. Run the adversarial reviewer while the user reviews, or after the
+first round; it must not block the first human look. Give the reviewer **only**
+`$WORK/review_packet.md`, which the gates call writes. The packet contains the selected cards,
+their KC rows and evidence quotes, the scope gate, intake calibration, and media captions.
 
-- the selected `cards.jsonl`;
-- `authoring_ledger.md`;
-- `scope_gate.md` and the learner calibration;
-- the cited source excerpt, not the whole corpus;
-- the checklist above, but **not** the web-review scores, comments, or `.apkg`.
+Do not give it the full `cards.jsonl`, full `sources.md`/`transcripts.md`, or all KCs. It is a
+packet review, not a full-deck LLM audit. Coverage is the packet's selected card numbers.
+Ask for one line per sampled card. If it returns no output or ends on its length limit, treat it
+as **not run**, not as a pass. Do not rerun it after a pure formatting change.
 
-Coverage: all cards when the deck is ≤12; otherwise the stage-8 triaged sample plus every flagged,
-tier-zero, and anchor card. Do not make it a full-deck LLM audit by default.
+The packet is generated at the gates call. If the adversarial reviewer runs during the web review,
+it sees the pre-feedback packet. If cards change, re-run the gates call to regenerate the packet
+before another adversarial pass.
 
 Use this rubric per card. Score each dimension `0 fail`, `1 warning`, `2 pass`:
 
@@ -75,19 +87,24 @@ Use this rubric per card. Score each dimension `0 fail`, `1 warning`, `2 pass`:
 6. **Scope/ROI:** not look-up-able, redundant, low-weight, or already parked.
 
 Hard-fail any card with an unanswerable front, computed front, unsupported source claim, cross-card
-pointer, whole-formula/prose cloze, or Procedure card that is a worked solution. Do not average the
-scores into a percentage or reuse the learner 1–5 scale; the 98% floor is a product contract, not an
-LLM score.
+pointer, whole-formula/prose cloze, or Procedure card that is a worked solution. Also flag a card
+whose `kc` is missing/unknown, whose `stratum` (if present) is not a standard family, or whose `requires` does
+not resolve. Flag a KC whose `evidence_quote` is absent or absent from the packet's cited excerpt.
+Also flag a KC that is a label for one card rather than a reusable component, whose `why` is
+generic, or whose single card is a fragment rather than a complete decision. The KC map is a
+value/coverage model; a card count is not evidence of quality.
+Do not average the scores into a percentage or reuse the learner 1–5 scale; the 98% floor is a
+product contract, not an LLM score.
 
 Ask for findings only, by card number: dimension, score, defect, evidence, rule. No rewrites, no
 scores submitted to the review log, no pass/fail certification. The main agent adjudicates, fixes
-the source, and re-runs stages 8 and 13. Report “adversarial sample review, not manual review.”
+the source, and re-runs the gates and build. Report “adversarial sample review, not manual review.”
 
 ### Review a chosen subset, not the deck
 
 **Per-card adjudication does not scale.** On the first real run the user stopped after nine cards of
 fifty-five — and their edits generalised to the whole deck anyway, so the other forty-six bought
-nothing. Stage 8's `pipeline.py --gates-only` call picks the set and **always** runs, any deck size;
+nothing. The `pipeline.py --gates-only` call picks the set and **always** runs, any deck size;
 even a small deck gets its flagged cards surfaced.
 
 ```bash
@@ -116,9 +133,9 @@ that is the cross-section. **Raise `--max` before `--per-topic`**; the default 1
 target.
 
 **A stratum is a family, so it costs one slot.** The format axis keys on `(layer, cloze, stratum)`,
-so a deck-authored sub-kind earns its own exemplar. When one is under-shown, add one card, never the
-whole stratum — a run that hand-added seven Shape A/B cards instead of two spent three extra slots
-to re-learn what one per shape already generalises.
+so a card family earns its own exemplar. When one is under-shown, add one card, never the whole
+stratum — a run that hand-added seven Shape A/B cards instead of two spent three extra slots to
+re-learn what one per shape already generalises.
 
 **A clean review is not proof the deck is sound.** The subset is chosen by axis so each card *stands
 for a family* — excellent at surfacing defects, structurally incapable of certifying their absence.
@@ -191,21 +208,28 @@ Rows carry `recall: true|false`; the finish screen lists the `false` cards as ru
 rewrite the front to ask about the concept, or cut it. Run it as a second pass over the same plan
 when the deck is computation-heavy, or alone when rule 8 is in doubt.
 
-### Review handoff (large decks)
+### Review actions (required after feedback)
 
-If the deck is >50 cards or the build peak was >150k, after the user's review write
-`.anki-gen-temp/<topic>/review_handoff.md` with the deck/cards/ledger paths, a 5-line scope
-summary, source anchors, and the feedback path. Continue in a fresh session: read the handoff,
-`cards.jsonl`, `authoring_ledger.md`, the scope summary, and the reduced feedback (`cardid.py`
-last row; low scores/comments only). Do not re-read the corpus, build script, full source, or raw
-log; pull a source page range only if an anchor needs checking. The ledger is the per-card
-reasoning record; the review still applies the same heuristics.
+After the user reviews, the next `pipeline.py --gates-only` call reads `review_feedback.jsonl`
+plus `review_recall.jsonl`, reduces each log to its last row per card, and writes
+`$WORK/review_actions.md` when feedback exists. The skeleton groups score 1 by
+topic/KC, lists score 5 removals, score 4 diagnoses, recall failures, and the
+cards the sample did not cover.
+
+After feedback, the next gates call writes `review_actions.md` and regenerates the packet. Fill it
+in from the source of truth, then set `status: resolved`. Every score-1 block must name one of
+`merge | relevel | replace | keep anchor` and a non-empty target. `pipeline.py --build` refuses
+while the file is missing, open, unset, stale, or incomplete. Score 1 is rescope evidence, never an
+automatic cut; score 5 is the only removal verdict.
+
+The KC map and cards remain the reasoning record. Do not re-read the corpus, build script,
+full source, or raw log; pull a source page range only if an anchor needs checking.
 
 **Check answer alignment before style.** A card can be factually true and still not answer its
 front. If the front asks “which enzyme/law/step,” the back must name it first; explanation follows.
 
 **Chunking:** only if the build still peaks >150k or a topic >40 cards. One scope gate/deck name,
-per-topic cards+ledger, concatenate or `--merge-existing`, then a deck-wide validate/triage/ROI.
+per-topic cards+KC rows, concatenate or `--merge-existing`, then a deck-wide validate/triage/ROI.
 The risk is cross-topic anchors and duplicates.
 
 ### How to apply it
@@ -214,9 +238,10 @@ The risk is cross-topic anchors and duplicates.
   when there is none. That is the whole mechanism.
 - **1 → rescope the topic, not just the card.** “Easy” means the learner already knows it; use
   it to rebalance scope and difficulty, merge/re-level trivial variants, or protect an anchor.
-  Propose changes; never cut silently. A review comment is never a mandate to expand:
-  if you add cards, report the net delta and make the addition replace a merged/cut card unless
-  the user explicitly asked for more.
+  Fill that cluster in `review_actions.md` with one of `merge | relevel | replace | keep anchor`,
+  name the target, and report the net delta. Propose changes; never cut silently. A review comment
+  is never a mandate to expand: if you add cards, make the addition replace a merged/cut card
+  unless the user explicitly asked for more.
 - **4 → decide from the comment, do not ask.** "Haven't studied this yet" → leave it; "assumes a
   term I don't have" → add an anchor or glossary; "too many steps bundled" → split. **4 with no
   comment → leave it alone** — most early-semester 4s are material not yet covered.

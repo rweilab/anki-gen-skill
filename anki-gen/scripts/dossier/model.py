@@ -32,8 +32,8 @@ GUID_ALG = "md5"
 CARD_KEYS = {
     "rev_id", "guid", "guid_alg", "front", "back", "content_format",
     "content_hash", "content_hash_alg", "layer", "topic", "deck", "objects",
-    "tier_zero", "cloze", "stratum", "retrieval_target", "why", "source",
-    "source_url", "media", "review_score", "extra",
+    "tier_zero", "cloze", "stratum", "kc", "retrieval_target", "why",
+    "source", "source_url", "media", "review_score", "extra",
 }
 STATE_KEYS = {
     "rev_id", "anki_note_id", "anki_fields_base", "scheduling", "revlog_count",
@@ -74,6 +74,7 @@ class CardRecord(TypedDict, total=False):
     tier_zero: bool
     cloze: bool
     stratum: str
+    kc: str
     retrieval_target: str
     why: str
     source: str
@@ -167,6 +168,7 @@ def card_from_source(card: dict, existing: dict | None = None,
         "tier_zero": bool(card.get("tier_zero", existing.get("tier_zero", False))),
         "cloze": bool(card.get("cloze", existing.get("cloze", False))),
         "stratum": str(card.get("stratum") or existing.get("stratum") or ""),
+        "kc": str(card.get("kc") or existing.get("kc") or ""),
         "retrieval_target": str(card.get("retrieval_target")
                                 or existing.get("retrieval_target") or ""),
         "why": str(card.get("why") or existing.get("why")

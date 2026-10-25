@@ -5,10 +5,10 @@ owns the rule; shared setup must not hide the defect being tested.
 
 | File | Owns | Speed | External tools |
 |---|---|---:|---|
-| `hardening.py` | card validation, authoring API, build/APKG, merge, cloze, mutation probes | 5s | anki, PIL |
+| `hardening.py` | card validation, KC/evidence checks, authoring API, build/APKG, merge, cloze, mutation probes, missing-anki honesty | 5s | anki, PIL |
 | `revision_hardening.py` | fake AnkiConnect, attach/audit/plan/apply/revert/snapshots | 4s | none |
 | `context_hardening.py` | dossier pack, schema, previews, archive, resources | <1s | PIL |
-| `pipeline_hardening.py` | pipeline extraction/build/gates/merge flow | 2s | ffmpeg |
+| `pipeline_hardening.py` | pipeline extraction/build/gates/merge flow, review actions, packet, shape, mixed sources | 2s | ffmpeg |
 | `video_hardening.py` | captions, playlist range, frames, labels | 7s | ffmpeg, tesseract |
 | `visual_hardening.py` | visual scoring, PDF figures, media index, vision bridge | 2s | PyMuPDF, PIL |
 | `slides_hardening.py` | PPTX text/notes/images and rejections | <1s | PIL |
@@ -21,7 +21,7 @@ Canonical ownership:
 - notetype/order/card identity: `hardening.py`
 - AnkiConnect behavior and snapshots: `revision_hardening.py`
 - dossier format and archives: `context_hardening.py`
-- pipeline flag passthrough, combined sources, media state/resume: `pipeline_hardening.py`
+- pipeline flag passthrough, combined sources, media state/resume, review actions, packet, shape, mixed sources: `pipeline_hardening.py`
 - per-video progress and playlist resume: `video_hardening.py`
 - authoring helpers and authors: `hardening.py`
 - vision confirmation selection: `visual_hardening.py`

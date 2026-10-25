@@ -2,6 +2,8 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.4** — Seven-step runbook, compact KCs, exact gates, and explicit done states
+- **v1.5.3** — Review rescope gate, KC map, and evidence grounding
 - **v1.5.2** — Installer resilience and whisper.cpp fallback for local audio
 - **v1.5.1** — Always-loaded quality gate, stricter media/video selection, and pipeline quality status
 - **v1.5.0** — Revise imported decks in Anki via AnkiConnect, with a persistent dossier and revert
@@ -14,6 +16,138 @@ Newest first. Keep the index to one line per release; details live below.
 - **v1.2** — Review fidelity, validator guards, and token discipline
 - **v1.1** — macOS handoff kit
 - **v1.0** — Base build
+
+## Deferred to a future version
+
+These are deliberate, not forgotten:
+
+- **Post-import learning loop.** AnkiConnect already exposes review history; a future version can
+  map leeches and true retention back to cards/KCs and feed exam errors into rewrites. It is too
+  much surface for this pass and most users will not re-run the skill a month later.
+- **FSRS / deck-option configuration.** Deck review settings belong to the user; the skill should
+  not overwrite them.
+- **Full semantic duplicate detection and per-deck analytics.** Useful later; not on the critical
+  path for the KC/review work.
+
+## v1.5.4 — Seven-step runbook, compact KCs, exact gates, and explicit done states
+
+### Added
+
+**Runbook and alignment**
+- `SKILL.md` is now a 7-step runbook with 10 hard rules instead of a 28-rule, 16-stage
+  specification. It names exactly three primary commands plus the review server.
+- Stop rules now forbid background extraction, deck scripts, ad hoc card patches, tool-source
+  reads, diagnosis commands, and confirmation-only commands. The model writes a run budget in
+  `intake.md` from scope; there are no fixed card, KC, or tool-call quotas.
+- New done states: `READY` / `READY WITH WARNINGS` at gates, and `DONE` / `DONE WITH WARNINGS` /
+  `DONE — NOT REVIEWED` after a successful build. `NOT CERTIFIED` is retired as the default label.
+- Gate output now prints exact errors and warnings with card numbers, plus a one-line `fix:`
+  hint, and writes `gates.json`. The model no longer needs a separate validator call.
+
+**KCs and authoring**
+- `kcs.md` replaces `authoring_ledger.md` on the new path: a compact concept-level table, not a
+  per-card ledger. Each KC carries a one-line `why` value case. Single-card KCs are allowed when
+  the card is a complete high-value decision; a single-card `concept`/`mechanism` warns, a 1:1
+  map warns, and exact duplicate claims are errors. No filler cards to satisfy a count.
+- `stratum` is optional on a card; the KC `type` is the preferred retrieval family.
+- `scope_gate.md` carries a `Ceiling: N` line; the gate warns when the deck exceeds its own
+  ceiling and never auto-cuts.
+- `cards.jsonl` is the only authoring format. The runbook removes `make_cards.py`,
+  `new_cards.C`, and `author.py`; rewrite the file once instead of patching cards in a shell.
+- `authoring.md` is rewritten for one-pass JSONL authoring, scale-free KC rules, reading
+  discipline, and batched image confirmation.
+
+**Extraction and build**
+- `sources.md` is written atomically and gets a `sources.ready` marker. A live extraction lock
+  refuses a second extractor in the same work dir; `--sources` accepts a directory and excludes
+  the work dir automatically.
+- `pipeline.py --build` requires `kcs.md` (or a legacy `authoring_ledger.md`) and still runs the
+  real import validation in the same call.
+- `--allow-missing-artifacts` now names `kcs.md`.
+
+### Changed
+
+- `validate_cards.py` makes `stratum` optional; accepts `# KCs` or `## KCs`; allows single-card
+  KCs with a `why`; warns on single-card `concept`/`mechanism` and 1:1 maps; errors on duplicate
+  claims; and keeps legacy `authoring_ledger.md` parsing for old decks and tests.
+- `references/schema.md`, `card-writing.md`, `review.md`, and `prompts.md` now describe `kcs.md`,
+  optional `stratum`, and KC-level evidence quotes.
+- The pipeline `NEXT` hint and evidence line point at `kcs.md`.
+
+### Removed from the runtime path
+
+- `authoring_ledger.md` as a required artifact; legacy files are still accepted.
+- `make_cards.py` / `new_cards.C` / `author.py` from the authoring path.
+- Separate validator, triage, ROI, extractor, frame, and builder calls as parallel model paths.
+- `NOT CERTIFIED` as the default quality status.
+
+### Post-audit hardening
+
+- MathJax is the default for symbols and sub/superscripts: `$P_{0}$`, `$v_{0y}$`,
+  `$\rho_{\text{oil}}$`. Bare `P_0`, `ρ_obj`, or `V_disp` is a validator warning; concatenated
+  `Vsphere` is a review defect.
+- A literal `<br>` in `cards.jsonl` is a warning; blank lines are paragraphs and two trailing
+  spaces are the deliberate hard-break signal. The built HTML still uses `<br>` tags.
+- A global symbol or formatting change is one rewrite of `cards.jsonl`, not one edit per card or
+  symbol. A formatting change gets a one-card visual check, not a full review.
+- The adversarial reviewer gets the packet, one line per sampled card. No output or a length-limit
+  finish means not run; do not rerun it after a pure formatting change.
+- Intake reads only `survey.md` and the source TOC; the full study log and stage references wait
+  for their step.
+- No new artifact, command, flag, or stage. `VERSION` remains 1.5.4.
+
+### Notes
+
+- No deck schema bump. Existing decks and dossiers still build.
+- The optional adversarial review remains opt-in and reads `review_packet.md` only.
+- Media stays a card field; the runbook batches confirmations and asks for one image per card.
+- No `VERSION` bump is implied for future changes; this section matches `VERSION` 1.5.4.
+
+## v1.5.3 — Review rescope gate, KC map, and evidence grounding
+
+### Added
+
+**Review loop**
+- `triage.py` review plans now carry `stratum` and `kc`.
+- `pipeline.py --gates-only` reads scale and recall feedback, prints a compact summary, and writes
+  `review_actions.md` when feedback exists. Score 1 is grouped for rescope, not auto-cut; score 5
+  is the only removal verdict.
+- `pipeline.py --build` refuses while `review_actions.md` is missing, open, unset, stale, or
+  incomplete. Every score-1 block needs a valid action and a non-empty target. The review page
+  layout and controls are unchanged; the only visible copy change is the score-1 finish-summary
+  sentence.
+- `pipeline.py --gates-only` writes `review_packet.md`: selected cards, selected KC rows/evidence,
+  scope, intake, and media captions only. The optional adversarial reviewer reads the packet, never
+  the full deck or corpus, and starts after the web review is open.
+- The pipeline prints deck shape (L1/L2/L3/Procedure and stratum counts) without gating it.
+- `review_actions.md` is packed as optional dossier evidence when present.
+
+**Knowledge components and evidence**
+- `authoring_ledger.md` now starts with a compact `## KCs` map. Cards carry `kc` and `stratum`;
+  `validate_cards.py` checks coverage, unknown KCs, unresolved prerequisites, standard strata, and
+  rejects a standalone one-card KC (it must be a prerequisite anchor).
+- `evidence_quote` lives on the KC map, not every card. The gate checks KC quotes against the
+  extracted corpus; `derived` is the exemption.
+- Stage 9b adversarial review receives the compact packet, including KC evidence, and runs after
+  the web review is open. It never sees the full deck or full source.
+- Card/dossier persistence records `kc` additively; old per-card evidence is preserved under
+  `extra` and is no longer part of the schema. No schema bump.
+
+### Changed
+
+**Pipeline correctness**
+- Mixed directories are split into media and document files instead of silently dropping the PDF.
+- The normal runbook uses one synchronous extraction call with all sources; `.jsonl` is the default
+  authoring path; `make_cards.py` is advanced only.
+- `parse_intent.py` no longer emits the misleading `video_frames` field.
+- Procedure Shape A is exempt from the computation-front gate only when the front explicitly asks
+  for a method/next step.
+- `validate_apkg.py` refuses to call a package valid when the `anki` library is unavailable; it
+  runs structural checks, prints `STRUCTURAL ONLY — NOT IMPORT-VALIDATED`, and exits 3.
+- `--strict` no longer exists as a no-op; validation is always the default.
+- Dead `review_handoff.md` guidance is replaced by `review_actions.md`.
+- Image-vision is used sparingly: only for images about to be attached, after card text exists;
+  no mode or fixed image count.
 
 ## v1.5.2 — Installer resilience and local audio
 

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from preflight import check  # noqa: E402
+from cardid import card_hash  # noqa: E402
 import pipeline  # noqa: E402
 from unittest import mock  # noqa: E402
 
@@ -88,7 +89,20 @@ def main() -> int:
         assert "fixed potential difference" in combined, combined
         assert "read sources.md once" in r.stdout, r.stdout
         assert "transcripts.md" not in r.stdout, r.stdout
-        print("ok    pipeline writes one combined sources.md")
+        assert (doc_work / "sources.ready").is_file(), r.stdout
+        print("ok    pipeline writes one combined sources.md atomically")
+        course = td / "course"
+        course.mkdir()
+        (course / "visible.txt").write_text("The visible source sentence.\n")
+        (course / "work").mkdir()
+        (course / "work" / "hidden.txt").write_text("The work-dir sentence.\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--sources", str(course), "--out", str(course / "work")], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        combined = (course / "work" / "sources.md").read_text()
+        assert "visible source sentence" in combined, combined
+        assert "work-dir sentence" not in combined, combined
+        print("ok    directory extraction excludes the work dir")
 
         # Two URL sources must merge their metadata, not leave only the last.
         merged = td / "url-merge"
@@ -166,14 +180,39 @@ def main() -> int:
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--cards", str(cards), "--out", str(gates),
                  "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
-                 "--out-apkg", str(apkg), "--strict"], td)
+                 "--out-apkg", str(apkg)], td)
         assert r.returncode == 0, (r.stdout, r.stderr)
         assert apkg.is_file() and "validate   1 note" in r.stdout, (r.stdout, r.stderr)
         assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
         assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
-        assert "quality    static 0 error(s)" in r.stdout and "NOT CERTIFIED" in r.stdout, r.stdout
+        assert "quality    static 0 error(s)" in r.stdout and "READY" in r.stdout, r.stdout
+        assert "status     DONE" in r.stdout, r.stdout
         assert "provenance 1/1 (0 derived)" in r.stdout, r.stdout
         print("ok    pipeline build+validate+context and quality status")
+        bad = td / "bad.jsonl"
+        bad.write_text(json.dumps({
+            "front": "Why does a missing source fail?",
+            "back": "The gate cannot trace the claim. **Why:** provenance is required.",
+            "layer": "L2", "topic": "Provenance", "deck": "LOCAL::TEST",
+        }) + "\n")
+        bad_work = td / "bad-work"
+        bad_work.mkdir()
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(bad), "--out", str(bad_work), "--gates-only"], td)
+        assert r.returncode != 0, (r.stdout, r.stderr)
+        assert "error      card 1" in r.stdout and "fix:" in r.stdout, r.stdout
+        gates_json = json.loads((bad_work / "gates.json").read_text())
+        assert gates_json["errors"], gates_json
+        print("ok    gates print exact errors, fixes, and gates.json")
+
+        lock_work = td / "lock-work"
+        lock_work.mkdir()
+        (lock_work / "pipeline_state.json").write_text(json.dumps({
+            "stage": "extract", "status": "running", "pid": os.getpid()}) + "\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--sources", str(notes), "--out", str(lock_work)], td)
+        assert r.returncode != 0 and "another extraction" in r.stderr, (r.stdout, r.stderr)
+        print("ok    live extraction lock refuses a second extractor")
 
         risk_cards = td / "risk.jsonl"
         risk_cards.write_text(json.dumps({
@@ -207,6 +246,167 @@ def main() -> int:
         assert "already in" in r.stdout, r.stdout
         print("ok    pipeline passes --merge-existing through")
 
+        review_work = td / "review-work"
+        review_work.mkdir()
+        review_cards = td / "review-cards.jsonl"
+        review_rows = [
+            {"front": "Which method applies to this steady-flow device?",
+             "back": "Use the steady-flow energy equation. **Why:** mass and energy balances.",
+             "layer": "Procedure", "topic": "Turbines", "objects": ["procedural"],
+             "deck": "LOCAL::TEST", "source": "Lec 1 p.1", "kc": "thermo.steady_flow",
+             "stratum": "procedure"},
+            {"front": "Why does the entropy of a closed system increase?",
+             "back": "Because accessible microstates increase. **Why:** the second law.",
+             "layer": "L2", "topic": "Entropy", "deck": "LOCAL::TEST",
+             "source": "Lec 1 p.2", "kc": "thermo.entropy", "stratum": "mechanism"},
+        ]
+        review_cards.write_text("".join(json.dumps(x) + "\n" for x in review_rows))
+        for name in ("intake.md", "scope_gate.md", "authoring_ledger.md"):
+            (review_work / name).write_text("evidence\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(review_cards), "--out", str(review_work),
+                 "--gates-only"], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        feedback = [
+            {"n": 1, "hash": card_hash(review_rows[0]), "score": 1,
+             "comment": "Too easy; ask which condition selects it."},
+            {"n": 2, "hash": card_hash(review_rows[1]), "score": 5,
+             "comment": "Reject; duplicate of another card."},
+        ]
+        (review_work / "review_feedback.jsonl").write_text(
+            "".join(json.dumps(x) + "\n" for x in feedback))
+        (review_work / "review_done").write_text(json.dumps(
+            {"deck_note": "Use the course's method names."}))
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(review_cards), "--out", str(review_work),
+                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(td / "review.apkg")], td)
+        assert r.returncode != 0 and "review_actions.md is open" in r.stderr, (
+            r.stdout, r.stderr)
+        actions = (review_work / "review_actions.md").read_text()
+        assert "status: open" in actions, actions
+        assert "Score 1 — rescope" in actions and "Score 5 — remove" in actions, actions
+        assert "Use the course's method names." in actions, actions
+        actions = actions.replace("status: open", "status: resolved")
+        (review_work / "review_actions.md").write_text(actions)
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(review_cards), "--out", str(review_work),
+                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(td / "review.apkg")], td)
+        assert r.returncode != 0 and "incomplete" in r.stderr, (r.stdout, r.stderr)
+        actions = actions.replace(
+            "  action: merge | relevel | replace | keep anchor\n  target:",
+            "  action: keep anchor\n  target: n/a")
+        (review_work / "review_actions.md").write_text(actions)
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(review_cards), "--out", str(review_work),
+                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(td / "review.apkg")], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "review     resolved" in r.stdout, r.stdout
+        assert "packet     " in r.stdout, r.stdout
+        assert "shape      " in r.stdout and "strata     " in r.stdout, r.stdout
+        assert (review_work / "review_packet.md").is_file(), r.stdout
+        review_cards.write_text(review_cards.read_text())
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(review_cards), "--out", str(review_work),
+                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(td / "review-stale.apkg")], td)
+        assert r.returncode != 0 and "stale" in r.stderr, (r.stdout, r.stderr)
+        packet_dir = td / "packet-test"
+        packet_dir.mkdir()
+        packet = pipeline.write_review_packet(
+            packet_dir, review_rows, {"entries": [{"i": 1, "reasons": ["test"]}]}, None)
+        packet_text = packet.read_text()
+        assert review_rows[0]["front"] in packet_text, packet_text
+        assert review_rows[1]["front"] not in packet_text, packet_text
+        assert "sources.md" not in packet_text, packet_text
+        print("ok    review feedback creates actions, packet, and shape line")
+
+        mixed = td / "mixed"
+        mixed.mkdir()
+        (mixed / "notes.txt").write_text("A mixed directory keeps its document.\n")
+        (mixed / "clip.mp4").write_bytes(b"not a real video")
+        media_sources, doc_sources = pipeline._split_sources([str(mixed)])
+        assert any(p.endswith("clip.mp4") for p in media_sources), media_sources
+        assert any(p.endswith("notes.txt") for p in doc_sources), doc_sources
+        print("ok    mixed directory splits media and documents")
+
+        kc_work = td / "kc-work"
+        kc_work.mkdir()
+        kc_cards = td / "kc-cards.jsonl"
+        kc_rows = [
+            {"front": "What is a control volume?",
+             "back": "A fixed region. **Why:** mass flows through it.",
+             "layer": "L2", "topic": "Control Volumes", "deck": "LOCAL::TEST",
+             "source": "Lec 1 p.1", "kc": "thermo.control_volume",
+             "stratum": "concept"},
+            {"front": "Which equation applies to a steady-flow device?",
+             "back": "The steady-flow energy equation. **Why:** energy balances.",
+             "layer": "Procedure", "topic": "Turbines", "deck": "LOCAL::TEST",
+             "source": "Lec 1 p.2", "kc": "thermo.steady_flow",
+             "stratum": "procedure"},
+            {"front": "Why does steady flow need a control volume?",
+             "back": "It balances mass and energy across a fixed region. **Why:** the boundary is the bookkeeping device.",
+             "layer": "L2", "topic": "Turbines", "deck": "LOCAL::TEST",
+             "source": "Lec 1 p.2", "kc": "thermo.steady_flow",
+             "stratum": "mechanism"},
+        ]
+        kc_cards.write_text("".join(json.dumps(x) + "\n" for x in kc_rows))
+        (kc_work / "kcs.md").write_text("""# KCs — Test
+
+| kc | type | claim | why | requires | evidence_quote | source |
+|---|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Reused by every balance | — | A control volume is fixed. | Lec 1 p.1 |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | One-card method choice | thermo.control_volume | Apply the steady-flow equation. | Lec 1 p.2 |
+""")
+        (kc_work / "sources.md").write_text(
+            "A control volume is fixed. Apply the steady-flow equation.\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(kc_cards), "--out", str(kc_work),
+                 "--gates-only"], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "kc         3/3 card(s) linked to 2 KC(s)" in r.stdout, r.stdout
+        assert (kc_work / "review_packet.md").is_file(), r.stdout
+        print("ok    pipeline gates link cards to the KC map and source quotes")
+        ceiling_work = td / "ceiling-work"
+        ceiling_work.mkdir()
+        (ceiling_work / "scope_gate.md").write_text("Ceiling: 2\n")
+        (ceiling_work / "kcs.md").write_text((kc_work / "kcs.md").read_text())
+        (ceiling_work / "sources.md").write_text((kc_work / "sources.md").read_text())
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(kc_cards), "--out", str(ceiling_work),
+                 "--gates-only"], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "above its own Ceiling 2" in r.stdout, r.stdout
+        assert any("Ceiling 2" in w for w in json.loads(
+            (ceiling_work / "gates.json").read_text())["warnings"]), r.stdout
+        print("ok    scope-gate ceiling warns without auto-cutting")
+
+        bad_kc_work = td / "bad-kc-work"
+        bad_kc_work.mkdir()
+        (bad_kc_work / "kcs.md").write_text("# KCs\n\nNo table here.\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(kc_cards), "--out", str(bad_kc_work),
+                 "--gates-only"], td)
+        assert r.returncode != 0 and "no parsable KC table" in r.stdout, (
+            r.stdout, r.stderr)
+        print("ok    unparsable kcs.md blocks the gates")
+        no_why_work = td / "no-why-work"
+        no_why_work.mkdir()
+        (no_why_work / "kcs.md").write_text("""# KCs — Test
+
+| kc | claim | evidence_quote | source |
+|---|---|---|---|
+| thermo.control_volume | A control volume is fixed. | A control volume is fixed. | Lec 1 p.1 |
+""")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(kc_cards), "--out", str(no_why_work),
+                 "--gates-only"], td)
+        assert r.returncode != 0 and "missing the `why` column" in r.stdout, (
+            r.stdout, r.stderr)
+        print("ok    kcs.md without a why column blocks the gates")
+
         no_gate = work / "no-gate"
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--cards", str(cards), "--out", str(no_gate),
@@ -232,7 +432,7 @@ def main() -> int:
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--cards", str(bad), "--out", str(work / "bad"),
                  "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
-                 "--out-apkg", str(td / "bad.apkg"), "--strict"], td)
+                 "--out-apkg", str(td / "bad.apkg")], td)
         assert r.returncode != 0 and not (td / "bad.apkg").exists(), (r.stdout, r.stderr)
         print("ok    pipeline refuses build on alignment error")
 

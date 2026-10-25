@@ -12,12 +12,12 @@ more than any wording change.
 
 What it does and does not do
 ----------------------------
-It does the mechanical work: extract, validate, triage, ROI. It prints a
-summary and the paths, and **nothing else belongs in context** -- read the artifacts by
-path when a later stage actually needs one.
+It does the mechanical work: extract, validate, triage, ROI, and the review
+summary/actions skeleton. It prints a summary and the paths, and **nothing else belongs
+in context** -- read the artifacts by path when a later stage needs one.
 
 It does NOT classify or write cards. Those are judgements, and they stay with the model
-(see SKILL.md stage 5 and 7). This script's job is to make the mechanical half cost one
+(see the SKILL.md authoring step). This script's job is to make the mechanical half cost one
 step instead of twenty.
 
 Usage
@@ -35,15 +35,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from cardid import load_cards                       # noqa: E402
+from cardid import card_hash, last_row_per_card, load_cards  # noqa: E402
 from preflight import check as preflight            # noqa: E402
 
 STATE_FILE = "pipeline_state.json"
@@ -76,6 +78,23 @@ def _mark(out: Path, stage: str, status: str, **fields) -> None:
     _write_state(out, state)
 
 
+def _pid_alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _extract_busy(out: Path) -> bool:
+    """A live extraction in this work dir; stale state is not a lock."""
+    state = _load_state(out)
+    if state.get("status") != "running" or state.get("stage") not in ("extract", "media"):
+        return False
+    pid = state.get("pid")
+    return bool(pid) and int(pid) != os.getpid() and _pid_alive(pid)
+
+
 def _short(path: Path, root: Path) -> str:
     """A path relative to the run root, so the summary stays one line per stage."""
     try:
@@ -93,6 +112,54 @@ def _is_media_source(source: str) -> bool:
         return any(is_media(p) for p in path.rglob("*") if p.is_file())
     low = source.lower()
     return "youtube.com/" in low or "youtu.be/" in low
+
+
+DOC_SUFFIXES = {".pdf", ".pptx", ".txt", ".md", ".tex", ".html", ".htm"}
+
+
+def _split_sources(sources: list[str],
+                   exclude: Path | None = None) -> tuple[list[str], list[str]]:
+    """Expand a mixed directory into media and document files.
+
+    A directory containing both a recording and a PDF used to be classified as
+    media-only, so the PDF silently disappeared. Pure media or pure document
+    directories keep their existing batch path. `exclude` keeps the work dir out
+    when the caller passes a course root that contains it.
+    """
+    exclude = exclude.resolve() if exclude else None
+
+    def allowed(path: Path) -> bool:
+        if not exclude:
+            return True
+        try:
+            path.resolve().relative_to(exclude)
+            return False
+        except ValueError:
+            return True
+
+    media, docs = [], []
+    for source in sources:
+        path = Path(source[7:] if source.startswith("file://") else source)
+        if not allowed(path):
+            continue
+        if path.is_dir():
+            files = [p for p in path.rglob("*") if p.is_file() and allowed(p)]
+            media_files = [p for p in files if _is_media_source(str(p))]
+            doc_files = [p for p in files if p.suffix.lower() in DOC_SUFFIXES]
+            if media_files and doc_files:
+                media.extend(str(p) for p in media_files)
+                docs.extend(str(p) for p in doc_files)
+            elif media_files:
+                media.extend(str(p) for p in media_files)
+            elif doc_files and exclude:
+                docs.extend(str(p) for p in doc_files)
+            else:
+                docs.append(source)
+        elif _is_media_source(source):
+            media.append(source)
+        else:
+            docs.append(source)
+    return media, docs
 
 
 def _media_images(sources: list[str], mode: str) -> str:
@@ -283,7 +350,11 @@ def _write_sources_md(out: Path, manifest: dict) -> None:
         body = md.read_text() if md.is_file() else ""
         blocks += [f"## {source['tag']} — {source.get('source_path', '')}", "",
                    body.strip(), ""]
-    (out / "sources.md").write_text("\n".join(blocks))
+    path = out / "sources.md"
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text("\n".join(blocks))
+    tmp.replace(path)
+    (out / "sources.ready").write_text(_now() + "\n")
 
 
 def stage_extract(sources: list[str], out: Path, manifest_full: bool,
@@ -300,6 +371,291 @@ def stage_extract(sources: list[str], out: Path, manifest_full: bool,
             "chars": chars, "figures": figs, "manifest": manifest}
 
 
+
+REVIEW_ACTIONS = "review_actions.md"
+
+
+def _feedback_paths(out: Path) -> list[Path]:
+    """Scale review logs plus the optional recall pass."""
+    paths = [p for p in sorted(out.glob("review_feedback*.jsonl"))
+             if p.is_file() and p.stat().st_size > 0]
+    recall = out / "review_recall.jsonl"
+    if recall.is_file() and recall.stat().st_size > 0:
+        paths.append(recall)
+    return paths
+
+
+def _feedback_rows(out: Path) -> tuple[list[dict], list[dict]]:
+    """Last row per card for the scale and recall logs, separately."""
+    scale: dict[str, dict] = {}
+    recall: dict[str, dict] = {}
+    for path in _feedback_paths(out):
+        rows = []
+        try:
+            rows = [json.loads(line) for line in path.read_text().splitlines()
+                    if line.strip()]
+        except (OSError, json.JSONDecodeError):
+            continue
+        target = recall if "recall" in path.name else scale
+        target.update(last_row_per_card(rows))
+    return list(scale.values()), list(recall.values())
+
+
+def _card_number(row: dict, cards: list[dict], by_hash: dict[str, int]) -> int | None:
+    h = str(row.get("hash") or "")
+    if h in by_hash:
+        return by_hash[h]
+    n = row.get("n", row.get("i"))
+    if isinstance(n, int) and 1 <= n <= len(cards):
+        return n
+    return None
+
+
+def _card_label(card: dict, n: int) -> str:
+    bits = [f"card {n}"]
+    for key in ("topic", "stratum", "kc"):
+        value = str(card.get(key) or "").strip()
+        if value:
+            bits.append(value)
+    return " / ".join(bits)
+
+
+def _review_actions_text(cards: list[dict], plan: dict, out: Path,
+                         scale_rows: list[dict], recall_rows: list[dict]) -> str:
+    by_hash = {card_hash(c): i for i, c in enumerate(cards, 1)}
+    score5, score1, score4, kept = [], {}, [], []
+    for row in scale_rows:
+        n = _card_number(row, cards, by_hash)
+        if n is None:
+            continue
+        score = row.get("score")
+        comment = str(row.get("comment") or "").strip()
+        if score == 5:
+            score5.append((n, comment))
+        elif score == 1:
+            c = cards[n - 1]
+            key = (str(c.get("topic") or ""), str(c.get("stratum") or ""),
+                   str(c.get("kc") or ""))
+            score1.setdefault(key, []).append((n, comment))
+        elif score == 4:
+            score4.append((n, str(row.get("comment") or "").strip()))
+        elif score in (2, 3):
+            kept.append(n)
+    recalled_no = []
+    for row in recall_rows:
+        if row.get("recall") is False:
+            n = _card_number(row, cards, by_hash)
+            if n is not None:
+                recalled_no.append(n)
+
+    done = {}
+    try:
+        done = json.loads((out / "review_done").read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+    deck_note = str(done.get("deck_note") or "").strip()
+
+    lines = ["# Review actions", "status: open", ""]
+    if deck_note:
+        lines += ["## Deck-wide note", "", deck_note, ""]
+    lines += ["## Score 5 — remove from source", ""]
+    lines += ([f"- [ ] {_card_label(cards[n - 1], n)}"
+               + (f" — {comment}" if comment else "") for n, comment in score5]
+              or ["- none"])
+    lines += ["", "## Score 1 — rescope, do not auto-cut", ""]
+    if score1:
+        for (topic, stratum, kc), items in sorted(score1.items()):
+            where = " / ".join(x for x in (topic, stratum, kc) if x) or "untopiced"
+            nums = [n for n, _ in items]
+            lines.append(f"- [ ] {where} — cards {', '.join(map(str, nums))}")
+            comments = [f"{n}: {c}" for n, c in items if c]
+            if comments:
+                lines.append("  comments: " + " | ".join(comments))
+            lines += ["  action: merge | relevel | replace | keep anchor",
+                      "  target:",
+                      "  net delta:",
+                      ""]
+    else:
+        lines += ["- none", ""]
+    lines += ["## Score 4 — diagnose", ""]
+    lines += ([f"- [ ] {_card_label(cards[n - 1], n)}"
+               + (f" — {comment}" if comment else "") for n, comment in score4]
+              or ["- none"])
+    lines += ["", "## Recall failures", ""]
+    lines += ([f"- [ ] {_card_label(cards[n - 1], n)} — front demands work"
+               for n in recalled_no] or ["- none"])
+    lines += ["", "## Score 2–3 — keep", ""]
+    lines += [f"- {len(kept)} card(s)" + (f": {', '.join(map(str, kept))}" if kept else "")]
+    sr = plan.get("second_round") or {}
+    lines += ["", "## Not covered by the review sample", ""]
+    for key in ("topics_not_shown", "strata_under_shown",
+                "flag_patterns_not_shown", "media_not_shown"):
+        values = sr.get(key) or []
+        if values:
+            lines.append(f"- {key.replace('_', ' ')}: {', '.join(map(str, values))}")
+    lines += ["", "Set `status: resolved` after the source of truth is edited."]
+    return "\n".join(lines) + "\n"
+
+
+VALID_REVIEW_ACTIONS = {"merge", "relevel", "replace", "keep anchor"}
+
+
+def _score1_actions_complete(text: str) -> bool:
+    """A resolved score-1 block must name a valid action and a target."""
+    in_score1 = False
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if re.match(r"^##\s+", line):
+            if in_score1 and current:
+                blocks.append(current)
+                current = []
+            in_score1 = bool(re.match(r"^##\s+Score\s+1\b", line, re.I))
+            continue
+        if not in_score1:
+            continue
+        if re.match(r"^\s*-\s*\[[ xX]\]", line):
+            if current:
+                blocks.append(current)
+            current = [line]
+        elif current:
+            current.append(line)
+    if in_score1 and current:
+        blocks.append(current)
+    for block in blocks:
+        body = "\n".join(block)
+        action = re.search(r"(?mi)^\s*action:\s*(.+?)\s*$", body)
+        target = re.search(r"(?mi)^\s*target:\s*(.+?)\s*$", body)
+        if not action:
+            return False
+        if action.group(1).strip().strip("`").lower() not in VALID_REVIEW_ACTIONS:
+            return False
+        if not target or not target.group(1).strip():
+            return False
+    return True
+
+
+def review_actions_state(out: Path, cards_path: Path | None = None) -> dict:
+    """Whether feedback requires a resolved action file, and whether it is current."""
+    paths = _feedback_paths(out)
+    if not paths:
+        return {"required": False, "state": "not-run", "path": None}
+    action = out / REVIEW_ACTIONS
+    latest = max(p.stat().st_mtime for p in paths)
+    if cards_path is None:
+        for name in ("cards.jsonl", "cards.json"):
+            candidate = out / name
+            if candidate.is_file():
+                cards_path = candidate
+                break
+    if not action.is_file():
+        return {"required": True, "state": "missing", "path": action}
+    text = action.read_text()
+    match = re.search(r"(?mi)^status:\s*(\S+)", text)
+    state = match.group(1).strip("`").lower() if match else "unset"
+    if state != "resolved":
+        return {"required": True, "state": state, "path": action}
+    if not _score1_actions_complete(text):
+        return {"required": True, "state": "incomplete", "path": action}
+    if action.stat().st_mtime < latest:
+        return {"required": True, "state": "stale", "path": action}
+    if cards_path is not None and cards_path.is_file():
+        if action.stat().st_mtime < cards_path.stat().st_mtime:
+            return {"required": True, "state": "stale", "path": action}
+    return {"required": True, "state": "resolved", "path": action}
+
+
+def _ensure_review_actions(out: Path, cards: list[dict], plan: dict,
+                           cards_path: Path | None = None) -> dict:
+    state = review_actions_state(out, cards_path)
+    if state["required"] and state["state"] == "missing":
+        scale_rows, recall_rows = _feedback_rows(out)
+        (out / REVIEW_ACTIONS).write_text(
+            _review_actions_text(cards, plan, out, scale_rows, recall_rows))
+        state = review_actions_state(out, cards_path)
+    return state
+
+
+def _read_optional(path: Path) -> str:
+    try:
+        return path.read_text() if path.is_file() else ""
+    except OSError:
+        return ""
+
+
+def write_review_packet(out: Path, cards: list[dict], plan: dict,
+                        ledger_text: str | None) -> Path:
+    """A compact, packet-only input for the optional adversarial reviewer.
+
+    The reviewer sees selected cards, their KC rows/evidence, and the intake/scope
+    context. It never receives the full deck or extracted corpus.
+    """
+    from validate_cards import parse_kc_map
+
+    selected = list(plan.get("entries") or [])
+    chosen = [cards[e["i"] - 1] for e in selected
+              if isinstance(e.get("i"), int) and 1 <= e["i"] <= len(cards)]
+    selected_kcs = {str(c.get("kc") or "").strip() for c in chosen
+                    if str(c.get("kc") or "").strip()}
+    kcs, _, _, _ = parse_kc_map(ledger_text or "")
+    shown = set(selected_kcs)
+    for kc_id in list(selected_kcs):
+        shown.update(req for req in (kcs.get(kc_id) or {}).get("requires", [])
+                     if req != "external" and req in kcs)
+
+    lines = ["# Review packet", "",
+             "Read only this packet. Do not open the full card deck or source corpus.",
+             ""]
+    intake = _read_optional(out / "intake.md")
+    scope = _read_optional(out / "scope_gate.md")
+    if intake:
+        lines += ["## Intake", "", intake.strip(), ""]
+    if scope:
+        lines += ["## Scope gate", "", scope.strip(), ""]
+    if shown and kcs:
+        header = "| kc_id | type | claim | source | evidence_quote | requires |"
+        rule = "|---|---|---|---|---|---|"
+        lines += ["## KCs", "", header, rule]
+        for kc_id in sorted(shown):
+            row = kcs.get(kc_id)
+            if not row:
+                continue
+            req = ", ".join(row.get("requires") or []) or "—"
+            quote = row.get("evidence_quote") or "—"
+            lines.append(f"| {kc_id} | {row.get('type','')} | {row.get('claim','')} | "
+                         f"{row.get('source','')} | {quote} | {req} |")
+        lines.append("")
+
+    lines += ["## Cards", ""]
+    for e in selected:
+        i = e.get("i")
+        if not isinstance(i, int) or not 1 <= i <= len(cards):
+            continue
+        c = cards[i - 1]
+        topic = str(c.get("topic") or "")
+        stratum = str(c.get("stratum") or "")
+        kc_id = str(c.get("kc") or "")
+        lines += [f"### card {i} — {topic} / {stratum} / {kc_id}", "",
+                  "Front:", str(c.get("front") or ""), "",
+                  "Back:", str(c.get("back") or ""), "",
+                  f"Source: {c.get('source') or c.get('source_ref') or ''}"]
+        media = c.get("media") or []
+        if media:
+            lines.append("Media:")
+            for m in media:
+                if isinstance(m, dict):
+                    lines.append(f"- {m.get('file','')} — {m.get('caption','')}")
+                else:
+                    lines.append(f"- {m}")
+        if e.get("reasons"):
+            lines.append("Why selected: " + "; ".join(map(str, e["reasons"])))
+        lines.append("")
+
+    path = out / "review_packet.md"
+    path.write_text("\n".join(lines).rstrip() + "\n")
+    return path
+
+
 def _roi_risks(text: str) -> tuple[list[int], int]:
     split_cards: list[int] = []
     restatements = 0
@@ -314,13 +670,25 @@ def _roi_risks(text: str) -> tuple[list[int], int]:
 
 def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> dict:
     """Validate, triage and ROI on the written deck. Consumes the FILE, returns counts."""
-    from validate_cards import check_cards
+    from validate_cards import check_cards, parse_kc_map
     from triage import select, build_plan
     from media_index import audit_cards
     import roi_report
 
     cards = load_cards(cards_path)
-    errs, warns, info = check_cards(cards)
+    kc_path = out / "kcs.md"
+    if not kc_path.is_file():
+        kc_path = out / "authoring_ledger.md"
+    ledger_text = kc_path.read_text() if kc_path.is_file() else None
+    corpus_parts = []
+    for name in ("sources.md", "transcripts.md"):
+        path = out / name
+        if path.is_file():
+            corpus_parts.append(path.read_text())
+    source_text = "\n\n".join(corpus_parts) or None
+    errs, warns, info = check_cards(cards, ledger_text=ledger_text,
+                                    source_text=source_text,
+                                    require_kc_map=kc_path.name == "kcs.md")
 
     entries, stats = select(cards, per_topic, max_total)
     plan = build_plan(str(cards_path), cards, entries, stats, per_topic, max_total)
@@ -347,16 +715,40 @@ def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> 
     roi_path.write_text(buf.getvalue())
     split_cards, restatements = _roi_risks(buf.getvalue())
     media_risks = audit_cards(cards, out)
+    ceiling = None
+    scope_path = out / "scope_gate.md"
+    if scope_path.is_file():
+        match = re.search(r"(?mi)^\s*Ceiling\s*[:~-]?\s*(\d+)",
+                          scope_path.read_text())
+        if match:
+            ceiling = int(match.group(1))
+            if len(cards) > ceiling:
+                warns.append(f"deck has {len(cards)} cards, above its own "
+                             f"Ceiling {ceiling}; park or justify")
+    review = _ensure_review_actions(out, cards, plan, cards_path)
+    packet_path = write_review_packet(out, cards, plan, ledger_text)
+    kc_map, _, _, _ = parse_kc_map(ledger_text or "")
+    layers = Counter(str(c.get("layer") or "?") for c in cards)
+    strata = Counter(str(c.get("stratum") or "unspecified") for c in cards)
+    gates_path = out / "gates.json"
+    gates_path.write_text(json.dumps(
+        {"cards": len(cards), "errors": errs, "warnings": warns, "info": info},
+        indent=2) + "\n")
 
     return {"cards": len(cards), "errors": len(errs), "warnings": len(warns),
+            "errs": errs, "warns": warns, "gates": gates_path,
             "selected": len(entries), "total": len(cards),
-            "plan": plan_path, "roi": roi_path,
+            "plan": plan_path, "roi": roi_path, "packet": packet_path,
             "roi_split": split_cards, "roi_restatements": restatements,
-            "media_risks": media_risks}
+            "media_risks": media_risks, "review": review,
+            "kc_total": len(kc_map),
+            "kc_linked": sum(1 for c in cards if c.get("kc")),
+            "ceiling": ceiling,
+            "layers": dict(layers), "strata": dict(strata)}
 
 
 def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
-                media: bool, media_root: str | None, strict: bool,
+                media: bool, media_root: str | None,
                 merge_existing: str | None = None) -> dict:
     """Build and validate the package in one process, returning a compact result."""
     target = apkg or (out / "deck.apkg")
@@ -366,8 +758,6 @@ def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
         cmd += ["--media", "--media-root", str(media_root or cards_path.parent)]
     if merge_existing:
         cmd += ["--merge-existing", merge_existing]
-    if strict:
-        cmd.append("--strict")
     built = subprocess.run(cmd, capture_output=True, text=True)
     if built.returncode != 0:
         return {"ok": False, "apkg": None, "error": built.stderr[-500:] or built.stdout[-500:]}
@@ -444,13 +834,21 @@ def stage_vision(out: Path, max_n: int, max_seconds: float,
             "report": str(report)}
 
 
-ARTIFACTS = ("intake.md", "scope_gate.md", "authoring_ledger.md")
+ARTIFACTS = ("intake.md", "scope_gate.md")
 
 
 def artifact_state(out: Path) -> dict[str, bool]:
-    """Which mandatory evidence files exist and are non-empty."""
-    return {name: (out / name).is_file() and (out / name).stat().st_size > 0
-            for name in ARTIFACTS}
+    """Which mandatory evidence files exist and are non-empty.
+
+    New runs write kcs.md; legacy runs may still carry authoring_ledger.md.
+    Either satisfies the KC-map requirement.
+    """
+    state = {name: (out / name).is_file() and (out / name).stat().st_size > 0
+             for name in ARTIFACTS}
+    kc = next((out / name for name in ("kcs.md", "authoring_ledger.md")
+               if (out / name).is_file() and (out / name).stat().st_size > 0), None)
+    state["kcs.md"] = kc is not None
+    return state
 
 
 def evidence_line(cards: list[dict], out: Path) -> str:
@@ -470,10 +868,45 @@ def evidence_line(cards: list[dict], out: Path) -> str:
             f"topic(s) | image cards {media}")
 
 
+def _fix_hint(msg: str) -> str:
+    """One actionable line for the common gate errors; the validator owns the check."""
+    low = msg.lower()
+    if "evidence_quote is not in the extracted source" in low:
+        return ("use a verbatim quote from the cited page, or set the KC source to "
+                "`derived` if the claim is self-contained")
+    if "need an evidence_quote" in low:
+        return "add a short verbatim `evidence_quote` to that KC row in kcs.md"
+    if "not in the kc map" in low or "unknown kc" in low:
+        return "add the KC to kcs.md or fix the card's `kc`"
+    if "missing 'kc'" in low:
+        return "add `kc` to the card; it must exist in kcs.md"
+    if "missing 'why'" in low:
+        return "add a one-line value case to that KC row (reuse, exam weight, error trap, prerequisite)"
+    if "exact same claim" in low:
+        return "merge the two KCs or make their claims genuinely distinct"
+    if "no parsable kc table" in low:
+        return "start kcs.md with `# KCs` and a pipe table; do not use a prose list"
+    if "single-card kc" in low:
+        return "merge the KC into its parent, add another card, or make it a prerequisite anchor"
+    if "every kc has exactly one card" in low:
+        return "the map is a card index; group cards under shared concepts"
+    if "missing/empty 'source'" in low or "no source. use a locator" in low:
+        return "add a page/slide/question locator, or `source: \"derived\"` for self-contained math"
+    if "control char" in low:
+        return "in JSON, double every LaTeX backslash (\\frac) or rewrite the card"
+    if "stray" in low and "$" in msg:
+        return "let the builder convert `$...$`; do not pre-convert MathJax delimiters"
+    if "front refers to an image" in low:
+        return "put the image on the front, or inline the data the front refers to"
+    if "exact duplicates" in low:
+        return "remove one of the duplicate cards"
+    return ""
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="pipeline.py",
-        description="Extract, validate, triage and ROI in one call.")
+        description="Extract, validate, triage, ROI, and review actions in one call.")
     ap.add_argument("--sources", nargs="*", default=None,
                     help="PDFs, videos, audio, or directories to extract (batch mode)")
     ap.add_argument("--cards", default=None,
@@ -506,9 +939,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out-apkg", default=None)
     ap.add_argument("--media", action="store_true")
     ap.add_argument("--media-root", default=None)
-    ap.add_argument("--strict", action="store_true")
     ap.add_argument("--allow-missing-artifacts", action="store_true",
-                    help="build without intake.md/scope_gate.md/authoring_ledger.md "
+                    help="build without intake.md/scope_gate.md/kcs.md "
                          "(draft or diagnosis only)")
     ap.add_argument("--no-context", action="store_true",
                     help="do not persist the deck dossier after a successful build")
@@ -571,6 +1003,10 @@ def main(argv: list[str] | None = None) -> int:
                 entry["failures"] = failures
         print(json.dumps(state, indent=2))
         return 0
+    if args.sources and not args.gates_only and _extract_busy(out):
+        print("pipeline.py: another extraction is still running in this work "
+              "dir; wait for it or use a different --out", file=sys.stderr)
+        return 2
     _mark(out, "run", "running")
 
     if args.gates_only and not args.cards:
@@ -581,8 +1017,12 @@ def main(argv: list[str] | None = None) -> int:
               "deck (or --gates-only with --cards)", file=sys.stderr)
         return 2
     if args.sources and not args.gates_only:
-        media_sources = [s for s in args.sources if _is_media_source(s)]
-        doc_sources = [s for s in args.sources if s not in media_sources]
+        media_sources, doc_sources = _split_sources(args.sources, exclude=out)
+        if not media_sources and not doc_sources:
+            print("pipeline.py: no sources left after excluding the work dir",
+                  file=sys.stderr)
+            return 2
+        _mark(out, "extract", "running", pid=os.getpid())
         if media_sources:
             med = stage_media(media_sources, out,
                               _media_images(media_sources, args.images),
@@ -592,7 +1032,7 @@ def main(argv: list[str] | None = None) -> int:
                               resume=args.resume)
             lines.append(f"media      {med['videos']} video(s), {med['chunks']} chunks"
                          + (f", {med['failed']} FAILED" if med['failed'] else ""))
-            if med["failed"] and not med["videos"]:
+            if med["failed"] and not med["videos"] and not doc_sources:
                 print("\n".join(lines))
                 return 1
         if doc_sources:
@@ -629,8 +1069,8 @@ def main(argv: list[str] | None = None) -> int:
         if media_sources:
             reads.append("transcripts.md")
         lines.append(f"NEXT       read {' and '.join(reads) or 'the extracts'} "
-                     "once, classify, write authoring_ledger.md before "
-                     "cards.jsonl (stage 5 -> 7); re-run with --cards for the gates")
+                     "once; write scope_gate.md and kcs.md before cards.jsonl; "
+                     "re-run with --cards for the gates")
 
     g = None
     if args.cards:
@@ -641,9 +1081,30 @@ def main(argv: list[str] | None = None) -> int:
               roi_split=len(g["roi_split"]))
         lines.append(f"gates      {g['cards']} card(s): {g['errors']} error(s), "
                      f"{g['warnings']} warning(s)")
+        for msg in g["errs"][:20]:
+            lines.append(f"error      {msg}")
+            hint = _fix_hint(msg)
+            if hint:
+                lines.append(f"           fix: {hint}")
+        if len(g["errs"]) > 20:
+            lines.append(f"           ... and {len(g['errs']) - 20} more errors; "
+                         f"see {_short(g['gates'], root)}")
+        for msg in g["warns"][:10]:
+            lines.append(f"warn       {msg}")
+        if len(g["warns"]) > 10:
+            lines.append(f"           ... and {len(g['warns']) - 10} more warnings; "
+                         f"see {_short(g['gates'], root)}")
+        lines.append(f"gates-json {_short(g['gates'], root)}")
         lines.append(f"triage     {g['selected']} of {g['total']} selected -> "
                      f"{_short(g['plan'], root)}")
         lines.append(f"roi        {_short(g['roi'], root)}")
+        lines.append(f"packet     {_short(g['packet'], root)}")
+        shape = " | ".join(f"{name} {g['layers'].get(name, 0)}"
+                            for name in ("L1", "L2", "L3", "Procedure"))
+        lines.append(f"shape      {shape}")
+        strata = ", ".join(f"{name} {count}" for name, count in
+                           sorted(g["strata"].items(), key=lambda x: (-x[1], x[0])))
+        lines.append(f"strata     {strata or 'none'}")
         if g["roi_split"]:
             shown = ", ".join(str(card) for card in g["roi_split"][:8])
             lines.append(f"roi-split  {len(g['roi_split'])} candidate(s): {shown}")
@@ -653,15 +1114,35 @@ def main(argv: list[str] | None = None) -> int:
                 for risk in g["media_risks"][:8])
             lines.append(f"media      {len(g['media_risks'])} risk(s): {shown}")
         lines.append(evidence_line(load_cards(Path(args.cards)), out))
-        review_logs = list(out.glob("review_feedback*.jsonl"))
-        review = "review log present (sample only)" if review_logs else "review not run"
-        status = "NOT READY" if g["errors"] else "NOT CERTIFIED"
+        if g["kc_total"]:
+            lines.append(f"kc         {g['kc_linked']}/{g['cards']} card(s) linked "
+                         f"to {g['kc_total']} KC(s)")
+        rv = g["review"]
+        if rv["required"]:
+            lines.append(f"review     {rv['state']} -> {_short(rv['path'], root)}")
+            review = f"review {rv['state']}"
+        else:
+            lines.append("review     not run")
+            review = "review not run"
+        if g["errors"] or g["media_risks"] or (rv["required"] and rv["state"] != "resolved"):
+            state = "BLOCKED"
+        elif g["warnings"]:
+            state = "READY WITH WARNINGS"
+        else:
+            state = "READY"
         lines.append(f"quality    static {g['errors']} error(s); "
                      f"media {len(g['media_risks'])} risk(s); "
-                     f"roi {len(g['roi_split'])} split(s); {review}; {status}")
+                     f"roi {len(g['roi_split'])} split(s); {review}; {state}")
         if args.deck_name:
             lines.append(f"deck-name  {args.deck_name}")
         if args.build:
+            if g["review"]["required"] and g["review"]["state"] != "resolved":
+                print("pipeline.py: refusing --build: review feedback exists but "
+                      f"{g['review']['path'].name} is {g['review']['state']}. "
+                      "Fill every score-1 action/target, set `status: resolved`, "
+                      "and re-run the gates.",
+                      file=sys.stderr)
+                return 1
             if g["media_risks"] and not args.allow_media_risk:
                 print("pipeline.py: refusing --build: media risks remain. Fix "
                       "them or pass --allow-media-risk for diagnosis.", file=sys.stderr)
@@ -683,7 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
                       Path.cwd() / f"{Path(args.cards).stem}.apkg")
             _mark(out, "build", "running", target=str(target))
             b = stage_build(Path(args.cards), out, args.deck_name,
-                            target, args.media, args.media_root, args.strict,
+                            target, args.media, args.media_root,
                             args.merge_existing)
             if b["ok"]:
                 _mark(out, "build", "done", target=b["apkg"])
@@ -691,6 +1172,10 @@ def main(argv: list[str] | None = None) -> int:
                 if b.get("build"):
                     lines.append(f"build-info {b['build']}")
                 lines.append(f"validate   {b['validation']}")
+                done = "DONE WITH WARNINGS" if g["warnings"] else "DONE"
+                if not rv["required"]:
+                    done += " — NOT REVIEWED"
+                lines.append(f"status     {done}")
                 if not args.no_context:
                     try:
                         c = stage_context(out, Path(args.cards), args.deck_name, args.anki_profile)

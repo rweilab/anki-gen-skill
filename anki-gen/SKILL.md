@@ -5,483 +5,264 @@ description: Generate evidence-based Anki flashcards from lecture notes, PDFs, P
 
 # Anki STEM Flashcard Generator
 
-Generate atomic, evidence-based Anki flashcards from STEM course materials with review in a
-local web page, optional web deck audit, and optional deck merging.
+Generate atomic, evidence-based Anki cards from STEM material, review them in a local page,
+and build an `.apkg`.
 
-**Harness-agnostic.** Plain `SKILL.md` + `scripts/`; Claude Code and opencode both discover it.
-Paths use `~/.claude/skills/anki-gen/`; substitute the skill's own directory if moved. Only the
-entry point differs (`/anki-gen` vs description match); the pipeline is identical.
+Harness-agnostic: plain `SKILL.md` plus `scripts/`. Paths below use
+`~/.claude/skills/anki-gen/`; substitute the skill directory if moved. The entry point is the
+only harness difference (`/anki-gen` vs description match).
 
-**Supporting files.** Read only the file named for the current stage; the rules below are
-the contract. The full read-when map is at the end of this file. If `references/` is
-missing, work from the rules alone.
-
-**Token discipline.** Batch up to 10–15 cards per topic after a one-line-per-card ledger; that is a
-write cap, not a card target. Read only the chosen sources, learner context, and the stage's
-reference; phase-split large reviews. Quality
-outranks token, call, and speed savings; never withhold useful evidence, context, or reasoning to
-reduce cost. Details: `references/authoring.md`, `references/review.md`.
+`$WORK` means `.anki-gen-temp/<filesystem-safe-topic>`, e.g. `circuits-midterm2`, not the
+deck name with `::`. Every artifact lives there. The `.apkg` is the only new file in the
+caller's directory.
 
 ## Quality kernel
 
-This applies to every deck, even when a reference was skipped. If a step cannot meet it, stop and
-fix the cause; do not lower the bar.
+These ten rules apply to every card. Read the relevant sections of `references/card-writing.md`
+before writing; do not author from the source alone.
 
-- **Before writing:** read the relevant `card-writing.md` sections. Do not author from the source
-  alone.
-- **Fronts are self-contained:** if the front says “shown,” “this circuit,” “the example,” or “the
-  slide,” the image must be on the **front** or the data must be inline. A back image is not enough.
-- **Media:** use `media_index.py`; attach only `direct` or vision-confirmed candidates. No title,
-  outline, agenda, incomplete-crop, or whitespace-heavy image. “More images” does not lower the bar.
-  If no good image exists, leave the card without one and say so. If image-vision has no key or
-  exhausts its bounded retry, the ≤6-image main-model fallback below is allowed; label it unverified.
-- **Cloze:** every deletion needs a label and context. A multi-field row may use labeled blanks:
-  `Metal film — Tolerance: {{c1::...}}; Power: {{c2::...}}; Typical use: {{c3::...}}`.
-- **Why:** add a consequence, mechanism, mnemonic, or real use. Delete a why that restates the
-  value/position/front. One concept card owns shared explanation; bare value cards are allowed.
-- **Gates:** `validate_cards`/`validate_apkg` are syntax/import checks, not quality certification.
-  Review every warning and the pipeline quality status before calling a deck done.
-- **Recovery:** if you skipped a stage or a gate fired, stop, produce the missing artifact, and
-  re-run the gate. Never hand over a deck to get past a gate.
-- **Review:** first generation runs the web review by default. For later changes, ask whether to
-  reopen it. If declined, say “not manually reviewed; static checks only.”
+1. **Source-grounded.** Every card has a locator, or `source: "derived"` for self-contained math.
+2. **One retrieval decision.** A wrong answer points to one thing to repair.
+3. **One unambiguous cue.** Two experts would give the same answer; the cue does not leak it.
+4. **Production, not recognition.** No computed answer on the front.
+5. **Conditions on the card.** Assumptions, units, and symbol definitions travel with it.
+6. **Near-miss discrimination.** The card separates the target from a tempting alternative.
+7. **Answer first.** The first back sentence answers the front; the why adds mechanism,
+   consequence, mnemonic, or use.
+8. **Every symbol defined** on the card, with units, and written in MathJax: `$P_{0}$`,
+   `$v_{0y}$`, `$\rho_{\text{oil}}$`, `$V_{\text{disp}}$`. Bare `P_0`, `ρ_obj`, `V_disp`, or
+   `Vsphere` is a defect. Code spans are exempt.
+9. **Self-contained front.** No “shown,” “this circuit,” or “the slide” without the image on
+   the front. No cross-card pointers.
+10. **Media bar.** Full slide/frame by default; crops need confirmation; one image per card;
+    no title, outline, agenda, incomplete crop, or whitespace-heavy image.
 
-**Execution.** Never spawn a child `opencode` process (including `opencode run` or
-`opencode debug`) or recursively invoke this skill; run the shipped scripts directly.
-Use the separate `image-vision` pass for images. **Main-model vision is a last-resort
-fallback, not a default:** use it only when the Gemini key is missing or the bounded
-429 retry failed, the image is necessary to answer or attach a card, and the batch is
-at most 6 images read one at a time. Label it unverified. Never use it for bulk media
-selection, contact sheets, or a gallery; if more than 6 images are necessary, stop and
-ask for a key. Do not probe for LibreOffice, Office, desktop converters, or random
-system tools; use the declared extractors. After two failed tool probes, stop and
-report the limitation.
+A gate passing is not a quality certificate. The review is.
 
-## How much to ask, and how much to say
+## The runbook
 
-Everything technical here — layers, `tier_zero`, `stratum`, provenance, GUID identity, ROI
-axes — is for **you**. The caller experiences two things: how many questions they get, and how
-much jargon they hear. Decide the level from the request, not by asking:
+The normal path is seven steps. Do not invent a parallel one.
 
-| Signal | Read it as |
-|---|---|
-| Short and casual — "make cards from Lec/", "flashcards for this folder" | **beginner.** Ask at most one question, run every gate silently, don't narrate stages |
-| Iterating, "why is this card like that", weighing a tradeoff | **power user.** Be verbose, show reasoning, offer the judgement calls |
+1. **Intake.** Read the request and the chosen sources. Open only `survey.md` and the source
+   table of contents for now; do not open `card-writing.md`, `review.md`, `schema.md`, or
+   `prompts.md` until their step. Read the learner-calibration summary, not the whole study log.
+   Write `$WORK/intake.md`: deck name, learner context, sources, image yes/no, assumptions, and
+   **your own budget** for this run (estimated extraction, authoring, review, and build calls
+   based on scope). No fixed numbers.
+2. **Extract.** Run one foreground extraction with all chosen documents and media. Wait for it
+   to return. Do not background a second extractor; do not read `sources.md` until it exists.
+3. **Author.** Read the source table of contents and only the per-source files you need. Write
+   `$WORK/scope_gate.md` with a `Ceiling: N` line and `$WORK/kcs.md`. Then write
+   `$WORK/cards.jsonl` in one pass per topic. One authoring format; no deck script.
+4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`, and
+   `review_packet.md`. Fix all errors in one rewrite, then run one gates call again. Do not
+   run a separate validator after every edit.
+5. **Review.** Start the web review. Wait. Read only low scores and comments. Apply all feedback
+   in one rewrite. Run one gates call to create `review_actions.md`; fill every score-1
+   action/target, set `status: resolved`, then build.
+6. **Build.** Run one build call. It validates the real import.
+7. **Cleanup.** Stop the review server, delete `$WORK` in full, leave only the `.apkg`.
 
-**Beginner.** Infer the rest: don't gate on the source survey, don't offer the deck audit, don't
-ask about the formula sheet — infer and *state the assumptions in the report*, one line each.
-The one question is the deck name; the formula-sheet stance is inferred.
-Never narrate the pipeline, report validator warnings, or explain what a layer is. Report four
-things: **where the deck is, how many cards, what to study first, what you assumed.**
+### Commands
 
-**Power user.** The rest applies as written.
+```bash
+SKILL=~/.claude/skills/anki-gen
 
-**No request text, material present.** If the skill is invoked with no topic or source named and
-the folder contains files, **do not start a full-folder build.** Ask one short question — what
-should the deck cover: a chapter, a topic, an exam, or the whole folder? — and wait. "Everything
-here" is a scope decision for the caller, not a default.
+# 1. Extract all chosen sources (foreground; one call)
+python3 "$SKILL/scripts/pipeline.py" --sources <dirs-or-files> --out "$WORK"
 
-**No sources found.** If the folder has no flashcard-able files, do not run the pipeline: read
-`references/getting-started.md` and print its text, then stop and wait.
+# 2. Gates (exact errors, review plan, ROI)
+python3 "$SKILL/scripts/pipeline.py" --cards "$WORK/cards.jsonl" --gates-only --out "$WORK"
 
-### What to say while it runs
+# 3. Review (one server, background; then wait)
+python3 "$SKILL/scripts/review_server.py" --cards "$WORK/cards.jsonl" \
+  --plan "$WORK/review_plan.json" --media-root "$WORK" \
+  --out "$WORK/review_feedback.jsonl" --done-file "$WORK/review_done"
 
-*Status* — "reading the files" — answers the only question a waiting person has: is it working,
-should I leave? *Narration* — stage numbers, layer codes, validator output — is noise. Status at
-every level; narration never.
-
-| Moment | Say |
-|---|---|
-| Called, before reading anything | `Looking through the files in this folder…` |
-| Extracting a large PDF or several at once | `Pulling the text and figures out…` |
-| Before the cards get written | `Building the deck now — this is the slow part, come back in a bit.` |
-| Reading feedback back into the deck | `Reading your feedback and rebuilding the final deck…` |
-| Handing over the review URL | `Open this link to review the cards, then come back when you're done:` |
-| Waiting for "done" | *nothing* — wait |
-
-The estimate is a hedge, not a promise: "come back in a bit" survives a 40-second build and a
-ten-minute one; "about three minutes" is wrong both ways. **Beginner extra:** the first URL gets
-one clause more — the page scores each card 1–5 and shows why each was picked. Never narrate a
-stage number, work-file name, or script name; the `.apkg` path in the report is separate.
-
-### The web review
-
-On the first generation, run the review by default. A browser page beats a TUI for judging a card,
-and a beginner is exactly who should not take the tool's word for it. When the user is asking for
-changes or adjustments, ask whether to reopen the review; do not assume. If they decline, say the
-deck was not manually reviewed and report static checks only. Hand over one short sentence, then
-the URL alone on its own line.
-
-### The four interaction points
-
-The gates aren't the friction — they caught a two-order-of-magnitude unit error in a real deck.
-Blocking is.
-
-| Point | Power user | Beginner |
-|---|---|---|
-| Source survey (stage 2) | propose and wait | proceed on stated assumptions; list them |
-| Deck audit (stage 3) | run only if asked | **skip** — opt-in only |
-| Web review (stage 10) | first build: run; later changes: ask | first build: run; later changes: ask |
-| Trim list (stage 13) | propose, get approval | **state it in the report**, apply only if they say so |
-
-### State assumptions; never make silent ones
-
-When you proceed without asking, the report ends with a short **Assumed:** line. A wrong
-assumption costs one sentence; a blocking question costs the decision before the caller has
-anything to decide it against.
-
-## Rules
-
-Read before writing a card or a script. Each cost a real broken deck.
-
-**Every rule names what holds it.** `[script.py:function]` is a check you can run; **[prose]**
-means only this document enforces it — distrust that area when you change it. A rule's `→` name
-points to the reference that carries the detail (see **Working references**); don't repeat it
-here. **Fold a new lesson into the rule it
-belongs to**, or let it replace a weaker one; appending is the last resort. Keep the *why* as a
-clause, not a paragraph, unless it changes a decision. The whole file loads every invocation and
-only its opening tokens survive a long session — what is duplicated is what gets dropped first.
-
-1. **A deck that imports is not a deck that reads.** Raw `$...$` backslashes and literal
-   `**bold**` fit inside a structurally perfect `.apkg`; structural checks pass on packages Anki
-   refuses to open, so the final gate is a real import. `[validate_apkg.py import_test]`
-2. **Anki's MathJax is `\(...\)` and `\[...\]`, never `$...$`.** Author `$`, let the builder
-   convert; a bare `$` reaching a field is a bug. `[render.py; validate_cards stray-$ check]`
-3. **Anki renders no markdown.** Author markdown freely; `[render.py]` converts it.
-4. **Write card text in raw Python strings.** `\t`, `\f`, `\r`, `\b`, `\n`, `\v` are Python
-   escapes: `\frac` becomes a formfeed, `\text` a TAB — silently. `[validate_cards control-char
-   check]` → **Rendering**
-5. **Define every symbol on its own card.** "Identify all variables" is an exam objective; a
-   formula card without the glossary tests half the thing. `[validate_cards glossary info]`
-   → **Every symbol is defined on its card**
-6. **A tier-zero concept card comes before each topic's formula cards.**
-   `[prose; tier_zero field]` → **A tier-zero card comes before the formula cards**
-7. **Forbidden patterns scope to fronts, never backs.** "Set them equal and solve" in a back is
-   teaching; L3 fronts are exempt because diagnosing a wrong computation is the point — unless
-   calibration says the learner reads boundaries as decisions. `[validate_cards.is_computation_prompt]`
-8. **Never put a computed answer on a front.** Given data plus a value out is unanswerable from
-   memory and fails quietly: reasonable, well formatted, teaches nothing.
-   `[validate_cards.is_computation_prompt; review_server --ask recall]` → **The recallability test**
-9. **Never machine-split a concept into a question** by cutting on `=` or `→`. `Atoms per unit
-   cell: SC?` is not a question. `[prose]` → **Authoring cards: mechanics**
-10. **Anchor every shared term.** Five cards querying an undefined term is a single point of
-    failure — blank on the definition, all five unreachable. `[prose; roi_report anchors]`
-    → **Anchor cards for shared vocabulary**
-11. **Answer the front first, then match its length.** If the front asks “which enzyme/law/step,”
-    the back names it in the first sentence; a true explanation that never answers the front is
-    broken. A yes/no front with a paragraph back means the paragraph is never read. Demand the
-    mechanism, or cut the back. `[validate_cards answer-alignment; prose]`
-12. **Speak the course's language**: its terms, its notation, no attribution it never used.
-    `[prose]` → **Speak the course's language**
-13. **Calibrate scaffolding to the reader — and to backs only.** A front is never calibrated
-    down: it must be answerable instantly, by naming the concrete things. `[prose]`
-    → **Calibrate before you write a single card**
-14. **The deck's value is the fraction of cards failed, not its size.** Retrieval strengthens
-    memory; a failed review teaches nothing beyond the re-read, and learners over-test what they
-    already know. `[roi_report costliest; review feedback]` → **Retrieval success is the currency**
-15. **Cloze is for enumerations that are separately examinable**, never prose, concept cards, or
-    one whole formula. `[build_native.check_cloze_braces]` → **Use cloze for enumerations**
-16. **Backs explain; they do not restate the front.** A why must name a consequence, mechanism,
-    mnemonic, or real use; delete it if it only restates the value or position. Shared explanation
-    lives on one concept card, not every sibling. A bare value card is allowed. `[prose]`
-    → **Backs explain**
-17. **Source-dependent claims cite a locator; self-contained math uses `source: "derived"`.**
-    Never invent a citation to satisfy the field. Cite what the learner can open, with numbers on
-    the front and the locator in the footer. `[validate_cards source checks]`
-    → **Every card carries a provenance footer**
-18. **Housekeeping lives in fields, not on the front.** Topic and object tags are already
-    displayed above the question; prefixing makes a card read like a form. `[prose]`
-    → **Housekeeping lives in fields**
-19. **Procedure cards test a decision, never a solution**, and the front states which decision it
-    wants. An L2 procedure walkthrough is a separate familiarity card, not a Procedure card.
-    `[validate_cards Procedure-front-warn]` → **The Procedure layer**
-20. **Reflow, don't hard-wrap.** Cosmetic source line breaks must not become `<br>`, or sentences
-    split mid-clause. `[render.py]` → **Authoring cards: mechanics**
-21. **A candidate fact earns a card only if it is not look-up-able, has already caused a
-    recurring error, or is reused across topics.** If the learner gets it on the formula sheet
-    during the exam, the correct number of cards is zero; if they must recall it from memory, it
-    is cardable. When the sheet is given, spend the deck on its absences and the decisions around
-    each equation — Anki is the retention system; problem sets, derivations, debugging and labs
-    build the skill. Favour representative problems over every homework problem; a clean review
-    is not proof of transferable mastery. `[pipeline stage 6 SCOPE GATE artifact]`
-22. **Debloat last, and debloating is not minimising.** Target high context *and* low review
-    time; split independently examinable facts sharing one schedule, keep items that always
-    transfer together. `[roi_report; DEBLOATER PROMPT]`
-23. **One deck, named by the caller. Topics are tags, not subdecks** — a deck split per lecture is
-    a deck you stop reviewing as a whole, and the earliest material goes unread first. Pass
-    through `--deck-name`; `::` nests (`SCHOOL::CIRCUITS::OPAMPS`), the caller's choice, not a
-    convention. `[prose]` → **The topic is a chapter name**
-24. **Show the reviewer the full front and back.** A truncated card cannot be reviewed.
-    `[review_server.py]`
-25. **Do not install `katex` or `latex2svg`.** Neither does what this skill once claimed; Anki's
-    bundled MathJax is the renderer. `[prose]` → **Rendering**
-26. **A back never points at another card.** "See the magnitude card", "as shown above" — each
-    card is reviewed alone, random order, so the pointer resolves to nothing where it was needed,
-    and the referenced card may have been cut. Put the information in the card. `[prose]`
-    → **No cross-card pointers**
-27. **A topic is a chapter/lecture heading; object tags are optional.** `topic` names the subject
-    a student could look up — `Unit Cells`, `Dislocations`, `XRD & Diffraction`, `Unit Circle`.
-    Never a layer code (`L1`), a lecture number, a single card's identity, or a subtopic: one
-    Unit Circle deck is all `Unit Circle`, not `Radians`/`Sine`/`Tangent`. `objects` carries 0–2
-    broad cross-topic buckets (`concurrency`, `memory`, `rtos`); **zero is normal**. Tags are
-    front-visible: never put the answer, method, theorem, or named technique in `topic` or
-    `objects`. Do not tag the topic, a subtopic, or a term already explicit in the card; the
-    build drops those. Generated tags are lowercase; the Topic field keeps its display
-    capitalization. `[validate_cards topic-is-layer-code; objects-count; tag-leak]`
-    → **The topic is a chapter name**
-
-## Layers
-
-The four layers and the note type each is written in — their only definition; the classifier and
-verifier prompts point here.
-
-- **L1 Recall** — facts, definitions, formulas, constants (Basic, Cloze)
-- **L2 Understanding** — why/how, intuitions, derivations, analogies (Cloze, Basic)
-- **L3 Boundaries** — limitations, edge cases, failure modes (Basic)
-- **Procedure** — method selection and next-step prediction (Basic)
-
-**L3 fronts are exempt from the forbidden-pattern rule** (rule 7) — a boundary card legitimately
-narrates a wrong result, and diagnosing it *is* the objective. **Procedure is constrained by rule
-19.** There is no Type-in and no Image Occlusion note type: the build emits Basic and Cloze.
-Behind this: Bloom's taxonomy (the layers are its recall → understand → apply → analyse ladder),
-cognitive load (one card, one load), retrieval practice (Q→A, never recognition), desirable
-difficulty (cloze; don't let a front give away its answer), and spacing (FSRS handles it).
-
-## Pipeline Stages
-
-**Budget: a whole-corpus run is ~25 steps, not 80.** Steps are the cost, not tokens — every step
-re-sends the whole context, so 80 steps pays for its context 80 times. Batching: **one step may
-carry several independent calls** (source listing and extract in one; validate, triage and ROI in
-one). Five habits:
-
-- **Gather the inputs once.** A directory listing, a script's `--help`, an environment probe —
-  independent, so one step, not four.
-- **Let a script do a whole stage.** One `pipeline.py` call beats five script calls plus ad-hoc
-  Python. `pipeline.py --sources ... --out ...` extracts; re-run with `--cards ... --gates-only`
-  for the gates.
-- **Write to disk, read back once.** Reasoning is re-sent at every later step; a file read once is
-  not.
-- **Don't re-read to confirm.** A file you or a script wrote is on disk and will not have changed.
-  There is no confirm step.
-- **Read allowlist.** Chosen sources, learner context, and the stage's reference; not other work's
-  handoff docs, full tool source, or a deck you wrote — use `grep`/`--show`. A confirmed script bug
-  is the exception: read the function, not the file.
-
-Fourteen stages follow, one owner each. The table is the map; the detail below it covers only the
-stages whose failure is expensive enough to restate here. Batch independent calls; a clean run is
-about 25 steps, not 80. The review round-trip and the build are part of that count.
-
-All scripts live in `~/.claude/skills/anki-gen/scripts/`; run each as `python3 <that
-path>/<name>.py`. Batch the separable calls: **build and validate_apkg in one step; roi and the
-pre-build gates in one step; read the chosen extracts in one step.** Never re-read an artifact.
-Below, `$WORK` means `.anki-gen-temp/<topic>`; every deck artifact lives there, and every command
-uses `$WORK/cards.jsonl` (or the same file named `.json`).
-
-References in the table are under `references/` unless this file or `maintainers/` is named.
-Run the command in the row; a parenthetical diagnosis command is for a confirmed failure, not a
-parallel path.
-
-| Stage | Command | Gate / artifact | Reference |
-|---|---|---|---|
-| 1. Parse intent | `python3 parse_intent.py "<request>" "<cwd>"` | Read the JSON for `date_filter`, `merge_target`, `audit_web`, `deck_name`, and the video fields. A lexicon: read the request yourself for the rest; local sources come from the request, not this JSON. `max_cards` is deliberately not parsed; deck size is the scope-gate ceiling. | — |
-| 2. Source survey | Read the request and folder | Propose sources with a reason each, then stop (beginner: proceed on stated assumptions); write `$WORK/intake.md` (deck, learner, sources, video range, images yes/no, review preference, assumptions). Deck name required; missing later → ask once. | `survey.md` |
-| 3. Deck audit | none — opt-in only | Search AnkiWeb/GitHub/Reddit; audit by hand against "DECK AUDIT"; modal outcome: generate your own. | `optional.md` |
-| 4. Extract | `python3 pipeline.py --sources <...> --out .anki-gen-temp/<topic>` (preferred); `python3 extract_pdf.py "<source>" "<cwd>/.anki-gen-temp/<topic>" --tag <tag>` (diagnosis); `--date-filter` | `sources.md` combines the batch for one read; per-source `.md` files remain for narrow checks. Single source prints content/source_type/source_path/images_count + a 3-name sample/md; batch prints a manifest with counts, samples of `<tag>` dirs and `.md` paths. Cite the source file + page, not the topic dir. | `survey.md`, `slides.md` |
-| 4b. Video/media | `python3 pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto\|yes\|no] [--model auto] [--whole-playlist \| --items 2-5] [--title "..."]`; `extract_video.py` (diagnosis) | `transcripts.md`, `video_toc.md`, optional `frames.md`/`frames.jsonl`; per-video `video_meta.json`; `pipeline_state.json`, `--resume`, `--status`; opt-in `--vision auto --vision-max 12` → `vision.jsonl` (confirm frames only). Attach `direct`; confirm `confirm` via image-vision; main model never reads frames by default (bounded kernel fallback only). | `video.md` |
-| 5. Classify | Read `$WORK/sources.md` once for documents and/or `$WORK/transcripts.md` for video (the single-source `.md` for a diagnosis run), then the CLASSIFIER prompt | Classify in-chat; no `concepts.json` artifact is required. Do not invent one. | `prompts.md` |
-| 6. Scope gate | none | **Required artifact** `$WORK/scope_gate.md` (both halves). `pipeline.py --build` refuses without `intake.md`, `scope_gate.md` and `authoring_ledger.md` unless `--allow-missing-artifacts`. | **this file, stage 6** |
-| 7. Write | `new_cards.C`/`make_cards.py` → `$WORK/cards.jsonl`; `media_index.py` only when images are opted in | `$WORK/authoring_ledger.md`, then only cards that pass rule 21, normally 4–15 per topic; 10–15 is one batch cap, not a quota. Locator, glossary, why, tier-zero; media opt-in and quality bar; `$WORK/curated.json` is optional for documents. | `card-writing.md`, `authoring.md`, `schema.md`, `video.md` |
-| 8. Verify + triage | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --out "$WORK"` | `--out` is required even with `--gates-only`. One call runs static checks, triage, and ROI; writes `$WORK/review_plan.json` and `$WORK/roi.txt`, then prints the quality line. `--max` caps the review sample, not the deck. Escapes, delimiters, leaked markup, computation fronts, duplicates, front-visible tag leaks, missing glossary/provenance; `--deep` adds soft answer overlap. If warnings > 0, run `validate_cards.py --json` for the exact messages and fix them before review; the text view caps at 20. Layer 2 is the stage-7 batch self-check or the triaged review, never a corpus audit. | `review.md`, `prompts.md` |
-| 9. Triage artifact | none — stage 8 wrote `review_plan.json` | Read `references/review.md`; the plan is the review subset. Run `triage.py` directly only to diagnose plan selection. Then run the semantic self-audit on that sample. | `review.md` |
-| 9b. Adversarial review (optional) | none — opt-in only | If the caller explicitly asks for an adversarial/extra review and the harness has a read-only subagent, run the rubric in `review.md` on all cards (≤12) or the triaged sample plus flagged/tier-zero/anchor cards. Advisory; never manual review. Skip if unavailable; do not ask a beginner. If supported, the report may mention the option once; it stays off by default. | `review.md` |
-| 10. Review (web) | `python3 review_server.py --cards $WORK/cards.jsonl --plan $WORK/review_plan.json --media-root "$WORK" --out $WORK/review_feedback.jsonl --done-file $WORK/review_done` | First generation default; later changes ask; `--ask recall` second pass (default `review_recall.jsonl`); wait, read reduced log, rescope. | `review.md` |
-| 11. Build | `python3 pipeline.py --cards $WORK/cards.jsonl --gates-only --build --out "$WORK" --deck-name "Name" --out-apkg ./<deck>.apkg` | Quality line; refuses objective media risks unless `--allow-media-risk`; refuses missing evidence unless `--allow-missing-artifacts`; `--merge-existing` add-only; `--media --media-root` only when opted; dossier pack unless `--no-context`. | `revision.md`, `schema.md` |
-| 12. Validate | `python3 validate_apkg.py out.apkg` — diagnosis/explicit artifact check only | Stage 11's build already runs this same real import; do not run it again just to confirm. | `card-writing.md` |
-| 13. Debloat (ROI) | Re-run stage 8 after *every* content change; `roi_report.py $WORK/cards.jsonl --list` only when trimming | Step-10 feedback is measured and outranks the report's surface heuristics. In the main process, not a subagent. Report concept overlap and media reuse; never cap or trim automatically. | `prompts.md` |
-| 14. Cleanup | Checklist below | `.apkg` only new file; work directory deleted in full; dossier persistent outside the caller's directory; no listener left. | **this file, stage 14** |
-
-Stages 8, 9 and the first stage-13 report are one `pipeline.py --gates-only` call. Run
-`validate_cards.py`, `triage.py` or `roi_report.py` separately only to diagnose that call.
-
-### Stage 6 — scope gate
-
-The do-not-card list in `$WORK/scope_gate.md`, BOTH halves: what the formula sheet prints, and — the
-high-yield part — what it does NOT print. If a sheet is provided, ask once: memorised → card them as
-recall; given → do NOT card them (rule 21), spend the deck on absences and decisions around each
-equation. If the caller says no sheet is provided, the “prints” half is empty and everything is
-recallable; rule 21 still applies, so card decisions and absences rather than a formula dump.
-Beginner: infer the sheet stance and put it on the **Assumed:** line. This filters the classified
-concepts before write. Required, and it must leave a file: a deck that skipped it looks identical to
-one that needed none. On the run that produced this rule, doing it by hand was the difference
-between 55 cards and 150. Also record a soft target count — a ceiling, not a quota — and a **parked**
-list: high-ROI candidates are written first; look-up-able, low-weight, or redundant candidates are
-parked with a reason, not deleted. `pipeline.py --build` refuses without intake.md, scope_gate.md and authoring_ledger.md
-unless `--allow-missing-artifacts` is passed.
-
-### Stage 7 — authoring, ledger, media
-
-Read `$WORK/scope_gate.md`, only the relevant card-writing sections (the rule map is at its top),
-plus `authoring.md` and `schema.md`, then write `$WORK/cards.jsonl` (front, back, layer, topic, objects, deck, source;
-`cloze: true` on any `{{cN::}}`; `tier_zero: true` on the topic concept card) with a locator, a
-glossary of every symbol, a plain-English why, and a tier-zero card before each formula card.
-
-**Ledger, then batch:** write `$WORK/authoring_ledger.md` as a card contract (one line per card:
-tier, intent, retrieval target, one-sentence front answer, why, symbols used and meanings, source
-evidence/`derived`, and checks), then write at most 10–15 cards for the topic in one batch. A normal
-topic is 4–15, and a 10–15-minute lecture often yields fewer; the soft target is a ceiling. Validate
-the batch, avoid redundant retrieval targets, and park what does not pass rule 21; exact front/back
-duplicates are errors. One authoring path per deck: prefer `.jsonl`; if a deck script
-(conventionally `make_cards.py`, using `new_cards.C`), write it in one pass per topic — never
-one-card edits. Use `author.py` scaffold only when there is no script; do not scaffold and write a
-script (two sources of truth).
-
-Media is opt-in and main-model-vision-free by default (the bounded kernel fallback is the only
-exception): entries are `{file, side, caption, source}` with
-`<tag>/media/<file>` paths. Use `media_index.py <work> --cards cards.jsonl --per-card 2`; attach
-only candidates that show the thing the front asks about. Never auto-attach. `confirm` crops/frames
-need image-vision or explicit approval; title, outline, incomplete-crop, and whitespace-heavy
-images are out. If no good image exists, leave the card without one and report it. A shared diagram
-may be attached to several related cards; reuse is expected. Full detail:
-`references/authoring.md` and `references/video.md`.
-
-Video source: `source` is the full `<channel> - ... - <title> @ mm:ss` line; `source_url` is the
-plain timestamp URL (series includes the playlist). Read `$WORK/intake.md` for the image preference
-and video range; do not re-ask. Video sources default to frames (`--images auto`); audio-only skip
-frames. While the source is open, write a short `$WORK/curated.json` for the dossier (takeaways,
-style, decisions); never re-read the corpus to summarize it. Details: `references/revision.md`.
-
-### Stage 10 — review policy
-
-The first generation runs the web review by default. When the user is asking for changes or
-adjustments, ask whether to reopen it; do not assume. If they decline, say the deck was not manually
-reviewed and report static checks only. Read `$WORK/intake.md` and `references/review.md`.
-
-Run `review_server.py` in the background, hand over one short sentence and the URL on its own line,
-and **wait**; do **not** print card text into chat. On "done", reduce the log with `cardid.py` (last
-row per card), read only low scores/comments, generalise, and re-scope (see `references/review.md`).
-The 1–5 scale is the primary review; `--ask recall` is a second pass (default log
-`review_recall.jsonl`), never a substitute. Stop a stuck server with `curl -X POST <url>/finish`,
-never `pkill -f`.
-
-### Stage 11 — build and quality status
-
-Prefer `pipeline.py --cards $WORK/cards.jsonl --gates-only --build --out "$WORK" --deck-name
-"Name" --out-apkg ./<deck>.apkg` (build + validate in one call). Read the `quality` line: media
-risks/ROI splits/review status. The build refuses objective media risks unless `--allow-media-risk`.
-
-`--work`/`--out` is the work directory (required): a `.apkg` there is rejected, because the deck
-belongs in `--out-apkg`. Direct `build_apkg.py` is the diagnosis path, in the CALLER'S CWD (never
-the work dir), and needs `anki`. Static validation is the default; `--allow-invalid` is diagnosis
-only.
-`--merge-existing` adds only cards whose hash is absent (idempotent, prints skip count). Media is
-bundled only with `--media --media-root <work>` when intake says images: yes (default off;
-`--media-root` defaults to the cards.jsonl directory). A hand-authored deck script is the source of
-truth during the run; stage 14 promotes it only to a caller-named path, or deletes it and the .apkg
-is one-shot.
-
-A missing evidence file is a hard stop; `--allow-missing-artifacts` is for a draft only. Static
-validation is automatic. A successful build packs the dossier under
-`${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/`; `--no-context` opts out. The deck lands at
-`./<deck>.apkg` in the caller's cwd; they import it with `File → Import`, then AnkiWeb sync.
-
-### Stage 14 — cleanup
-
-**Cleanup is part of the output contract.** Run after the .apkg validates: the .apkg is the ONLY
-new file left in the caller's directory. The compact dossier written from `context pack` is
-persistent by design and lives outside the caller's directory; it is not part of the scratch tree.
-The work directory is deleted in full and the review server is stopped; no source folder is left
-unless the caller named one.
-
-1. Stop the review server; verify nothing listens.
-2. Read `$WORK/review_handoff.md` if it exists; if a fresh review session has not read it, copy
-   it beside the promoted source.
-3. Delete `.anki-gen-temp/<topic>/` in full — cards.json/.jsonl, deck script, extract, video cache,
-   transcripts, frames, media, ledger, review_plan.json, feedback, logs.
-4. Do NOT create a source folder or any other file in the caller's cwd to "keep the source": promote
-   only to a path the caller explicitly named; otherwise delete it and say the .apkg is one-shot.
-5. Never delete or move a pre-existing file.
-6. Compare before/after: the only new entry is the .apkg; .anki-gen-temp is gone. Never clean or
-   remove pre-existing files.
-7. Remove the skill's `scripts/__pycache__` if present (bytecode scratch).
-
-**Stages 1–2 and 4–14 are mandatory; stage 3 and stage 9b are opt-in.** A beginner may run stage 2 silently on
-stated assumptions. After any content change re-run 8 and 13 before the next build. Every defect that shipped passed the old validator, which checked only empty fields and
-cloze syntax: raw `$...$` and literal `**bold**` scored `"valid": true`.
-
-**Regenerate, do not patch, when the deck came from a script.** The `.apkg` is a build artifact of
-a deck script (conventionally `make_cards.py`) or `build.py`; every content edit belongs in the
-script (or the `cards.jsonl`/`.json` it emits) and is produced by re-running it — never hand-edit
-the JSON, never edit cards inside Anki during the run and call that fixed. Hand-edits are silently
-lost on the next run; the `.apkg` is never the source of truth. After delivery, a pure wording fix
-in Anki may keep scheduling history, but it must be mirrored in the source before any rebuild.
-
-## Revising an imported deck
-
-Open Anki first, run `python3 scripts/anki_connect.py`, and stop to fix setup if it fails
-(add-on code `2055492159`; `scripts/anki_connect.py --detect` then `--install --yes` for the pinned build).
-Never open, copy, query, or inspect the live collection DB, even read-only. Ask whether to
-**update the deck already in Anki** (keeps history) or **regenerate a `.apkg`** (fresh import).
-`references/revision.md` has the commands, conflicts, destructive choices, snapshots,
-one-command revert, and how to find cards in Anki. Route the request: tags → `revision.py tags
---lowercase`; bulk backs/fronts → `revision.py update --file edits.json`; cull/merge/split →
-`plan`/`apply`. Never hand-roll AnkiConnect, write a `/tmp` script, or use global tag actions; if
-the supported path is missing, add it to the skill first. Score 1 is calibration (“known / too
-easy”), never automatic rejection. The review page UI is unchanged.
-
-## Reporting
-The report is the last thing the caller reads; for a beginner it is the whole experience.
-
-**Beginner — four lines plus quality status, then stop:**
+# 4. Build + real import validation (after review actions are resolved)
+python3 "$SKILL/scripts/pipeline.py" --cards "$WORK/cards.jsonl" --gates-only --build \
+  --out "$WORK" --deck-name "Deck Name" --out-apkg ./Deck.apkg
+# If images were opted in, append: --media --media-root "$WORK"
 ```
+
+`pipeline.py --sources` accepts directories; it excludes `$WORK` automatically. One
+extraction call covers documents and media. If an extraction is interrupted, re-run the same
+command with `--resume`; do not start a second concurrent extractor. If a source genuinely
+cannot be extracted, report it; do not switch extractors or probe for
+LibreOffice/Office/desktop converters.
+
+## KCs
+
+A knowledge component is the thing being learned; a card is one retrieval rep. KCs are the
+value and coverage model, not a per-card ledger and not a card-count quota.
+
+Write `$WORK/kcs.md` before the cards:
+
+```markdown
+# KCs — Deck Name
+
+| kc | type | claim | why | requires | evidence_quote | source |
+|---|---|---|---|---|---|---|
+| charge.current | concept | Current is charge flow; 1 A = 1 C/s | Reused by every current and power card | — | "1 ampere = 1 coulomb/second" | Slides 1 p.2 |
+| nodal.supernode | boundary | A voltage source between non-reference nodes needs a supernode | One-card exception; one card is the complete decision | nodal.steps | "supernode" | Slides 4a p.24 |
+```
+
+Rules, all scale-free:
+
+- Every card names a `kc` that exists in `kcs.md`.
+- **Single-card KCs are allowed.** `why` must make the value case: reused, exam-weighted,
+  error-prone, a prerequisite, or a high-value exception.
+- A single-card `concept` or `mechanism` warns: justify it, or add a second retrieval angle
+  only if it adds value. All other types (`condition`, `procedure`, `representation`, `schema`,
+  `boundary`, `error`, `metacognition`, `integration`, `anchor`) are allowed as singles.
+- A map where every KC has exactly one card warns: inspect for card labels. No hard rejection.
+- Do not add a card or change a type just to clear a warning. The review judges value.
+- Two KCs with the exact same `claim` are an error: they are one KC.
+- No filler cards to satisfy a KC count. Park the weaker candidate in `scope_gate.md`.
+- Every `requires` resolves.
+- A source-dependent KC carries an `evidence_quote` found in the extracted corpus; `derived`
+  is exempt.
+- `type` and `stratum` are optional. When `type` is omitted, no type-based single-card warning
+  fires; the review still judges the KC. The card’s `topic` is its scope link.
+
+A KC with no cards is a warning: remove it from the map or park it in `scope_gate.md` with a
+reason. `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards; the gate warns when
+the deck exceeds it but never auto-cuts. The human decides.
+
+## Media
+
+Images are opt-in and main-model-vision-free by default. Main-model vision is a last-resort
+fallback: only when image-vision has no key or its bounded retry failed, the image is
+necessary, and the batch is small. Label it unverified; never use it for bulk selection.
+
+- Write the cards first without media, or plan the media from the topic list. Run
+  `python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2`
+  **once**; it prints a compact ranked candidate list.
+- Attach only a candidate that shows the thing the front asks about. Prefer the full slide or
+  frame; a crop needs confirmation. One image per card.
+- Batch every `confirm` image into **one** `image-vision` call (or one call per source if the
+  batch is genuinely large). The pass is `python3 ~/.claude/skills/image-vision/scripts/vision_check.py`
+  with the confirmed paths; no per-image calls, no corpus pre-confirmation, no galleries.
+- If no good image exists, leave the card without one and say so. Never lower the bar to hit an
+  image count.
+- If image-vision has no key or fails, do not bulk-read pixels with the main model. Leave the
+  `confirm` image unattached and report it.
+
+Media entries live in `cards.jsonl` as `{file, side, caption, source}`. Rewrite the file once
+to add them; do not patch cards one at a time. Bundling is opt-in with `--media --media-root`.
+For a scanned or handwritten source, use the separate `image-vision` skill first; it is the
+only bulk-pixel path, and the normal media rule still forbids main-model bulk vision.
+
+## Review
+
+On the first generation, run the web review by default. On later changes, ask whether to
+reopen it; if declined, say “not manually reviewed; static checks only.”
+
+Run the server in the background, hand over one sentence and the URL alone on its own line,
+then wait. Do not print card text into chat. On “done”, run one gates call; it reduces the
+feedback log and writes `review_actions.md` when feedback exists. Read only low scores and
+comments. Apply all feedback in one rewrite, then one gates call. Fill `review_actions.md` and
+set `status: resolved` before the build. If there is no feedback, no action file is required
+and the build proceeds.
+
+Stop a stuck server with `curl -X POST <url>/finish`, never `pkill -f`. Score 1 is calibration
+(“known / too easy”), not automatic rejection; score 5 is the only removal verdict.
+
+The optional adversarial reviewer is opt-in. Use a read-only subagent, give it
+`$WORK/review_packet.md` only (the gates call writes it), after the web review is open, and
+ask for findings by card number. It never rewrites or certifies.
+
+## Build, cleanup, report
+
+The build command above runs gates and import validation in one call. The build refuses
+missing `intake.md`, `scope_gate.md`, and `kcs.md` unless `--allow-missing-artifacts` is for a
+draft. It also refuses unresolved `review_actions.md`, media risks, or validation errors.
+
+After a successful build, delete `$WORK` in full. Do not create a source folder or keep the
+deck script. Never delete a pre-existing file. Remove `scripts/__pycache__` if present.
+
+Report:
+
+```text
 <path/to/deck.apkg>   ·   N cards
-Study first: <the 2–3 highest-weight topics, and why>
-Assumed: <formula sheet given, not memorised — say the word if you want them carded>
-Quality: <core ready / full feature gaps; not manually reviewed unless actually reviewed>
-<optional: a one-line cut list, only if there is one>
+Study first: <2–3 highest-weight topics, and why>
+Assumed: <the one or two assumptions you made>
+Quality: DONE / DONE WITH WARNINGS / NOT REVIEWED / BLOCKED — one line
+<optional: a one-line cut list>
 ```
 
-**Power user — add** the per-stage results, validator warnings, the ROI reading, what the review
-found, and the gates that fired. **Both:** never narrate the pipeline; give the status lines while
-it happens, report results after. Never quote card text into the conversation — that is what the
-review page is for. Name cards by `topic` and number so the caller can run `roi_report.py --show N`.
-The **Assumed** line is not optional when you skipped a question to reduce friction: it is the only
-thing between a fast default and a silently wrong deck.
+Never narrate stages, validator counts, or work-file names. Never quote card text; that is
+what the review page is for. For an expert caller, add validator warnings, ROI reading, and
+what the review found. The `Assumed:` line is mandatory whenever you skipped a question.
 
-**Quality status is mandatory.** `0 errors` is not “done.” Report the pipeline quality line
-(media risks, ROI splits, review status) and say whether the deck was manually reviewed. A
-semantic self-audit or adversarial subagent review is not manual review. If review was declined,
-say “not manually reviewed; static checks only.”
+## Stop rules
 
-## Supporting files
+- One extraction. One cards write per topic batch, plus the one media rewrite and one
+  post-feedback rewrite. One gates call per batch, plus the build's internal gate. One build.
+- No background extraction, no `nohup`, no second extractor.
+- Never spawn a child `opencode` process (including `opencode run` or `debug`) or recursively
+  invoke this skill.
+- No deck scripts and no ad hoc Python to patch cards. Rewrite the file.
+- A global symbol or formatting change is one rewrite of `cards.jsonl`, not one edit per
+  card or per symbol. Apply all review feedback in one rewrite.
+- A blank line is a paragraph; two trailing spaces are a deliberate hard break. A literal
+  `<br>` in `cards.jsonl` is a warning, not the default paragraph separator.
+- After a render or formatting change, reopen the review or render one card. Source
+  inspection is not a visual check.
+- No reading `scripts/` unless a gate error names a confirmed script bug. Read the error’s
+  `fix:` hint first; if still blocked, report.
+- No validator, extractor, media-index, or builder script as a parallel path. Use
+  `pipeline.py`; if a gate error is unclear, read its `fix:` hint.
+- Do not probe for LibreOffice, Office, desktop converters, or random system tools. Use the
+  declared extractors. After two failed probes, stop and report the limitation.
+- No filler cards to satisfy a KC count; park the weaker candidate.
+- No command that only confirms a file you wrote. No re-reading an artifact.
+- If a command fails twice for the same reason, stop and report the blocker.
+- If you exceed your own budget by 50%, stop and report. Do not spend more to avoid reporting.
 
-Read each file once, at the stage named. The rules above are the contract; a reference is the
-explanation, never an override. Do not read every reference up front.
+## How much to ask
+
+Everything technical here is for you. The caller experiences two things: how many questions
+they get and how much jargon they hear.
+
+- **Short or casual request:** ask at most one question (the deck name if missing); infer the
+  rest; state assumptions; run the gates silently.
+- **Iterating or weighing a tradeoff:** be verbose, show the judgement calls, report the
+  validator and review detail.
+- **No request text but material present:** do not start a full-folder build. Ask one short
+  question — chapter, topic, exam, or whole folder — and wait.
+- **No sources found:** read `references/getting-started.md`, print it, stop.
+
+A detailed first request is not a reason to block. Interaction level controls questions;
+learner calibration controls the backs.
+
+## References
+
+Read each file once, at the step named. The rules above are the contract; references explain.
 
 | File | Read | Carries |
 |---|---|---|
-| `references/card-writing.md` | before stage 7; read the section | calibration table, symbols, tier-zero, anchors, cloze, recallability, provenance, topic/objects, Procedure |
-| `references/authoring.md` | before stage 7 | ledger, batch sizes, new_cards, media policy, raw strings, edit-in-place, reading discipline |
-| `references/schema.md` | lookup while writing JSON | required fields, objects, Basic/Cloze templates |
-| `references/rendering.md` | only for render/hard-break/night-mode changes | MathJax delimiters, raw-string escapes, hard breaks, night-mode guard |
-| `references/prompts.md` | stages 5/7/8/13; read only that stage's prompt | classifier, writer, verifier, debloater |
-| `references/survey.md` | stage 2 and source intake | what to propose, learner-context files, deck-name ask, extraction outputs |
-| `references/review.md` | stages 8–10 and the review handoff | triage budget, score meanings, generalise/re-scope |
-| `references/revision.md` | when revising an imported deck | AnkiConnect setup, no raw DB, dossier, attach/audit/plan/apply, conflicts, destructive choices |
-| `references/video.md` | when the source is a video | transcripts, playlists, frame cues, auto-picking, legal |
-| `references/slides.md` | when the source is PowerPoint | PPTX text, notes, embedded images, vector limits |
+| `references/card-writing.md` | before authoring | calibration, symbols, tier-zero, anchors, cloze, recallability, provenance, topic/objects, Procedure |
+| `references/authoring.md` | before authoring | `cards.jsonl` mechanics, KC map, media policy, raw strings, batching |
+| `references/schema.md` | while writing JSON | fields, kc, objects, Basic/Cloze templates |
+| `references/review.md` | review and follow-up | triage, score meanings, review actions, rescope |
+| `references/survey.md` | intake and extraction | source survey, learner context, deck name |
+| `references/video.md` | video sources | transcripts, playlists, frames |
+| `references/slides.md` | PowerPoint sources | PPTX text, notes, embedded images |
+| `references/rendering.md` | render/hard-break changes | MathJax, raw strings, night mode |
 | `references/optional.md` | when relevant | programming decks, known gaps, deck audit |
-| `references/getting-started.md` | when no sources are found | the beginner intro copy |
-| `maintainers/README.md` | before maintainer work | one-line index of maintainer-only docs |
-| `maintainers/lessons.md` | when changing a script | regression lessons |
-| `maintainers/dossier-format.md` | only when changing dossier storage | schema, files, snapshots, archive rules |
-| `MAINTAINERS.md`, `AGENTS.md` | before changing scripts or quality rules | 98% contract, rule ownership, test map, implementation map |
-| `README.md` | setup | dependencies, vendored MathJax |
+| `references/revision.md` | imported decks only | AnkiConnect, snapshots, revert |
+| `references/getting-started.md` | no sources found | beginner intro |
+| `README.md` | setup | dependencies, MathJax |
+
+## Imported decks
+
+Read `references/revision.md` and use the supported AnkiConnect path.
+Never open, copy, query, or inspect the live collection DB, even read-only.
 
 ## Image-heavy or handwritten sources
 
 Text-first. If a source is scanned/handwritten (near-empty text with images), or a figure is
-the only source for a fact, use the separate `image-vision` skill (Gemini) to read it — never
-build from empty text; ask once for handwriting, never about ordinary figures. Attach only on
-request (`--media`); review audits it. A structure or reaction answer may need a verified image
-or manual Anki addition.
-
+the only source for a fact, use the separate `image-vision` skill. Never build from empty
+text. Attach only on request (`--media`); the review audits it. A structure or reaction answer
+may need a verified image or a manual Anki addition.

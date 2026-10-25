@@ -1,175 +1,115 @@
 # Authoring cards: mechanics
 
-**If you emit cards from a Python script, build them with `new_cards.py`** — it moves cheap
-mistakes to the line that makes them:
+One authoring format: `$WORK/cards.jsonl`. One line per card. No deck script, no
+`make_cards.py`, no ad hoc Python patches.
 
-```python
-from new_cards import C, dump
-cards = [
-    C(front=r"**Vacancies.** Why does a crystal contain them at all?",
-      back=r"Because forming one costs energy $Q_v$ ...",
-      layer="L2", topic="Vacancies", deck=DECK, source="Lec 04 p.12"),
-]
-dump(cards, "cards.json")
+Write the whole file in one pass per topic. To change a card, rewrite the file (or the
+affected topic batch) in one write. Never shuttle the source through a shell
+`read → replace → write` loop: it is a near-miss matcher, it silently corrupts cards, and
+it re-sends the whole file at every step.
+
+## Order
+
+1. Write `$WORK/scope_gate.md`: what to card, what not to card, a `Ceiling: N` line, and the
+   parked list with reasons.
+2. Write `$WORK/kcs.md`: the compact KC table. A KC is a concept, not a card. Single-card KCs
+   are allowed when the card is a complete high-value decision and `why` makes the value case.
+   A 1:1 map warns; exact duplicate claims are errors. Do not write filler cards.
+3. Write `$WORK/cards.jsonl` topic by topic in source order. Each card carries `kc`; `stratum`
+   is optional. A normal topic is a small batch, not a quota.
+
+Read `references/card-writing.md` before the first card; read only the sections the card
+needs. The ten rules in `SKILL.md` are the hard floor.
+
+## Card JSON
+
+Use the schema in `references/schema.md`. Minimum:
+
+```json
+{"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.** **Why:** ...","layer":"L1","topic":"Voltage and Power","deck":"SCHOOL::CIRCUITS::Midterm2","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
 ```
 
-`C()` requires `layer`, `topic`, `deck`, `source` as keyword args; it runs `validate_cards`' own
-checks as it constructs (same code, cannot disagree) and raises on an error — a dropped `**`, an
-unbalanced `$`, a computation-demand front — while the text is in front of you. Warnings collect
-into a list `dump()` prints. `new_cards.py --template` prints a starter block. **This does not
-replace `validate_cards.py`**, which alone sees deck-wide checks (near-dup fronts, tier-zero
-coverage); the batch run on the written `cards.json` is mandatory.
+Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `evidence_quote`
+(for a card claim narrower than its KC).
 
-**Author in batches, not one card at a time.** Write a one-line ledger per card, then append up to
-10–15 cards for a topic in one `cards.jsonl` write and validate the batch. That is a batch cap, not
-a quota; write fewer when fewer cards pass rule 21. A 60-card deck is ~5 writes.
-**The ledger is the card contract**, not a diary:
+`cards.jsonl` is JSON, not Python. Double every LaTeX backslash (`\\frac`, `\\text`). A
+single `\frac` can become a formfeed and corrupt the card. The validator catches control
+characters; fix them, do not disable the check.
 
-`N. tier 1|2 · intent · retrieval target · one-sentence front answer · why · symbols: s=meaning, … · evidence: "<short quote>" | derived · source locator · checks: self-contained, one-fact, procedure?`
+Use the course's vocabulary. Define every symbol with units. Put the answer in the first
+back sentence, then the why. Do not put a computed value on a front, a cross-card pointer in
+a back, or an answer-leaking term in `topic`/`objects`.
 
-Name every symbol used on the card, not just the new ones. A source-dependent claim gets a short
-quote or exact page claim; self-contained math gets `derived`. The self-audit checks the finished
-card against this line. A card that cannot answer its front from this line is not ready. Prefer
-`.jsonl` for decks over ~30 cards;
-use `make_cards.py` for media/programmatic decks and write it in one pass per topic — never edit
-one card at a time. The linear 67-card deck used 2 writes + 11 edits; the 99-card midterm used 67
-edits and 6× the input. **Batch the writes too:** after review, apply independent
-per-card edits in one step (several edit calls), not one step per card. Each step
-re-sends the whole context, so 14 one-card edits cost far more than two edit steps
-with the same changes. If a deck script is used, write it per topic rather than one
-huge file followed by many edits. If subagents summarize transcripts, ask for one
-line per fact, not prose.
+## Batching
 
-**One authoring path per deck: prefer `.jsonl`.** A `.jsonl` line per card makes a post-review fix
-a one-line edit, not a 61-card rewrite; every downstream script reads either form. If a deck script
-is used (conventionally `make_cards.py`, using `new_cards.C`), write it in one pass per topic —
-never one-card edits. On a large script, `C(..., strict=False)` collects every card error and
-`dump()` refuses to write until they are fixed; use it to fix one batch, not to bypass validation.
-Use `author.py` scaffold only when there is no script: stubs with
-layer/topic/source, fill blanks, `author.py check` prints progress, `author.py finalize` adds
-hashes. Do not scaffold and write a script (two sources of truth).
+- Write one topic batch in one `write` call. Do not append card-by-card.
+- Run one gates call after the batch. Fix all errors in one rewrite.
+- After review, apply all feedback in one rewrite; then one gates call.
+- A global symbol or formatting change is one rewrite of `cards.jsonl`, not one edit per card
+  or per symbol.
+- A deck of any size is a sequence of topic batches. The batch is the unit, not the deck.
 
-**Write topics in source order.** The builder uses first-appearance topic order as a bias, lifts
-each topic's `tier_zero` card first, and softly interleaves topics in larger decks. Small decks
-stay grouped. Write topic-by-topic in the order the lecture, chapter, or video presents the
-material.
+## Reading discipline
 
-**Line wrapping must not become line breaks in the card.** Wrap for readability; `render.py`
-re-flows paragraphs and list items with a space. Joining with `<br>` splits sentences mid-clause.
-**Use raw strings for all card text** (rule 4; table in `references/rendering.md`). The one case the table
-misses: **never `r`-prefix a string where `\n` is a deliberate newline** — in a raw string `\n`
-stays literal and breaks ordered lists. Raw strings for LaTeX/backslashes, normal strings for
-intentional newlines. `check_cloze_braces()` also rejects raw-string `\n` leaks.
+- Read `sources.md` once if it fits, or read its table of contents and the per-source files
+  you need. Do not reload the whole corpus to confirm a card.
+- Do not read `scripts/`, the validator source, or a file you just wrote. Use the gate’s
+  `fix:` hint; if it is unclear, report the error.
+- Do not read other work’s handoff docs. Read the chosen sources, learner context, and the
+  stage reference.
+- Put conclusions on disk in `scope_gate.md` or `kcs.md`; do not re-derive them at every step.
 
-**Never machine-split a concept into a question by string surgery** (rule 9). **Do not prefix the
-front with the topic** (rule 18); bold lead-ins (`**Why:**`, `**Glossary**`) are structure and
-welcome. **Scope the forbidden patterns to fronts** (rule 7): `calculate`, `compute`, `derive`,
-`solve`, `show that` are fine in a back describing method; rejecting those trains people to ignore
-the check. L3 fronts are exempt — a boundary card legitimately narrates a wrong result. A default,
-not a law: the calibration table's boundary column governs a learner who would rather be asked
-which move to make.
+## KCs
 
-**Edit the source of truth in place — never by shuttling it through a shell.** A whole-file
-read-modify-write (`s = open(p).read(); s.replace(...); open(p,'w').write(s)`) puts the entire 60KB
-source into context to change one card, and again for the next fix: one real deck needed ten such
-operations. Worse, `str.replace` is a near-miss match that silently corrupts a card when the
-pattern drifts, and reports success. Use the harness's in-place edit. **Compose the deck in the
-file, not in your head first** — the file is the first draft, and `C()` already gives the safety
-pre-drafting was buying.
+`kcs.md`:
 
-**Address cards by `topic` + `hash`, never by list index.** Every insert or delete renumbers
-everything after it; `hash` is identity, `topic` narrows it enough to find by eye. That is why
-`--show N` prints the card you just named. Use `roi_report.py --list` to see card numbers, topics,
-layers, and fronts without pulling every back into the conversation.
+```markdown
+# KCs — Deck Name
 
-**Use the `content` from the EXTRACT JSON directly for a single-source run. Do not read its
-extracted `.md` back in** — the text is already in the JSON, and re-reading doubles the context.
-For a pipeline batch, read `sources.md` for documents and/or `transcripts.md` for video once at
-classification; per-source `.md` files are for a narrow check. Keys: `content`, `source_type`, `source_path`, `images`, `md` (no `output_dir`; `md`
-is the file written). `images` is a count plus a 3-name sample, not the full list; a figure a card
-needs is cited by name from the source's own text, and every file is on disk either way.
+| kc | type | claim | why | requires | evidence_quote | source |
+|---|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is a fixed region. | Reused by mass, energy, and momentum balances | — | "A control volume is a fixed region" | Lec 04 p.3 |
+| thermo.steady_flow | procedure | Apply the steady-flow energy equation. | One-card method decision | thermo.control_volume | "Apply the steady-flow energy equation" | Lec 04 p.12 |
+```
 
-**Never re-read an artifact the pipeline produced** — not the extract after classification, not
-`cards.json`, not a file you just wrote. A 61-card deck is ~13k tokens you already have. Use the narrow instrument:
-`roi_report.py --show N`, `triage.py` stdout, `grep`/`jq`. **Stages 8, 9 and 13 consume stdout,
-never the file.** **Never fetch, render or dump the review page** — hand over its URL and stop; it
-is HTML you wrote, and pulling it back costs thousands of tokens to learn nothing. **Read only what
-the source survey chose**, plus the course's learner context and the stage reference — a working
-directory holds other work's files; reading them because they were sitting there put ~8k tokens of
-unrelated material into one real run. Do not read other work's handoff docs, full tool source, or a
-deck/feedback you wrote; use `grep`/`--show`/`cardid.py` last-row. A confirmed script bug is the
-exception: read the function, not the file. **Put a conclusion on
-disk instead of deriving it in your head** — something reasoned out is re-sent at every later step;
-the same thing written to a file costs ~2k to read on the one occasion it is needed. This is why
-stages 5 and 6 leave artifacts, and why the deck belongs in a file.
-
-**EXTRACT output directory must be in the current working directory** (e.g.,
-`.anki-gen-temp/<topic>`), not `/tmp/`.
+- A KC is a concept, not a card. Single-card KCs are allowed when the card is a complete,
+  high-value decision.
+- `why` is the value case: reused, exam-weighted, error-prone, a prerequisite, or a high-value
+  exception. Do not write filler cards to satisfy a count.
+- A single-card `concept`/`mechanism` warns; all other types are allowed as singles.
+- A 1:1 map warns; exact duplicate claims are errors. Do not add a card or change a type just
+  to clear a warning.
+- `type` is optional; if omitted, the review still judges the KC. Every `requires` resolves. A
+  source-dependent KC needs a short quote that appears in the extracted corpus; `derived` is
+  the exemption.
+- `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards. The gate warns when the deck
+  exceeds it; it never auto-cuts. Park the weaker candidate instead.
 
 ## Media (opt-in)
 
-**One media path.** `frames.py` owns candidate quality, `media_index.py` owns ranking and the media
-risk audit, `vision_check.py` is the optional confirmation pass, and this file plus
-`references/video.md` own policy. Do not invent a second pipeline.
+Images are off by default. When the caller asks for them:
 
-Default: no images; `media` is ignored and a text-only build carries no media at all. Bundling is
-opt-in: files are included only with `--media --media-root <work>`; otherwise the `media` field is
-ignored.
+1. Run `media_index.py "$WORK" --cards "$WORK/cards.jsonl" --per-card 2` once. It prints a
+   compact ranked list.
+2. Pick only candidates that show the thing the front asks about. Prefer a full slide/frame;
+   a crop needs confirmation.
+3. Batch every `confirm` image into one `image-vision` call (or one call per source if the
+   batch is truly large). No per-image calls, no corpus pre-confirmation, no galleries.
+4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image per card.
+5. Build with `--media --media-root "$WORK"`.
 
-Figure extraction always happens. `extract_pdf.py [--page-crops auto|all|off]` writes
-`<tag>/media/fig_p<page>_<idx>.png` and `<tag>/figures.json` (page, dimensions, bytes, caption,
-nearby text, heading, bbox, kind). Captioned textbook pages and vector-only slide pages also get
-tight `page-crop`/`slide-crop` images; they are `confirm` candidates, never auto-attached. The
-manifest keeps a count + 3-name sample, so stdout never carries hundreds of paths;
-`--manifest-full` restores them only for extraction diagnosis.
+Media entry: `{"file":"<tag>/media/<file>","side":"front|back","caption":"...","source":"..."}`.
+Paths are relative to the media root.
 
-Extracted raster figures are scored with the same visual metrics as video frames: tiny and
-exact-duplicate images are dropped; blank, text-like, and table images are kept and flagged so a
-small diagram is not lost. Ambiguous figures are confirmed with `image-vision` only when they are
-actually being used for a card. Vector textbook/slide figures are rendered as tight page crops; a
-vector-only PPTX still needs a PDF export.
+Never attach a title/outline/agenda slide, an incomplete crop, a whitespace-heavy frame, or a
+duplicate. If no good image exists, leave the card without one. “More images” does not lower
+the bar. If image-vision is unavailable, leave `confirm` images unattached and report it; do
+not bulk-read pixels with the main model.
 
-When the user asks for figures, use
-`media_index.py <workdir> --cards cards.jsonl --per-card 2`; compact output is path, page, size,
-quality, flags, title, and caption, with high-quality figures listed first. Attach only when the
-candidate shows the thing the front asks about: caption/slide-title/page match, or nothing.
-`--cards` ranks cards that still need media; use `--all-cards` to inspect existing choices. Same
-page, same topic, or a generic caption is not enough. Never claim to have seen an image, and never
-guess.
+Shared diagrams may appear on several related cards; the builder bundles the file once.
+Wrong images go in the review comment box, not into a new patch loop.
 
-A `confirm` crop or frame is **not attachable** without `image-vision` confirmation or explicit
-user approval. “More images” is not approval to lower the bar. Do not attach title/outline/agenda
-slides, incomplete crops, or whitespace-heavy frames. If no good image exists, leave the card
-without one and report how many cards had no acceptable candidate.
+## Imported decks
 
-If image-vision has no key or exhausts its one bounded retry, the caller may use the ≤6-image
-main-model fallback from `SKILL.md` only for images necessary to answer/attach a card. Label that
-read as unverified; never present it as image-vision-confirmed.
-
-Web images only on request: high-signal sources first (textbooks, OpenStax, university notes, Paul's
-Online Math Notes, Wikimedia, NASA/NOAA, publishers); attach none if the top candidate is not
-clearly relevant. The source URL lands in the image caption and the card footer.
-
-`side` defaults to `back`; use `front` when the image *is* the question. A front that says “shown,”
-“this circuit,” or “the example” must carry the image on the front or inline the data. Cap:
-≤1600 px / ≤1 MB per image, ≤2 per card, soft deck warning at `max(10 MB, 250 KB × image_cards)`;
-no hard deck cap. Over-cap images are downscaled with Pillow (EXIF orientation applied), not
-dropped, and skipped only if still over. Local-media citations use the recording name + timestamp
-and intentionally have no `source_url`.
-
-Packaging is the classic layout — `collection.anki2` + a `media` JSON map + numbered files. Anki's
-exporter writes a stub `collection.anki2` for legacy readers, so it is not used.
-`assets/mathjax/tex-svg.js` stays the only always-vendored asset; no OCR, no LaTeX-to-image.
-
-Review: image cards are a bounded cross-section (see `references/review.md`); the page serves
-`/media/` and shows a placeholder for a missing file. Wrong images go in the comment box.
-
-For video frames, read `references/video.md`: attach the marked `BEST` frame
-(high/medium confidence), and keep the video title/timestamp as the source.
-Low-confidence candidates stay in `frames.md`. A shared diagram can appear on
-several related cards; the main model never reads the image by default, and the bounded
-`SKILL.md` fallback is the only exception.
-
-For handwritten pages, transcribe with `image-vision` first; a page image is not a substitute
-for text unless the user explicitly wants it.
-
+Do not hand-edit an imported deck or open its live collection. Read
+`references/revision.md` and use the supported AnkiConnect path.

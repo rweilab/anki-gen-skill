@@ -200,6 +200,26 @@ if bad:
     raise SystemExit(1)
 PY
 pass "docs paths"
+python3 - "$ROOT" <<'PY' || fail "runbook contract audit"
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+skill = (root / "SKILL.md").read_text()
+bad = [name for name in ("authoring_ledger.md", "make_cards.py", "new_cards.C",
+                         "NOT CERTIFIED") if name in skill]
+if bad:
+    print(f"SKILL.md retains legacy runtime surface: {bad}", file=sys.stderr)
+    raise SystemExit(1)
+if "kcs.md" not in skill or "pipeline.py" not in skill:
+    print("SKILL.md is missing the KC gate or the one pipeline entry point", file=sys.stderr)
+    raise SystemExit(1)
+if len(skill.splitlines()) > 300:
+    print(f"SKILL.md is {len(skill.splitlines())} lines; keep the runbook under 300",
+          file=sys.stderr)
+    raise SystemExit(1)
+PY
+pass "runbook contract"
+
 
 python3 "$SCRIPTS/pipeline.py" --gates-only --out "$WORK/pipeline-test" >/dev/null 2>&1 \
   && fail "pipeline accepted --gates-only without --cards"
@@ -247,7 +267,7 @@ grep -q "out of date" "$WORK/stale.err" || fail "stale plan abort did not explai
 pass "stale review plan aborts"
 
 python3 "$SCRIPTS/build_apkg.py" "$WORK/cards.json" "$WORK/smoke.apkg" \
-  --deck-name "SMOKE::TEST" --strict --media --media-root "$WORK" \
+  --deck-name "SMOKE::TEST" --media --media-root "$WORK" \
   >/dev/null || fail "build_apkg"
 pass "build_apkg (media)"
 
@@ -381,6 +401,16 @@ else
   printf 'skip  headless browser not found; render assertion skipped\n'
 fi
 
+curl -s -m 3 -X POST -H 'Content-Type: application/json' \
+  --data '{"n":1,"i":1,"score":1,"comment":"too easy"}' \
+  "${URL%/}/feedback" >/dev/null || fail "POST /feedback"
+python3 - "$WORK/feedback.jsonl" <<'FEEDBACK' || fail "feedback row was not stored"
+import json, sys
+rows = [json.loads(x) for x in open(sys.argv[1]) if x.strip()]
+assert any(r.get("score") == 1 and r.get("comment") == "too easy" for r in rows), rows
+FEEDBACK
+pass "POST /feedback stores a row"
+
 curl -s -m 3 -X POST "${URL%/}/finish" >/dev/null 2>&1 || true
 [ -f "$WORK/review_done" ] || fail "finish sentinel was not written beside the feedback log"
 [ ! -e "./review_done" ] || fail "finish sentinel leaked into the caller cwd"
@@ -396,6 +426,34 @@ fi
 kill -0 "$server_pid" 2>/dev/null && fail "review server did not self-exit"
 server_pid=""
 pass "review server self-exited"
+
+python3 "$SCRIPTS/review_server.py" --cards "$WORK/cards.json"   --plan "$WORK/review_plan.json" --out "$WORK/review_recall.jsonl"   --done-file "$WORK/recall_done" --ask recall --idle-timeout 0.1 --port 0   >"$WORK/recall_server.log" 2>&1 &
+recall_pid=$!
+i=0
+while [ "$i" -lt 25 ]; do
+  RECALL_URL="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/' "$WORK/recall_server.log" 2>/dev/null | head -1 || true)"
+  [ -n "$RECALL_URL" ] && break
+  sleep 0.2
+  i=$((i + 1))
+done
+[ -n "$RECALL_URL" ] || fail "recall review server did not print a URL"
+curl -s -m 3 "$RECALL_URL" | grep -q 'const MODE = "recall"' || fail "recall mode page marker"
+curl -s -m 3 -X POST -H 'Content-Type: application/json'   --data '{"n":1,"i":1,"recall":false}' "${RECALL_URL%/}/feedback" >/dev/null || fail "recall feedback POST"
+curl -s -m 3 -X POST "${RECALL_URL%/}/finish" >/dev/null 2>&1 || true
+python3 - "$WORK/review_recall.jsonl" <<'RECALL'
+import json, sys
+rows = [json.loads(x) for x in open(sys.argv[1]) if x.strip()]
+assert any(r.get("recall") is False for r in rows), rows
+RECALL
+i=0
+while [ "$i" -lt 25 ]; do
+  kill -0 "$recall_pid" 2>/dev/null || break
+  sleep 0.2
+  i=$((i + 1))
+done
+kill -0 "$recall_pid" 2>/dev/null && fail "recall review server did not self-exit"
+recall_pid=""
+pass "recall-mode review stores a false row"
 
 python3 "$ROOT/tests/hardening.py" || fail "hardening checks"
 pass "hardening checks"

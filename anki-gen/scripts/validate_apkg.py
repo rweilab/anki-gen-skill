@@ -7,9 +7,9 @@ up: a deck can import perfectly and still be unreadable on screen.
 Catches: stray $ delimiters, literal markdown, unbalanced MathJax, tag imbalance,
 control-char corruption, empty fields, duplicate fronts.
 
-Uses stdlib sqlite3 rather than the `anki` library, so it runs even where the anki
-package is absent -- importing an .apkg for real is slow and mutates state, which
-is not something you want in a check step.
+Structural checks use stdlib sqlite3. The real import, render, and media checks
+use Anki's own library when it is available; without it this script must say
+`STRUCTURAL ONLY — NOT IMPORT-VALIDATED` and exit nonzero, never "valid".
 """
 import argparse
 import json
@@ -62,6 +62,15 @@ def audit(card_text: str) -> list[str]:
     if opens != closes:
         bad.append(f"tag imbalance {opens} open vs {closes} close")
     return bad
+
+
+def anki_available() -> bool:
+    try:
+        from anki.collection import Collection  # noqa: F401
+        from anki.importing import ImportAnkiPackageRequest  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def render_test(apkg: str) -> list[str]:
@@ -240,26 +249,32 @@ def main():
                              indent=2))
         return 1
 
-    errors, warnings, samples = (import_test(args.apkg) + render_test(args.apkg)
-                                 + media_test(args.apkg)), [], []
+    import_ok = anki_available()
+    errors = ([] if not import_ok else
+              import_test(args.apkg) + render_test(args.apkg) + media_test(args.apkg))
+    warnings, samples = [], []
     with tempfile.TemporaryDirectory() as td:
         with zipfile.ZipFile(args.apkg) as z:
             z.extractall(td)
         db = Path(td) / "collection.anki2"
         if not db.exists():
             note = ("package has no collection.anki2 (newer Anki format); SQLite "
-                    "structural checks skipped, the anki-library import/render checks "
-                    "above still ran")
+                    "structural checks skipped")
             print(note, file=sys.stderr)
+            if not import_ok:
+                print("anki library unavailable; real import/render/media checks "
+                      "skipped", file=sys.stderr)
+                print("STRUCTURAL ONLY — NOT IMPORT-VALIDATED", file=sys.stderr)
             if args.json:
-                print(json.dumps({"valid": not errors, "note": note,
+                print(json.dumps({"valid": False if not import_ok else not errors,
+                                  "import_validated": import_ok, "note": note,
                                   "errors": errors, "warnings": warnings}, indent=2))
             else:
                 print(f"0 notes audited structurally | {len(errors)} error(s), "
                       f"{len(warnings)} warning(s)")
                 for e in errors:
                     print("  ERROR  ", e)
-            return 1 if errors else 0
+            return 3 if not import_ok else (1 if errors else 0)
         errors.extend(cloze_integrity(td))
         con = sqlite3.connect(db)
         rows = con.execute("select flds from notes").fetchall()
@@ -284,7 +299,11 @@ def main():
             if r > 0.9:
                 warnings.append(f"notes {i+1} and {j+1} fronts {r:.0%} similar")
 
-    result = {"valid": not errors, "note_count": len(rows),
+    if not import_ok:
+        warnings.append("anki library unavailable; real import/render/media checks "
+                        "skipped")
+    result = {"valid": bool(import_ok and not errors),
+              "import_validated": import_ok, "note_count": len(rows),
               "errors": errors, "warnings": warnings, "samples": samples}
 
     if args.json:
@@ -299,7 +318,9 @@ def main():
             print("  warn   ", w)
         for s in samples:
             print(f"\n--- note {s['note']} ---\n{s['front']}\n{s['back']}")
-    return 1 if errors else 0
+        if not import_ok:
+            print("STRUCTURAL ONLY — NOT IMPORT-VALIDATED")
+    return 3 if not import_ok else (1 if errors else 0)
 
 
 if __name__ == "__main__":

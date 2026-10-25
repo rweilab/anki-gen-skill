@@ -31,7 +31,7 @@ from new_cards import validate_card                 # noqa: E402
 
 LAYERS = {"L1", "L2", "L3", "Procedure"}
 REQUIRED = ("layer", "topic", "source")
-OPTIONAL = ("objects", "stratum", "tier_zero", "cloze", "media")
+OPTIONAL = ("objects", "stratum", "kc", "tier_zero", "cloze", "media")
 
 
 def is_stub(c: dict) -> bool:

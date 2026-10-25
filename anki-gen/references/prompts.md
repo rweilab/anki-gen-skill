@@ -15,14 +15,17 @@ anything is written. If `scope_gate.md` already exists (re-run), read it first.
 **Task:** (1) identify the course domain; (2) segment into atomic concepts — ONLY concepts
 EXPLICITLY PRESENT in the source; (3) classify each with `layer` (L1/L2/L3/Procedure — see
 "Layers"), `topic`, `objects`, `type` (fact/formula/definition/concept/derivation/boundary/
-procedure), and `source` (file + page/slide/line, e.g. "Lec 04 p.12"). Use `source`, not the
+procedure), `kc_id` (stable, opaque, e.g. `thermo.steady_flow`), `kc_type`
+(concept/procedure/schema/boundary/integration), `stratum` (concept/mechanism/condition/
+procedure/representation/error/schema/integration/boundary/metacognition), `requires` (KC IDs),
+and `source` (file + page/slide/line, e.g. "Lec 04 p.12"). Use `source`, not the
 deprecated `source_ref`. `topic` is the chapter/lecture heading the student could look up — never
 a layer code, lecture number, single fact, or subtopic; cards from the same lecture/chapter share
 the same topic. `objects` is 0–2 **broad cross-topic buckets**, not subtopics; **prefer `[]`** and
 add a bucket only when it recurs across topics and is useful for retrieval. Never tag the topic, a
 subtopic, or a term already explicit in the card. Tags are front-visible: never put the answer,
-method, theorem, or named technique in `topic` or `objects`. (4)
-Stage 6 drops anything on its list before writing; do not write cards for it.
+method, theorem, or named technique in `topic` or `objects`. `kc_id` is for the KC map, not a
+front-visible tag. (4) Stage 6 drops anything on its list before writing; do not write cards for it.
 
 **STRICT CONSTRAINTS — do not produce concepts for:** things NOT explicitly in the source;
 problem-solving or computation prompts (rules 7, 8); proofs and worked examples (unless a Procedure
@@ -34,8 +37,8 @@ is not an argument for more cards.
 **Output ONLY a JSON array:**
 ```json
 [
-  {"id":"concept_001","topic":"Fourier Transform","objects":["signals"],"layer":"L2","type":"derivation","source":"Lec 05 p.12","content":"Fourier Transform converts time-domain signal to frequency domain..."},
-  {"id":"concept_002","topic":"Fourier Transform","objects":[],"layer":"L3","type":"boundary","source":"Lec 05 p.18","content":"FT assumes the signal is periodic/infinite; it fails for transient signals without windowing..."}
+  {"id":"concept_001","topic":"Fourier Transform","objects":["signals"],"layer":"L2","type":"derivation","kc_id":"fourier.transform","kc_type":"concept","stratum":"mechanism","requires":[],"source":"Lec 05 p.12","content":"Fourier Transform converts time-domain signal to frequency domain..."},
+  {"id":"concept_002","topic":"Fourier Transform","objects":[],"layer":"L3","type":"boundary","kc_id":"fourier.transient_boundary","kc_type":"boundary","stratum":"boundary","requires":["fourier.transform"],"source":"Lec 05 p.18","content":"FT assumes the signal is periodic/infinite; it fails for transient signals without windowing..."}
 ]
 ```
 
@@ -61,9 +64,14 @@ $$\text{the formula}$$
 **Careful:** the common error or unit trap, if there is one.
 ```
 
-**Ledger contract:** before writing, the ledger line names the tier, retrieval target, one-sentence
-front answer, why, every symbol and meaning used on the card, and a short source quote or `derived`.
-If you cannot fill that line, the card is not ready.
+**KC contract:** write the compact `kcs.md` map first, then the cards. Each card names
+the tier, `kc`, retrieval target, one-sentence front answer, why, every symbol and
+meaning used on the card, and the source locator. `stratum` is optional; the KC `type` is
+the preferred family. The KC map carries `evidence_quote` for each
+source-dependent KC; self-contained KCs use `derived`. Every card names exactly one `kc`; every KC
+must have at least one card or be explicitly parked in the scope gate. A one-card KC is allowed
+when the card is a complete high-value decision and the KC `why` makes the value case; a
+single-card `concept`/`mechanism` warns. Do not add filler cards.
 
 **Fronts:** rules 7 and 8 hold; the reject-and-rewrite list is in `references/card-writing.md`, "The recallability test".
 **Allowed in backs:** "set them equal and solve", "convert ρ before you compute", "these two can be
@@ -99,9 +107,11 @@ a cloze.
 **For formulas:** use Basic for the whole formula (rule 15). If a genuine enumeration needs cloze,
 blank one item only — never the whole formula or a single computed answer.
 
-**Procedure:** one decision per back. If the learner needs familiarity with the flow, use one L2
-cloze walkthrough instead: first and last steps visible, 1–3 labeled middle blanks, one per
-procedure. It is not a Procedure card.
+**Procedure:** one decision per back. Shape A asks **“Which method applies here, and what
+condition selects it?”**; Shape B asks **“What are the next steps?”** from a bounded halfway
+state. If the learner needs familiarity with the flow, use one L2 cloze walkthrough instead:
+first and last steps visible, 1–3 labeled middle blanks, one per procedure. It is not a Procedure
+card.
 
 **Retrieval angles — pick the one that fits, not all of them.** Each is a different retrieval act,
 which is why they are separate cards rather than one large one:
@@ -164,6 +174,11 @@ hand (stage 7) or the review subset (stage 10), not the whole deck with the corp
 9. **Back substance:** adds a why, intuition, glossary or boundary — not a restatement (rule 16).
 10. **Tier-zero coverage:** every formula-bearing topic has a `tier-zero` card ahead of its formula
     cards (rule 6).
+11. **KC map:** every card names a `kc`; every KC in `kcs.md` has coverage; every
+    `requires` resolves. Flag orphan cards, unknown KCs, zero-card KCs, and one-card KCs whose
+    `why` is generic or whose card is a fragment. A complete high-value single is allowed.
+12. **Evidence quote:** source-dependent KCs carry an `evidence_quote` in the map; it must appear
+    in the cited excerpt. `derived` is the only exemption. Cards do not carry the quote.
 
 **Never write a front by splitting a concept on `=` or `→`** (rule 9). Write a real question.
 

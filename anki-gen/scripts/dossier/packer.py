@@ -299,7 +299,8 @@ def _context_md(ident: dict, topics: list[dict], style: str, learner: str,
 
 def _artifacts(workdir: Path) -> dict[str, str]:
     out = {}
-    for name in ("intake.md", "scope_gate.md", "authoring_ledger.md"):
+    for name in ("intake.md", "scope_gate.md", "authoring_ledger.md",
+                 "review_actions.md"):
         path = workdir / name
         if path.is_file():
             out[name] = path.read_text()
@@ -361,10 +362,13 @@ def _write_context(stage: Path, ident: dict, uuid: str, rows: list[dict],
     evidence = stage / "evidence"
     evidence.mkdir(parents=True, exist_ok=True)
     artifacts = artifacts or {}
-    for name in ("intake.md", "scope_gate.md", "authoring_ledger.md"):
+    for name in ("intake.md", "scope_gate.md", "authoring_ledger.md",
+                 "review_actions.md"):
         path = evidence / name
         if name in artifacts:
             write_text(path, artifacts[name])
+        elif name == "review_actions.md":
+            continue
         elif not path.is_file():
             if confidence == "reconstructed":
                 write_text(path, f"# {name[:-3]}\n\n- Reconstructed from "

@@ -31,6 +31,8 @@ for local media, confirm the file/directory, title, language, and whether sideca
   the match is strong, otherwise ask one confirmation;
 - if captions fail or a visual topic has no images, use the video title/description for one
   official companion article/slides search; register it as a source, do not auto-attach its images;
+- if the recording is audio-only and the caller asked for diagrams, say so: audio-only files cannot
+  supply frames; use PDF figures or skip the image request;
 - YouTube: no Whisper; if no captions exist, skip that video and say so.
 - Local: sidecar captions first; otherwise faster-whisper or whisper.cpp locally.
   No cloud upload. The whisper.cpp model downloads on first use.
@@ -42,6 +44,10 @@ for local media, confirm the file/directory, title, language, and whether sideca
 # Intake
 - deck: <caller's deck name>
 - learner: beginner | power
+- goal: recall | reasoning | problem-solving
+- minutes/day: <number, or unknown>
+- calibration: cold | attended | strong
+- reference: none | given | memorized
 - sources: <chosen files/videos/playlists>
 - video: none | <url> | playlist | items x-z
 - images: yes | no
@@ -49,7 +55,12 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - assumed: <one line per assumption>
 ```
 
-**Read the course's own learner context and say what you found.** A directory carries files written
+These are prose context, not new parser fields. `goal` and `minutes/day` help the scope gate and
+run report; `calibration` and `reference` prevent guessing. For document sources, images default
+no unless the caller asks; when images are yes, confirm only images the cards actually need.
+
+**Read the course's own learner context and say what you found.** For a long `STUDY-LOG.md`, read
+the header and calibration section, not the whole file. A directory carries files written
 for whoever works in it — `AGENTS.md`, `CLAUDE.md`, `STUDY-LOG.md`, `README`, notes-to-self.
 Nothing else in the pipeline opens them, and they are the cheapest source of the two signals that
 decide what a deck is *for*: what has already caused a recurring error (rule 21's second
@@ -59,17 +70,19 @@ scaffolding — or say plainly that none were found.
 
 ## Extraction (stages 4–4b)
 
-Use `pipeline.py --sources <...> --out .anki-gen-temp/<topic>` for PDFs, text, PowerPoint, URLs, and
-directories in one call. For a single-source diagnosis use
-`extract_pdf.py "<source>" "<cwd>/.anki-gen-temp/<topic>" --tag <tag>`; `--date-filter` limits
-directory sources. PPTX text, notes, and embedded images are parsed without Office. Local media goes
-through stage 4b.
+Use **one synchronous** `pipeline.py --sources <...> --out .anki-gen-temp/<topic>` call with all
+chosen PDFs, text, PowerPoint, URLs, directories, and media. A directory containing both documents
+and media is split by file type, so the PDF is not silently skipped. Do not start a second
+background extractor. For a single-source diagnosis use `extract_pdf.py`; `--date-filter` limits
+directory sources. PPTX text, notes, and embedded images are parsed without Office.
+
+Never pass the course root when `$WORK` is inside it: directory extraction recurses and can ingest
+the generated transcript/source files. Pass explicit source subdirectories.
 
 Single-source extraction prints `content`, `source_type`, `source_path`, `images_count`, a 3-name
 sample, and the `.md` path; batch prints a manifest with counts, samples of `<tag>` dirs, and `.md`
-paths, and writes `sources.md` with the chosen texts. Read `sources.md` once when classifying; use
-a per-source `.md` only for a narrow check. Cite the file the text came from ("Lec 04 · p.12"), not
-the topic directory.
+paths, and writes `sources.md` with the chosen texts. Read `sources.md` **once after extraction completes**, when classifying; use a per-source `.md` only
+for a narrow check. Cite the file the text came from ("Lec 04 · p.12"), not the topic directory.
 
 Video and local media are owned by `references/video.md`: the preferred path is
 `pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto|yes|no] [--model auto]

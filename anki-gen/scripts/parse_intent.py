@@ -28,7 +28,6 @@ def parse_intent(user_input: str, cwd: str = ".") -> Dict[str, Any]:
         "video_url": None,
         "video_playlist": False,
         "video_items": None,
-        "video_frames": None,
         "video_search": None,
     }
 
@@ -88,8 +87,6 @@ def parse_intent(user_input: str, cwd: str = ".") -> Dict[str, Any]:
     items = re.search(r"\bvideos?\s+(\d+)\s*[-–]\s*(\d+)\b", user_input, re.I)
     if items:
         intent["video_items"] = f"{items.group(1)}-{items.group(2)}"
-    if re.search(r"\b(images?|frames?|stills?|screenshots?)\b", user_input, re.I):
-        intent["video_frames"] = "yes"
     search = re.search(r"\bfind\s+(?:me\s+)?(.+?)(?:\s+on youtube|$)", user_input, re.I)
     if search:
         intent["video_search"] = search.group(1).strip()

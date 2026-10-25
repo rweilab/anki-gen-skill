@@ -256,6 +256,8 @@ def select(cards: list[dict], per_topic: int, max_total: int):
             "hash": card_hash(c),
             "topic": topic_of[i],
             "layer": str(c.get("layer", "")),
+            "stratum": stratum_of(c),
+            "kc": str(c.get("kc") or ""),
             "kind": axis,               # risk | format | breadth | depth
             "reasons": [why],
         })

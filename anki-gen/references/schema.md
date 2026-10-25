@@ -5,10 +5,11 @@
 This is the card schema written down. `validate_cards.py` enforces the required fields and the
 layer enum directly and is the authority when they disagree.
 
-**Required on every card: `front`, `back`, `layer`, `topic`, `deck`, `source`.** An empty or
-missing one is an **error**, including `deck`; self-contained math/definitions use
-`source: "derived"`. **`cloze: true`** is required on any card with `{{cN::}}`;
-**`tier_zero: true`** marks the topic's concept card before its formula cards.
+**Required on every new-run card: `front`, `back`, `layer`, `topic`, `deck`, `source`,
+`kc`.** An empty or missing one is an **error**, including `deck`; self-contained
+math/definitions use `source: "derived"`. Legacy decks without a KC map may omit `kc`.
+**`cloze: true`** is required on any card with `{{cN::}}`; **`tier_zero: true`** marks the
+topic's concept card before its formula cards.
 
 - **`source` is the field.** `source_ref` is a deprecated alias `build_native.py` still falls back
   to; nothing new should write it. Both are searched and rendered, so a card with only `source_ref`
@@ -27,9 +28,20 @@ missing one is an **error**, including `deck`; self-contained math/definitions u
   capitalization.
 - **Procedure filter:** `objects: ["procedural"]` is the reserved tag for Procedure cards. It is
   not a content bucket, and an L2 procedure walkthrough does not get it.
-- **`stratum`** is optional and deck-authored ("Shape B", "Hess's law"); `triage.py` reports
-  coverage per stratum without interpreting it. The tool cannot know what a deck ought to contain —
-  only its author can say what its kinds are.
+- **`kc`** — the knowledge-component ID from `$WORK/kcs.md`. Required for new runs; legacy
+  decks without a KC map keep working. A card may also carry `stratum` (`concept`,
+  `mechanism`, `condition`, `procedure`, `representation`, `error`, `schema`, `integration`,
+  `boundary`, `metacognition`), but it is optional: the KC `type` is the preferred retrieval
+  family. `kc` and `stratum` are stored in the card/dossier, never printed on the front or put
+  in Anki tags.
+- **KC evidence** — `evidence_quote` is a column in `kcs.md` for the KC’s source claim. A
+  source-dependent KC needs one short quote; `derived` is the exemption. The gate verifies it
+  against the extracted corpus. A card whose claim is narrower than its KC may carry its own
+  `evidence_quote`; the card still carries the `source` locator.
+- **Single-card KCs** — allowed when the card is a complete, high-value decision; the KC’s
+  `why` is the value case. A single-card `concept`/`mechanism` warns; all other types are
+  allowed as singles. A 1:1 map warns; exact duplicate claims are errors. Do not add a card or
+  change a type just to clear a warning.
 - **`hash` is a card's identity**, not a checksum you invent: leave it empty and it is
   `md5(front|back)` — the note GUID and review-log key, one definition in `scripts/cardid.py`.
 - **`media`** is opt-in. Each entry is an object `{"file": "<tag>/media/<file>", "side":
