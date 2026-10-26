@@ -664,6 +664,54 @@ def main() -> int:
             assert dest == base / "addons21" / anki_connect.ADDON_CODE, dest
             assert (dest / "__init__.py").read_text() == "# test\n", dest
             print("ok    Anki detection and pinned installer copy only the plugin")
+            r = rev(["decks", "--json"], url, env)
+            assert "SCHOOL::RTOS" in json.loads(r.stdout), r.stdout
+            r = rev(["inspect", "--deck", "SCHOOL::RTOS", "--json"], url, env)
+            inspected = json.loads(r.stdout)
+            assert inspected["deck"] == "SCHOOL::RTOS"
+            assert inspected["notes"], inspected
+            assert all(note["rev_id"] for note in inspected["notes"]), inspected
+            assert inspected["dossier"], inspected
+            r = rev(["snapshots", "--deck", "SCHOOL::RTOS", "--create",
+                     "--reason", "test", "--json"], url, env)
+            snap = json.loads(r.stdout)
+            assert Path(snap["path"]).is_relative_to(Path(packed["path"])), snap
+            print("ok    decks/inspect and dossier-only snapshot")
+
+            context = dc.load(inspected["dossier"]["key"])
+            state = next(s for s in context["state"]
+                         if s.get("anki_note_id") in fake.notes)
+            first = next(c for c in context["cards"]
+                         if c.get("rev_id") == state["rev_id"])
+            old_id = state["anki_note_id"]
+            sync_cards = td / "sync-cards.jsonl"
+            changed = dict(first, rev_id=first["rev_id"],
+                           back=str(first["back"]) + " Updated.")
+            added = {"front": "Why does the sync tool exist?",
+                     "back": "To replace ad-hoc migration scripts. **Why:** one plan.",
+                     "layer": "L1", "topic": "Tooling", "objects": [],
+                     "deck": "SCHOOL::RTOS", "source": "derived"}
+            sync_cards.write_text(json.dumps(changed) + "\n" + json.dumps(added) + "\n")
+            r = rev(["sync", "--deck", "SCHOOL::RTOS", "--cards",
+                     str(sync_cards), "--json"], url, env)
+            plan = json.loads(r.stdout)
+            assert plan["counts"]["update"] == 1 and plan["counts"]["add"] == 1, plan
+            apply_args = ["apply", "--plan", plan["plan"], "--browser-closed"]
+            if plan["retire"]:
+                apply_args += ["--choice", "retire-1=keep"]
+            r = rev(apply_args, url, env)
+            assert "verification ok" in r.stdout, r.stdout
+            assert old_id in fake.notes, old_id
+            new_note = next(n for n in fake.notes.values()
+                            if "Why does the sync tool exist?" in
+                            str(n["fields"].get("Front", {}).get("value", "")))
+            assert "tooling" in new_note["tags"], new_note["tags"]
+            backs = [str(n["fields"].get("Back", {}).get("value", ""))
+                     for n in fake.notes.values()
+                     if "Updated." in str(n["fields"].get("Back", {}).get("value", ""))]
+            assert backs and all(back.count('class="src"') == 1 for back in backs), backs
+            print("ok    sync plan updates by rev_id, adds, keeps unmatched")
+
         finally:
             server.shutdown()
             server.server_close()

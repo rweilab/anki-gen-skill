@@ -317,6 +317,48 @@ def apply(ac: AnkiConnect, plan_path, *, choice: list[str] | None = None,
             states.append(state)
             added.append({"note_id": int(nid), "rev_id": rev})
 
+    for action in plan.get("actions", []):
+        if action["kind"] != "add":
+            continue
+        fields_data = action.get("fields") or {}
+        new_note = {"deckName": plan["deck_name"],
+                    "modelName": action.get("model") or "3-Layer STEM",
+                    "fields": fields_data,
+                    "tags": list(action.get("tags") or []),
+                    "options": {"allowDuplicate": False}}
+        ids = ac.add_notes([new_note])
+        if not ids or not ids[0]:
+            failures.append({"add": action.get("card", {}).get("front", ""),
+                             "reason": "addNotes returned no id"})
+            continue
+        nid = int(ids[0])
+        card = dict(action.get("card") or {})
+        rev = str(card.get("rev_id") or new_uuid())
+        card.update({
+            "rev_id": rev, "guid": "", "guid_alg": "md5",
+            "front": str(card.get("front") or ""),
+            "back": str(card.get("back") or ""),
+            "content_format": "authoring",
+            "content_hash": card_hash(card),
+            "content_hash_alg": "md5",
+            "layer": str(card.get("layer") or ""),
+            "topic": str(card.get("topic") or ""),
+            "deck": plan["deck_name"],
+            "objects": list(card.get("objects") or []),
+            "tier_zero": bool(card.get("tier_zero")),
+            "cloze": bool(card.get("cloze")), "stratum": "", "kc": "",
+            "retrieval_target": "", "why": "",
+            "source": str(card.get("source") or ""),
+            "source_url": str(card.get("source_url") or ""),
+            "media": [], "review_score": None, "extra": {},
+        })
+        state = state_from_existing({"rev_id": rev, "anki_note_id": nid,
+                                     "state": "live"})
+        cards.append(card)
+        state_map[rev] = state
+        states.append(state)
+        added.append({"note_id": nid, "rev_id": rev})
+
     for group, chosen, ids in destructive:
         if not ids:
             continue

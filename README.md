@@ -1,113 +1,80 @@
 # anki-gen + image-vision
 
-Turn lecture PDFs, PowerPoint decks, notes, homework, and YouTube videos into
-evidence-based Anki decks. Text-first; diagram images and video stills are optional.
+Turn lecture PDFs, PowerPoints, notes, homework, and videos into evidence-based
+Anki decks. The builder produces an `.apkg`; importing into Anki is manual.
+Slide and video images are on by default; text-only sources stay text-first, and
+you can say no. Review happens on a local 1–5 page. Building is local; only the
+optional Gemini pass for handwriting or ambiguous frames uploads images.
 
-The builder produces an `.apkg`. Importing it into Anki is manual.
-
-## Install
-
-No Git required:
+## Quick start
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rweilab/anki-gen-skill/main/bootstrap.sh | bash
 ```
 
-Or use **Code → Download ZIP**, extract it, and run:
-
-```bash
-bash install.sh
-```
-
-The installer puts both skills in `~/.claude/skills/`, verifies them, backs up
-any previous install under `~/.local/share/anki-gen/backups/`, installs the core
-Python libraries, attempts optional image/video/local-audio support best-effort,
-and runs the doctor. Set `ANKI_GEN_SKILLS_DIR=~/.config/opencode/skills` (or
-`.agents/skills`) to install for a different harness; the default stays
-`~/.claude/skills`. It does not touch `~/.config/anki-gen` or your Anki collection.
-A failed optional feature becomes a warning, not a failed install. Setup ends with
-`Full feature set: installed` or `Full feature set: NOT installed` and lists the gaps.
-
-Homebrew and the Anki desktop app are never installed. AnkiConnect is a separate
-add-on inside Anki Desktop; the revision workflow can detect the Anki profile and
-install a pinned build only after you approve it. On macOS, missing system tools
-or Homebrew are warnings; the core PDF path still works. On Linux, package
-installation uses `sudo` when available.
-
-Restart or reload opencode afterwards.
-
-## Setup
-
-The install command already does this. To re-run it later:
-
-```bash
-bash ~/.claude/skills/anki-gen/scripts/setup.sh
-```
-
-It installs only the missing system tools and Python libraries, then runs the
-doctor silently. You only see the full doctor output if a core check fails.
-`--print-only` shows the commands without changing anything.
-
-The Anki desktop app is only needed to import the finished `.apkg`; it is not a
-build dependency and this skill never installs it.
-
-## Optional Gemini key
-
-Only needed for handwriting and figures handled by `image-vision`:
-
-```bash
-mkdir -p ~/.config/anki-gen
-chmod 700 ~/.config/anki-gen
-read -rsp "Gemini key: " KEY; printf '\n'
-printf '%s\n' "$KEY" > ~/.config/anki-gen/gemini.key
-chmod 600 ~/.config/anki-gen/gemini.key
-```
-
-Without a key, text decks still work; handwriting and figures are skipped.
-Never paste the key into chat.
-
-## Use
-
-Ask opencode:
+Or extract the ZIP and run `bash install.sh`. Restart or reload opencode, then ask:
 
 > make flashcards from the PDFs in this folder
 
-For a local recording or a video playlist:
+Review the local page, then use **File → Import** in Anki.
 
-> make flashcards from this playlist
+## What you need
 
-The agent asks once whether to pull diagram stills, picks candidate frames, and
-lists low-confidence frames rather than forcing them into cards. Review is a
-local 1–5 page on `127.0.0.1`; scope is sampled, not the whole deck. Then use
-**File → Import** in Anki.
+- **Python 3.10+**.
+- **Anki Desktop** for import and revision. The skill never installs Anki.
+- **macOS or Linux.** Windows: use WSL2 for generation; revision needs Anki
+  Desktop reachable from WSL2.
+- Optional: a Gemini key for handwriting/ambiguous images, ffmpeg/yt-dlp for
+  video, and local transcription for recordings without captions.
+- The installer uses `~/.claude/skills/`. For opencode or another harness, set
+  `ANKI_GEN_SKILLS_DIR` (for example `~/.config/opencode/skills`).
 
-## Update
+## Use
 
-Run the install command again. The installer prints the old and new versions and
-leaves a timestamped backup under:
+- **New deck:** “make flashcards from the PDFs and PowerPoints in this folder.”
+- **Video:** “make flashcards from this playlist.” It asks once before pulling
+  stills.
+- **Existing deck:** “revise my imported deck.” Uses AnkiConnect; open Anki
+  first, and never inspect the collection database.
+- **Images:** slide/video images are on by default; candidates are never
+  auto-attached; one image per card.
+- **Review:** open the local page, score and comment, then import. If no human
+  review is available, the deck is reported as static-checks only.
 
-```text
-~/.local/share/anki-gen/backups/anki-gen-YYYYMMDD-HHMMSS/
-```
+## Setup, doctor, update
 
-Your config and Gemini key in `~/.config/anki-gen/` are untouched.
+- Re-run setup: `bash ~/.claude/skills/anki-gen/scripts/setup.sh`
+  (`--print-only` shows the commands).
+- Check the machine: `python3 ~/.claude/skills/anki-gen/scripts/doctor.py`
+- Gemini key (optional):
+  ```bash
+  mkdir -p ~/.config/anki-gen && chmod 700 ~/.config/anki-gen
+  read -rsp "Gemini key: " KEY; printf '\n'
+  printf '%s\n' "$KEY" > ~/.config/anki-gen/gemini.key
+  chmod 600 ~/.config/anki-gen/gemini.key
+  ```
+  Without it, text decks and direct slide/frame images still work; ambiguous
+  images and handwriting are skipped. Never paste the key into chat.
+- Update by re-running the installer. It backs up under
+  `~/.local/share/anki-gen/backups/` and leaves your config untouched.
+
+## Troubleshooting
+
+- Run `doctor.py` first; it names the missing library or tool and the platform fix.
+- Restart/reload opencode if the skill is not found; check `ANKI_GEN_SKILLS_DIR`.
+- AnkiConnect: open Anki, then run
+  `python3 ~/.claude/skills/anki-gen/scripts/anki_connect.py`.
+- Missing images: check whether the source is text-only, whether you declined
+  images, and whether the frame was ambiguous enough to need `image-vision`.
+- Do not install Office or invent an ad-hoc converter; report the source instead.
 
 ## Development
-
-Keep the real folders in the repo and symlink them into the skills directory:
 
 ```bash
 ln -s ~/repos/anki-gen-skill/anki-gen ~/.claude/skills/anki-gen
 ln -s ~/repos/anki-gen-skill/image-vision ~/.claude/skills/image-vision
 ```
 
-Update with `git pull`. Do **not** run `install.sh` on a symlinked checkout; it
-would replace the symlinks with copies.
-
-## Notes
-
-- Text-first is the default; images are opt-in.
-- `image-vision` and Gemini are optional.
-- Local audio transcription is optional: faster-whisper or whisper.cpp, with the model downloaded on first use. YouTube captions and sidecar VTT/SRT work without it.
-- Anki desktop is not installed by this skill.
-- `vision-sidecar/` folders are safe to delete.
+Update with `git pull`; do **not** run `install.sh` on a symlinked checkout. Run
+`bash ~/.claude/skills/anki-gen/scripts/smoke.sh` for the mechanical check, and
+see `anki-gen/AGENTS.md` for the maintainer workflow.

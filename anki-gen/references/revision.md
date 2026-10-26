@@ -42,9 +42,12 @@ If setup fails, stop. Do not inspect the collection DB to work around it.
 
 | Request | Use |
 |---|---|
+| List decks, or inspect one live deck read-only | `revision.py decks`; `revision.py inspect --deck NAME` |
 | Lowercase/normalize tags on an existing deck | `revision.py tags --deck NAME --lowercase` |
 | Rewrite many backs/fronts or tags | `revision.py update --deck NAME --file edits.json --browser-closed` |
 | One wording fix, or cull/merge/split | `revision.py plan` then `revision.py apply` |
+| Sync an authored card set into a live deck | `revision.py sync --deck NAME --cards FILE` then `apply` |
+| Snapshot without applying | `revision.py snapshots --deck NAME --create --reason "..."` |
 | Undo the last applied change | `revision.py revert --deck NAME --last --yes` |
 | Inspect snapshots or storage | `revision.py snapshots --deck NAME --sizes` |
 
@@ -145,8 +148,13 @@ cards, and dossier rows. The apply log records the snapshot ID.
 ```bash
 python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS"
 python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS" --sizes
+python3 scripts/revision.py snapshots --deck "SCHOOL::RTOS" \
+    --create --reason "before sync"
 python3 scripts/revision.py revert --deck "SCHOOL::RTOS" --last --yes
 ```
+
+`--create` writes a checkpoint without applying anything. Snapshots live only under the dossier's
+`snapshots/` directory; there is no legacy `anki/<deck>/` backup path.
 
 `--sizes` reports snapshots, previews, revisions, resources, and per-snapshot
 bytes. It warns above 256 MB or 16 snapshots by default; override with
@@ -196,6 +204,27 @@ Intent vocabulary that changes the shape: cull/trim/drop/reduce (score-1
 candidates), merge/fold (victims into a higher-layer survivor), leech, visual.
 **Score 1 means “known / too easy,” not automatic rejection.** Use it to rescope,
 re-level, merge trivial variants, protect anchors, or shift focus.
+
+## Sync authored changes into a live deck
+
+When `cards.jsonl` changes after import, do not rebuild and re-import beside the old deck. `sync`
+reconciles the authored set with the attached live deck and writes a normal apply plan; it never
+writes Anki itself. Use `inspect` first if you need to see the live notes, models, dossier, or
+the live note to dossier `rev_id` mapping.
+
+```bash
+python3 scripts/revision.py inspect --deck "SCHOOL::RTOS"
+python3 scripts/revision.py sync --deck "SCHOOL::RTOS" --cards "$WORK/cards.jsonl"
+python3 scripts/revision.py apply --plan <sync_plan.json> \
+    --choice retire-1=keep --browser-closed
+```
+
+Matching is deterministic: `rev_id`, then content hash, then exact normalized front/back. A card
+with an unknown `rev_id` is an error; omit `rev_id` for a new card. Ambiguous matches are reported,
+never guessed; resolve with `--map REV_ID=INDEX`, where `INDEX` is the 1-based line in the authored
+file. Live notes absent from the new set become the `retire-1` group, so apply needs an explicit
+`keep`, `suspend`, or `delete` choice. Updates keep note/card IDs and scheduling; new cards start
+new. `sync` plans are transient apply plans, not a published format; do not script against them.
 
 ## Bulk field and tag edits
 

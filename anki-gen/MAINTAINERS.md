@@ -189,6 +189,8 @@ removal version in this table. Canonical docs never mention a deprecated path.
 | `scripts/handoff/install.sh` | Removed now | root `install.sh` | done |
 | `maintainers/README.md` | Removed now | `AGENTS.md` read order | done |
 | `maintainers/cold-audit.md` | Removed now | `AGENTS.md` cold audit section | done |
+| `anki-gen/HANDOFF.md` | Removed now | root `README.md` / `INSTALL.md` | done |
+| `scripts/handoff/INSTALL.md` | Removed now | root `README.md` copied as `INSTALL.md` | done |
 | `scripts/setup_macos.sh` | Compatibility shim | `setup.sh` | keep; review at 2.0 |
 | `cards.json` | Read-only legacy | `cards.jsonl` | keep reader |
 | `deck` field | Optional legacy | `--deck-name` | keep accepted |

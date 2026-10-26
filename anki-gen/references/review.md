@@ -82,25 +82,19 @@ python3 "$SKILL/scripts/pipeline.py" --cards $WORK/cards.jsonl \
     --gates-only --out "$WORK"
 ```
 
-**The set is chosen by axis, not by card** — four questions, cheapest cards that answer each:
+**The set is chosen by axis, not by card** — three questions, cheapest cards that answer each:
 
 | Axis | Question | Which cards |
 |---|---|---|
 | **Risk** | is anything broken? | one exemplar per *flag pattern*, not per instance: six near-dup pairs are one defect |
 | **Format** | does it read right? | one per card kind (layer × cloze), preferring an unflagged card |
 | **Breadth** | is the coverage right? | one per topic, preferring its `tier_zero` card — one slot answers both |
-| **Depth** | what else is in the topic? | only with `--per-topic N` |
 
-`--max` (default **12**) trims **breadth and depth only**; risk and format are never dropped. The
-budget is deliberately hard: the previous "every flagged + every tier-zero + one per topic" spent
-25 of a real 61-card deck and still never showed a Procedure card. The default shows 12 (19%)
-across all four kinds and 12 of 14 topics.
-
-**Spend the budget on breadth, not depth.** `--per-topic N` buys depth and costs coverage: measured
-on an 83-card/19-topic deck, `--per-topic 3 --max 24` showed 24 cards over 16/19 topics;
-`--per-topic 1 --max 30` showed 20 over **19/19**. Fewer cards, every domain, every kind and flag —
-that is the cross-section. **Raise `--max` before `--per-topic`**; the default 12 is a floor, not a
-target.
+**The sample is fixed at 12.** There is no `--max` or `--per-topic`; a bigger sample is a different
+task (certification), not a quality setting. Risk and format are never dropped. The fixed sample is
+deliberately hard: the previous "every flagged + every tier-zero + one per topic" spent 25 of a real
+61-card deck and still never showed a Procedure card. The default shows 12 (19%) across all four
+kinds and 12 of 14 topics.
 
 **A stratum is a family, so it costs one slot.** The format axis keys on `(layer, cloze, stratum)`,
 so a card family earns its own exemplar. When one is under-shown, add one card, never the whole
@@ -111,8 +105,9 @@ re-learn what one per shape already generalises.
 for a family* — excellent at surfacing defects, structurally incapable of certifying their absence.
 A card that **passes** says nothing about its unshown siblings; `second_round` names the topics,
 strata and flag patterns the budget held back, and those are **unreviewed**, not approved. Report a
-round as *what it found*, never as coverage. Certification is `--max` set to the whole deck, in
-sittings — an explicitly chosen pass, not the default.
+round as *what it found*, never as coverage. Certification is an explicit all-card pass, in
+sittings — run the review server without `--plan` and say it is certification, not the default.
+Never present the fixed sample as certification.
 
 ### Run it
 
@@ -150,9 +145,9 @@ siblings, and spend the budget on the harder adjacent material. Do not add more 
 already scoring 1. Repeated 5s with “what slide?” or “not shown” mean the front is not
 self-contained; fix the front/image, do not lower the difficulty bar.
 
-**Image cards.** Every card with `media` is a media candidate. The sample is a bounded
-cross-section — `max(3, min(8, ceil(sqrt(image_cards))))`, spread across topics and never trimmed
-by `--max`; the rest are listed under `second_round.media_not_shown` as **unaudited**. The page
+**Image cards.** Every card with `media` is a media candidate. The media sample is deliberately
+small and spread across topics; the rest are listed under `second_round.media_not_shown` as
+**unaudited**. The page
 serves the image from `/media/`, and a missing file shows a red placeholder. A wrong or irrelevant
 figure is a normal score or comment — there is no separate control.
 

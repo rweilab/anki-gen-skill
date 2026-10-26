@@ -15,7 +15,7 @@ A fresh agent given only `SKILL.md` still tends to:
 
 - skip `intake.md`, `scope_gate.md`, or `kcs.md` because the request feels small;
 - read every reference up front instead of the current stage's section;
-- treat the 10–15 batch size as a deck target, or treat `--max` as a card cap;
+- treat the 10–15 batch size as a deck target, or turn the review sample into a card cap;
 - run `validate_apkg.py` again after the pipeline already did the real import;
 - attach media because frames were extracted, although media is opt-in;
 - omit the quality/manual-review status or claim a sample review certifies the deck.
@@ -68,8 +68,9 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   derive `md5(front|back)` from it, so a review score and a note GUID agree by construction.
 - **`triage.py`'s format axis keys on `stratum`**, so a deck-authored sub-kind earns its own exemplar
   instead of being *reported* as "0 of 3 shown" with no mechanism to fix it.
-- **The review budget is breadth-first** — measured: `--per-topic 1 --max 30` showed 20 cards over
-  19/19 topics; `--per-topic 3 --max 24` showed 24 over 16/19.
+- **The review sample is fixed, breadth-first, and 12 cards.** It shows one card per topic where
+  possible, prefers tier-zero anchors, and reports the topics it did not show instead of hiding a
+  budget knob.
 - **The card face leads with the topic; tags are a sniper.** `META` was `{{Layer}} · {{Topic}}`, so
   every card was headed "L2", and the tag set was `[topic, layer]` — a tag returning every
   understanding card and saying nothing about the subject. The face shows the topic; the layer ships

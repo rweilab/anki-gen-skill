@@ -707,7 +707,7 @@ def _roi_risks(text: str) -> tuple[list[int], int]:
     return split_cards, restatements
 
 
-def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> dict:
+def stage_gates(cards_path: Path, out: Path) -> dict:
     """Validate, triage and ROI on the written deck. Consumes the FILE, returns counts."""
     from validate_cards import check_cards, parse_kc_map
     from triage import select, build_plan
@@ -729,8 +729,8 @@ def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> 
                                     source_text=source_text,
                                     require_kc_map=kc_path.name == "kcs.md")
 
-    entries, stats = select(cards, per_topic, max_total)
-    plan = build_plan(str(cards_path), cards, entries, stats, per_topic, max_total)
+    entries, stats = select(cards, 1, 12)
+    plan = build_plan(str(cards_path), cards, entries, stats, 1, 12)
     plan_path = out / "review_plan.json"
     plan_path.write_text(json.dumps(plan, indent=2) + "\n")
 
@@ -890,8 +890,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-context", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--anki-profile", default="",
                     help="Anki profile name to record in the deck dossier")
-    ap.add_argument("--per-topic", type=int, default=1)
-    ap.add_argument("--max", dest="max_total", type=int, default=12)
     ap.add_argument("--gates-only", action="store_true",
                     help="skip extraction; just validate/triage/ROI the --cards deck")
     ap.add_argument("--resume", action="store_true",
@@ -1004,7 +1002,7 @@ def main(argv: list[str] | None = None) -> int:
     g = None
     if args.cards:
         _mark(out, "gates", "running")
-        g = stage_gates(Path(args.cards), out, args.per_topic, args.max_total)
+        g = stage_gates(Path(args.cards), out)
         _mark(out, "gates", "done", cards=g["cards"], errors=g["errors"],
               warnings=g["warnings"], media_risks=len(g["media_risks"]),
               roi_split=len(g["roi_split"]))

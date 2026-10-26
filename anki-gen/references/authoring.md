@@ -31,7 +31,7 @@ Required fields: `front`, `back`, `layer`, `topic`, `source`, `kc`. `deck` is le
 ```
 
 Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `evidence_quote`
-(for a card claim narrower than its KC), `stratum`.
+(for a card claim narrower than its KC), `stratum`, `rev_id`.
 
 **Fields.**
 - `source` is the locator (`Slides 2 p.2`, `Lec 04 Q7`, or `derived` for self-contained math).
@@ -40,6 +40,8 @@ Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `eviden
   is normal. Tags are front-visible: never put the answer, method, or theorem in either.
 - `kc` must exist in `kcs.md`. `stratum` is optional; the KC `type` is the preferred family.
 - `hash` is identity: leave it empty; it is `md5(front|back)`. Do not invent one.
+- `rev_id` is optional and only for syncing an authored set into an already-attached dossier.
+  Copy it from the dossier; omit it on new cards; never invent one.
 - `media` entries are `{file, side, caption, source}`; paths are relative to the media root.
   One image per card is the default.
 

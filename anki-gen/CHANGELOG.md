@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.8** — Fixed 12-card review, live-deck inspection, sync plans, and dossier-only snapshots
 - **v1.5.7** — JSON review actions, intake scope, revision boundary, and final card schema
 - **v1.5.6** — One maintainer read order, one installer, route-first runbook, and gate plumbing cleanup
 - **v1.5.5** — Default quality path, opt-in revision context, one quality contract, and design axioms
@@ -34,6 +35,41 @@ These are deliberate, not forgotten:
   not overwrite them.
 - **Full semantic duplicate detection and per-deck analytics.** Useful later; not on the critical
   path for the KC/review work.
+
+## v1.5.8 — Fixed review sample and safe live-deck sync
+
+*This release removes review-shape knobs and replaces ad-hoc Anki migration scripts with a
+read-only sync plan.*
+
+### Changed
+
+**Review**
+- `pipeline.py` no longer accepts `--per-topic`/`--max`; the review set is fixed at 12. Risk and
+  format axes are never dropped. The page still reports what was not shown.
+- Certification is an explicit all-card review-server pass; the default sample is never called
+  certification.
+
+**Revision**
+- `revision.py decks` lists deck names/IDs. `revision.py inspect --deck` dumps live notes, fields,
+  tags, cards, models, and dossier/snapshot counts read-only.
+- `snapshots --create --reason` takes a dossier-only checkpoint without applying.
+- `sync --deck --cards` writes a read-only plan that matches by `rev_id`, content hash, then
+  normalized front/back; ambiguous matches require `--map`; unmatched live notes become a retire
+  group.
+- `apply` accepts `add` actions from a sync plan. New cards get dossier records and apply-log
+  entries.
+- Snapshots and revision backups stay under the dossier; there is no legacy `anki/<deck>` path.
+
+### Tests
+
+- Revision hardening covers `decks`/`inspect`, `snapshots --create`, sync update/add/retire, and
+  duplicate-footer prevention.
+
+### Compatibility
+
+- Review flags are removed, not deprecated; old commands with them fail fast.
+- `sync_plan.json` is a transient apply plan; no migration or compatibility guarantee.
+- No existing dossier schema changed.
 
 ## v1.5.7 — JSON review actions, intake scope, revision boundary, final card schema
 
@@ -71,6 +107,15 @@ card generation.*
 - `cards.jsonl` is the write format; `cards.json` remains read-only for old work directories.
 - New fields must be optional; unknown fields are ignored by the gate and preserved by the dossier.
   There is no per-card schema version.
+
+### Docs
+
+- Consolidated user install/use guidance into the root `README.md`; the handoff zip
+  ships it as `INSTALL.md`.
+- Removed duplicate `HANDOFF.md` and `scripts/handoff/INSTALL.md`.
+- Shrank `anki-gen/README.md` to maintainer/vendoring notes.
+- Corrected image defaults: slide/video images are on by default; text-only sources
+  are text-first and the caller can decline.
 
 ### Compatibility
 

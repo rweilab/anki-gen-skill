@@ -24,7 +24,9 @@ from revision_ops import apply as apply_ops  # noqa: E402
 from revision_ops import edit as edit_ops  # noqa: E402
 from revision_ops import revert as revert_ops  # noqa: E402
 from revision_ops import snapshot as snapshot_ops  # noqa: E402
-from revision_ops.common import PlanError, client  # noqa: E402
+from revision_ops import sync as sync_ops  # noqa: E402
+from revision_ops.common import (PlanError, client, deck_query, fields,  # noqa: E402
+                                 live_deck_name, model, note_ids)
 
 
 def _parse_map(values: list[str] | None) -> dict[str, int]:
@@ -35,6 +37,77 @@ def _parse_map(values: list[str] | None) -> dict[str, int]:
         rev, nid = value.split("=", 1)
         out[rev.strip()] = int(nid)
     return out
+
+
+def cmd_decks(args) -> int:
+    ac = client(args.url)
+    decks = ac.deck_names_and_ids()
+    if args.json:
+        print(json.dumps(decks, indent=2, sort_keys=True))
+    else:
+        for name in sorted(decks):
+            print(name)
+    return 0
+
+
+def cmd_inspect(args) -> int:
+    ac = client(args.url)
+    decks = ac.deck_names_and_ids()
+    if args.deck not in decks:
+        matches = sorted(name for name in decks if args.deck.lower() in name.lower())
+        print(f"revision.py: no deck named {args.deck!r}", file=sys.stderr)
+        if matches:
+            print("  did you mean: " + ", ".join(matches), file=sys.stderr)
+        return 2
+    note_ids_ = ac.find_notes(deck_query(args.deck))
+    notes = [n for n in ac.notes_info(note_ids_)
+             if isinstance(n, dict) and n.get("noteId")]
+    context = dc.load(args.deck)
+    rev_by_note = {int(s["anki_note_id"]): str(s.get("rev_id") or "")
+                   for s in (context or {}).get("state", [])
+                   if s.get("anki_note_id") is not None}
+    card_ids = [cid for n in notes for cid in note_ids(n)]
+    cards = [c for c in ac.cards_info(card_ids)
+             if isinstance(c, dict) and c.get("cardId") is not None]
+    card_map = {int(c["cardId"]): c for c in cards}
+    models = {}
+    for name in sorted({model(n) for n in notes if model(n)}):
+        entry = {"fields": []}
+        try:
+            entry["fields"] = list(ac.request("modelFieldNames",
+                                               modelName=name) or [])
+        except Exception:
+            pass
+        models[name] = entry
+    payload = {
+        "deck": args.deck,
+        "notes": [{
+            "note_id": int(n["noteId"]), "rev_id": rev_by_note.get(int(n["noteId"])),
+            "model": model(n),
+            "fields": fields(n), "tags": list(n.get("tags") or []),
+            "cards": [{"card_id": int(cid),
+                       **{k: card_map.get(int(cid), {}).get(k)
+                          for k in ("due", "interval", "reps", "lapses",
+                                    "queue", "type")}}
+                      for cid in note_ids(n)],
+        } for n in notes],
+        "models": models,
+        "dossier": ({"key": context["uuid"], "path": str(context["path"]),
+                     "cards": len(context.get("cards") or []),
+                     "snapshots": len(snapshot_ops.list_snapshots(context))}
+                    if context else None),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        reviewed = sum(1 for n in payload["notes"]
+                       if any((c.get("reps") or 0) > 0 for c in n["cards"]))
+        print(f"deck       {args.deck}")
+        print(f"           {len(notes)} note(s), {len(cards)} card(s), "
+              f"{reviewed} reviewed")
+        print(f"           models: {', '.join(models) or 'none'}")
+        print(f"           dossier: {payload['dossier'] or 'none'}")
+    return 0
 
 
 def cmd_attach(args) -> int:
@@ -164,6 +237,21 @@ def cmd_snapshots(args) -> int:
     if args.delete and args.prune:
         print("revision.py: choose --delete or --prune, not both", file=sys.stderr)
         return 2
+    if args.create:
+        if args.delete or args.prune or args.sizes:
+            print("revision.py: --create cannot be combined with other modes",
+                  file=sys.stderr)
+            return 2
+        ac = client(args.url)
+        result = snapshot_ops.create(ac, context,
+                                     live_deck_name(ac, context, args.deck),
+                                     args.reason)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"snapshot   {result['snapshot_id']} ({result['notes']} notes, "
+                  f"{result['cards']} cards) -> {result['path']}")
+        return 0
     if args.delete:
         if not args.yes:
             print("revision.py: deleting a snapshot needs --yes", file=sys.stderr)
@@ -303,6 +391,25 @@ def cmd_context(args) -> int:
     return 2
 
 
+def cmd_sync(args) -> int:
+    ac = client(args.url)
+    try:
+        result = sync_ops.plan(ac, args.deck, args.cards, maps=args.map)
+    except PlanError as e:
+        print(f"revision.py: {e}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        counts = result["counts"]
+        print(f"sync plan  {result['plan']}")
+        print(f"           {counts['update']} update(s), {counts['add']} new card(s), "
+              f"{counts['keep']} unchanged, {result['retire']} retire candidate(s)")
+        if result["retire"]:
+            print("           apply with --choice retire-1=keep|suspend|delete")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="revision.py")
     ap.add_argument("--url", default=None)
@@ -314,6 +421,22 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--map", action="append", default=[], metavar="REV_ID=NOTE_ID")
     a.add_argument("--json", action="store_true")
     a.set_defaults(func=cmd_attach)
+
+    dk = sub.add_parser("decks")
+    dk.add_argument("--json", action="store_true")
+    dk.set_defaults(func=cmd_decks)
+
+    ins = sub.add_parser("inspect")
+    ins.add_argument("--deck", required=True)
+    ins.add_argument("--json", action="store_true")
+    ins.set_defaults(func=cmd_inspect)
+
+    sy = sub.add_parser("sync")
+    sy.add_argument("--deck", required=True)
+    sy.add_argument("--cards", required=True)
+    sy.add_argument("--map", action="append", default=[], metavar="REV_ID=INDEX")
+    sy.add_argument("--json", action="store_true")
+    sy.set_defaults(func=cmd_sync)
 
     au = sub.add_parser("audit")
     au.add_argument("--deck", required=True)
@@ -370,6 +493,8 @@ def main(argv: list[str] | None = None) -> int:
     sn = sub.add_parser("snapshots")
     sn.add_argument("--deck", required=True)
     sn.add_argument("--sizes", action="store_true")
+    sn.add_argument("--create", action="store_true")
+    sn.add_argument("--reason", default="manual snapshot")
     sn.add_argument("--delete", metavar="ID")
     sn.add_argument("--prune", action="store_true")
     sn.add_argument("--keep", type=int)

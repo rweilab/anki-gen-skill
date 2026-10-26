@@ -86,6 +86,8 @@ def field_html(value: str, current: str = "", *, back: bool = False,
     html = text if re.search(r"<[a-zA-Z][^>]*>", text) else render.to_html(text)
     if not back:
         return html
+    if footer(html):
+        return html
     existing = footer(current)
     if existing:
         return html + existing

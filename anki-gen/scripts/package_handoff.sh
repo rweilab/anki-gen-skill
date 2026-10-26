@@ -28,7 +28,7 @@ trap 'rm -rf "$STAGE"' EXIT
 cp -R "$SKILL_DIR" "$STAGE/anki-gen"
 cp -R "$SKILLS_PARENT/image-vision" "$STAGE/image-vision"
 cp "$SKILLS_PARENT/install.sh" "$STAGE/install.sh"
-cp "$SCRIPT_DIR/handoff/INSTALL.md" "$STAGE/INSTALL.md"
+cp "$SKILLS_PARENT/README.md" "$STAGE/INSTALL.md"
 cp "$SKILL_DIR/VERSION" "$STAGE/VERSION"
 chmod +x "$STAGE/install.sh"
 
