@@ -428,6 +428,24 @@ def main() -> int:
         assert (intake_scope_work / "review_packet.md").is_file(), r.stdout
         print("ok    intake scope section replaces scope_gate.md")
 
+        image_work = td / "image-work"
+        image_work.mkdir()
+        (image_work / "intake.md").write_text(
+            "# Intake\n\n- images: no\n\n## Scope\n\nCeiling: 3\n")
+        (image_work / "kcs.md").write_text((kc_work / "kcs.md").read_text())
+        (image_work / "sources.md").write_text((kc_work / "sources.md").read_text())
+        (image_work / "figures").mkdir()
+        (image_work / "figures" / "figures.json").write_text(json.dumps(
+            [{"file": "media/a.png"}, {"file": "media/b.png"}]) + "\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(kc_cards), "--out", str(image_work),
+                 "--gates-only"], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "2 figure(s) extracted but intake says images: no" in r.stdout, r.stdout
+        assert any("2 figure(s) extracted" in w for w in json.loads(
+            (image_work / "gates.json").read_text())["warnings"]), r.stdout
+        print("ok    images: no with extracted figures warns without blocking")
+
         bad_kc_work = td / "bad-kc-work"
         bad_kc_work.mkdir()
         (bad_kc_work / "kcs.md").write_text("# KCs\n\nNo table here.\n")

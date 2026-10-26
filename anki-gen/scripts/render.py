@@ -44,10 +44,14 @@ import re
 # math-only paragraph from prose; the restore step runs after markdown conversion.
 PH_D = "\x00D{}\x00"
 PH_M = "\x00M{}\x00"
+PH_S = "\x00S\x00"       # an escaped/literal dollar, restored after HTML escaping
 
-# Inline math may wrap across a source line. A bare '$' never occurs inside LaTeX
-# here, so [^$] is the correct exclusion -- do not re-add a \n exclusion.
-MATH_RE = re.compile(r"\$\$(.+?)\$\$|\$([^$]+?)\$", re.DOTALL)
+# Inline math may wrap across a source line. Opening/closing dollars must not be
+# escaped, and must not be whitespace-adjacent or followed by a digit. That keeps
+# currency like $5 from swallowing the next real formula.
+MATH_RE = re.compile(
+    r"\$\$(.+?)\$\$|(?<!\\)\$(?!\s)([^$]+?)(?<!\s)\$(?!\d)",
+    re.DOTALL)
 
 # An inline code span. A card that explains the delimiter rules has to be able to
 # write `$...$` -- or a bare `$` -- inside backticks, and the math pass must not
@@ -87,12 +91,27 @@ def _extract_math(text: str):
         found.append((m.group(1) if display else m.group(2), display))
         return (PH_D if display else PH_M).format(len(found) - 1)
 
+    def prose(segment: str) -> str:
+        segment = MATH_RE.sub(grab, segment)
+        segment = segment.replace("\\$", PH_S)
+        # A doubled MathJax delimiter is an escaping artifact, not math. Collapse
+        # one level outside math/code so MathJax sees \(...\) / \[...\].
+        return re.sub(r"\\\\([()\[\]])", lambda m: "\\" + m.group(1), segment)
+
     parts, pos = [], 0
     for m in CODE_RE.finditer(text):
-        parts.append(MATH_RE.sub(grab, text[pos:m.start()]))
-        parts.append(m.group(0))                 # the span itself, verbatim
+        parts.append(prose(text[pos:m.start()]))
+        span = m.group(0)
+        inner = span[1:-1].strip()
+        if MATH_RE.fullmatch(inner):
+            # Authors sometimes wrap a bare formula in backticks, which would
+            # otherwise render as literal `$...$`. Treat a math-only code span as
+            # math; genuine code spans with prose still stay literal.
+            parts.append(MATH_RE.sub(grab, inner))
+        else:
+            parts.append(span)                   # the span itself, verbatim
         pos = m.end()
-    parts.append(MATH_RE.sub(grab, text[pos:]))
+    parts.append(prose(text[pos:]))
     return "".join(parts), found
 
 
@@ -111,6 +130,43 @@ def _esc(s: str) -> str:
 
 
 # -------------------------------------------------------------- markdown
+SECTION_LABELS = (
+    "Why", "Glossary", "Symbols", "Next", "Trap", "Note", "Consequence",
+    "Advantages", "Disadvantages", "Definition", "Example", "Warning",
+    "Caveat", "Result", "Formula", "Takeaway",
+)
+_SECTION_SPLIT = re.compile(
+    r"\s*(?=<b>(?:" + "|".join(SECTION_LABELS) + r"):</b>)", re.I)
+_HTML_CODE = re.compile(r"<code>.*?</code>", re.S)
+
+
+def _paragraph_sections(html: str) -> str:
+    """Turn inline `**Why:**`/`**Glossary:**` labels into their own paragraphs.
+
+    Cards are often authored with all sections on one line. The renderer
+    normalizes that presentation while leaving genuine code spans untouched.
+    """
+    def split_paragraph(match):
+        content = match.group(1)
+        protected = []
+
+        def hide(code):
+            protected.append(code.group(0))
+            return f"\x00H{len(protected) - 1}\x00"
+
+        content = _HTML_CODE.sub(hide, content)
+        parts = [part for part in _SECTION_SPLIT.split(content) if part.strip()]
+        if len(parts) <= 1:
+            content = parts[0] if parts else content
+        else:
+            content = "</p><p>".join(parts)
+        for i, code in enumerate(protected):
+            content = content.replace(f"\x00H{i}\x00", code)
+        return f"<p>{content}</p>"
+
+    return re.sub(r"<p>(.*?)</p>", split_paragraph, html, flags=re.S)
+
+
 def _inline(md: str) -> str:
     md = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", md, flags=re.S)
     md = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<i>\1</i>", md)
@@ -286,7 +342,8 @@ def to_html(text: str) -> str:
     """Card text (markdown + $LaTeX$) -> HTML Anki renders correctly."""
     tmpl, found = _extract_math(text)
     tmpl = _esc(tmpl)              # escape prose only; math is placeholdered
-    return _restore_math(_md_to_html(tmpl), found)
+    html = _paragraph_sections(_md_to_html(tmpl))
+    return _restore_math(html, found).replace(PH_S, "&#36;")
 
 
 DERIVED_SOURCES = {"derived", "universal"}

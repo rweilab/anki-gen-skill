@@ -25,7 +25,7 @@ sys.path.insert(0, str(SCRIPTS))
 from build_apkg import normalize_objects, study_order  # noqa: E402
 from cardid import card_hash  # noqa: E402
 from validate_cards import similar_answer_pairs  # noqa: E402
-from render import with_source  # noqa: E402
+from render import to_html, with_source  # noqa: E402
 
 BASE = {
     "front": "Why does a vacancy increase a crystal's free energy?",
@@ -119,8 +119,21 @@ def main() -> int:
     assert with_source("<p>x</p>", "derived") == "<p>x</p>"
     print("ok    positive control and derived-source policy")
 
+    # A math-only code span is repaired, and section labels become paragraphs.
+    code_math = to_html("The answer is `$C$`. **Why:** it is fixed.")
+    assert "<code>" not in code_math and r"\(C\)" in code_math, code_math
+    sections = to_html("Answer. **Why:** reason. **Glossary:** $C$ = capacitance.")
+    assert sections.count("<p>") == 3, sections
+    code_label = to_html("Use `**Why:**` literally. **Why:** real.")
+    assert code_label.count("<p>") == 2 and "<code><b>Why:</b></code>" in code_label, code_label
+    dollars = to_html(r"Price is \$5; formula $x$.")
+    assert "&#36;5" in dollars and r"\(x\)" in dollars, dollars
+    doubled = to_html(r"Anki delimiters \\(x\\) here.")
+    assert r"\(x\)" in doubled and r"\\(x\\)" not in doubled, doubled
+    print("ok    render repairs code-span math, dollars, and section paragraphs")
+
     skill = (ROOT / "SKILL.md").read_text()
-    for phrase in ("Main-model vision is a last-resort",
+    for phrase in ("main-model fallback",
                    "Never spawn a child `opencode` process",
                    "Do not probe for LibreOffice",
                    "Never open, copy, query, or inspect the live collection DB"):
@@ -512,6 +525,18 @@ def main() -> int:
          "error", "unmatched **")
     case("unbalanced inline math", lambda: [dict(BASE, front="What is $x?")],
          "error", "stray $")
+    case("math inside a code span",
+         lambda: [dict(BASE, back="**The answer is `$C$`.**\n\n**Why:** geometry fixes it.")],
+         "warning", "math inside a code span")
+    case("section label without blank line",
+         lambda: [dict(BASE, back="The answer is fixed. **Why:** geometry fixes it.")],
+         "warning", "not preceded by a blank line")
+    case("LaTeX outside math",
+         lambda: [dict(BASE, back="Use \\frac{1}{2} here.\n\n**Why:** geometry fixes it.")],
+         "error", "LaTeX command outside math")
+    case("double-escaped LaTeX",
+         lambda: [dict(BASE, back="Use \\\\frac{1}{2} here.\n\n**Why:** geometry fixes it.")],
+         "error", "double-escaped LaTeX")
     case("control character", lambda: [dict(BASE, back="bad \x0cText")],
          "error", "control char")
     case("cloze syntax without flag", lambda: [dict(BASE, front="The cell has {{c1::2}} atoms.")],

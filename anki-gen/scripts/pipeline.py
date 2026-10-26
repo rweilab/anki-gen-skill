@@ -622,6 +622,30 @@ def _scope_text(out: Path) -> str:
     return _read_optional(out / "scope_gate.md")
 
 
+def _intake_images(out: Path) -> str:
+    """The intake's image decision, if it wrote one."""
+    match = re.search(r"(?mi)^\s*-?\s*images\s*:\s*(yes|no)\b",
+                      _read_optional(out / "intake.md"))
+    return match.group(1).lower() if match else ""
+
+
+def _extracted_figures(out: Path) -> int:
+    """Figure count from extraction state, falling back to source manifests."""
+    state = _load_state(out)
+    count = (state.get("extract") or {}).get("figures")
+    if isinstance(count, int):
+        return count
+    total = 0
+    for path in out.glob("*/figures.json"):
+        try:
+            rows = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(rows, list):
+            total += len(rows)
+    return total
+
+
 def write_review_packet(out: Path, cards: list[dict], plan: dict,
                         ledger_text: str | None) -> Path:
     """A compact, packet-only input for the optional adversarial reviewer.
@@ -749,6 +773,10 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
         if len(cards) > ceiling:
             warns.append(f"deck has {len(cards)} cards, above its own "
                          f"Ceiling {ceiling}; park or justify")
+    figures = _extracted_figures(out)
+    if _intake_images(out) == "no" and figures:
+        warns.append(f"{figures} figure(s) extracted but intake says images: no; "
+                     "confirm the caller opted out, or turn images on")
     review = _ensure_review_actions(out, cards, plan, cards_path)
     packet_path = write_review_packet(out, cards, plan, ledger_text)
     kc_map, _, _, _ = parse_kc_map(ledger_text or "")
@@ -981,6 +1009,9 @@ def main(argv: list[str] | None = None) -> int:
             lines.append(f"extract    {ex['sources']} source(s), {ex['chars']:,} chars"
                          f", {ex['figures']} figures"
                          + (f", {ex['failed']} FAILED" if ex["failed"] else ""))
+            if ex["figures"]:
+                lines.append(f"images     {ex['figures']} figure(s); default on "
+                             "unless the caller opted out")
             if ex["failed"]:
                 for s in ex["manifest"]["sources"]:
                     if s.get("error"):
@@ -989,7 +1020,7 @@ def main(argv: list[str] | None = None) -> int:
                 if s.get("warning"):
                     lines.append(f"           ! {s['tag']}: {s['warning']}")
             _mark(out, "extract", "done", sources=len(ex["manifest"]["sources"]),
-                  failed=ex["failed"])
+                  failed=ex["failed"], figures=ex["figures"])
         reads = []
         if doc_sources:
             reads.append("sources.md")

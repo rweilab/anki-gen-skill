@@ -104,7 +104,7 @@ python3 "$SKILL/scripts/review_server.py" --cards "$WORK/cards.jsonl" \
 # Step 6 — build + real import validation (after review actions are resolved)
 python3 "$SKILL/scripts/pipeline.py" --cards "$WORK/cards.jsonl" --gates-only --build \
   --out "$WORK" --deck-name "Deck Name" --out-apkg ./Deck.apkg
-# If images are on (default for slides/video), append: --media --media-root "$WORK"
+# If images are on (default for slides/video/figure-bearing PDFs), append: --media --media-root "$WORK"
 # If the caller wants revision context, append: --context
 ```
 
@@ -155,21 +155,28 @@ when the deck exceeds it but never auto-cuts. The human decides.
 
 ## Media
 
-Images default on for slide and video sources, off for text-only sources. Main-model vision is a last-resort fallback: only when image-vision has no key or its bounded retry failed, the image is necessary, and the batch is small. Label it unverified; never use it for bulk selection.
+Images default **on** for slides, video, and any source with usable figures, including
+figure-bearing PDFs and scanned/handwritten work. They are off only for a confirmed
+text-only source or when the caller explicitly says no. A request that does not mention
+images is **not** an opt-out. After extraction, if figures exist, keep images on unless the
+caller opted out; default-on still means attach only figures that show what the front asks.
 
 - Write the cards first without media, or plan the media from the topic list. Run
   `python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2`
   **once**; it prints a compact ranked candidate list.
 - Attach only a candidate that shows the thing the front asks about. Prefer the full slide or
   frame; a crop needs confirmation. One image per card.
-- Batch every `confirm` image into **one** `image-vision` call by default (or one call per
-  source if the batch is genuinely large). The pass is
-  `python3 "$SKILL/../image-vision/scripts/vision_check.py"` with the confirmed paths; no
-  per-image calls, no corpus pre-confirmation, no galleries.
+- `media_index.py` is a text shortlist, not a visual check. Use
+  `python3 "$SKILL/../image-vision/scripts/vision_check.py"` first for every candidate
+  figure you need to identify or verify, including `direct` candidates. `direct` means
+  extraction quality, not semantic correctness.
+- Batch candidates into one `image-vision` call by default (or one call per source if the
+  batch is genuinely large); no per-image calls, no corpus pre-confirmation, no galleries.
 - If no good image exists, leave the card without one and say so. Never lower the bar to hit an
   image count.
-- If image-vision has no key or fails, leave the `confirm` image unattached and report it. A
-  small necessary fallback is allowed only under the last-resort rule above; label it unverified.
+- If image-vision is unconfigured, has no usable model, or stops on a rate limit, a bounded
+  main-model fallback is allowed for necessary images: keep it small, never use it for bulk
+  selection, and label the result **unverified** in the report.
 
 Media entries live in `cards.jsonl` as `{file, side, caption, source}`. Rewrite the file once
 to add them; do not patch cards one at a time. Bundle with `--media --media-root`; the image

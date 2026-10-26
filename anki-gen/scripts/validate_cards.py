@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import load_cards   # noqa: E402
-from render import DERIVED_SOURCES, to_html   # noqa: E402
+from render import DERIVED_SOURCES, SECTION_LABELS, to_html  # noqa: E402
 
 # Scoped to FRONTS. A back legitimately says "set them equal and solve" as a method
 # step, or "convert before you compute". Rejecting those was a false positive that
@@ -135,6 +135,8 @@ POINTER = re.compile(
     re.I)
 
 MATH_SPAN = re.compile(r"\$[^$]+\$", re.S)
+SECTION_LABEL = re.compile(
+    r"\*\*(" + "|".join(SECTION_LABELS) + r"):\*\*", re.I)
 HTML_CODE = re.compile(r"<code>.*?</code>", re.I | re.S)
 BARE_SUB = re.compile(
     r"(?<![A-Za-z0-9])(?:[A-Za-zρ]|[A-Z][A-Z]?)_"
@@ -786,17 +788,46 @@ def tag_leak_findings(cards):
     return out
 
 
+def _outside_math(text: str) -> str:
+    """Text with genuine code spans and math spans removed."""
+    text = CODE_SPAN.sub("", text)
+    text = re.sub(r"\$\$.*?\$\$", "", text, flags=re.S)
+    return re.sub(r"\$[^$]+\$", "", text, flags=re.S)
+
+
 def math_format_findings(cards):
     """Warn on plain-text symbols, literal <br>, and obvious text debris.
 
-    Math and code spans are exempt: a programming deck may legitimately write
-    `x_1` inside backticks. The scan is narrow on purpose; semantic front/back
-    mismatch stays with the review rubric.
+    Math and code spans are exempt from the bare-symbol scan: a programming deck
+    may legitimately write `x_1` inside backticks. The scan is narrow on purpose;
+    semantic front/back mismatch stays with the review rubric.
     """
     out = []
     for i, c in enumerate(cards, 1):
         for field in ("front", "back"):
             text = str(c.get(field, ""))
+            for span in CODE_SPAN.finditer(text):
+                inner = span.group(0)[1:-1]
+                if re.search(r"\$\$?[^$]+\$\$?|\\[A-Za-z]+", inner):
+                    out.append((i, "warn", f"math inside a code span in {field}; "
+                                          "remove the backticks so MathJax renders it"))
+                    break
+            if field == "back":
+                prose = CODE_SPAN.sub("", text)
+                for match in SECTION_LABEL.finditer(prose):
+                    before = prose[:match.start()].rstrip()
+                    if before and not before.endswith("\n\n"):
+                        out.append((i, "warn", f"section label {match.group(0)} in "
+                                              "the back is not preceded by a blank "
+                                              "line; split the sections"))
+                        break
+            prose = _outside_math(text)
+            if re.search(r"\\\\(?:[A-Za-z()\[\]]|$)", prose):
+                out.append((i, "err", f"double-escaped LaTeX in {field}; use one "
+                                      "backslash in JSONL, not `\\frac`/`\\(`"))
+            elif re.search(r"(?<!\\)\\[A-Za-z]+", prose):
+                out.append((i, "err", f"LaTeX command outside math in {field}; wrap "
+                                      "it in `$...$` or remove the backslash"))
             br = HTML_BR.search(text)
             if br:
                 out.append((i, "warn", f"literal <br> in {field}; use a blank line "
@@ -891,6 +922,8 @@ def check_cards(cards, deep: bool = False, ledger_text: str | None = None,
                     "(same normalized front and back)")
 
     math_findings = math_format_findings(cards)
+    errs.extend(f"card {i}: {msg}" for i, sev, msg in math_findings
+                if sev == "err")
     warns.extend(f"card {i}: {msg}" for i, sev, msg in math_findings
                  if sev == "warn")
 
@@ -936,6 +969,14 @@ def fix_for(message: str) -> str:
         return "in JSON, double every LaTeX backslash (\\frac) or rewrite the card"
     if "stray" in low and "$" in message:
         return "let the builder convert `$...$`; do not pre-convert MathJax delimiters"
+    if "math inside a code span" in low:
+        return "remove the backticks around `$...$`; code spans render literally"
+    if "section label" in low and "blank line" in low:
+        return "put a blank line before `**Why:**` / `**Glossary:**` / other section labels"
+    if "double-escaped latex" in low:
+        return "use one backslash in JSONL; write `$...$`, not `\\(...\\)`"
+    if "latex command outside math" in low:
+        return "wrap the command in `$...$`, or remove the backslash if it is prose"
     if "front refers to an image" in low:
         return "put the image on the front, or inline the data the front refers to"
     if "exact duplicates" in low:

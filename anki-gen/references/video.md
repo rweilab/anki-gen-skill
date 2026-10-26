@@ -46,9 +46,9 @@ Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
 - YouTube: whole playlist, or videos x–z?
 - Pull still frames when a diagram appears? yes/no/auto (video defaults to auto).
   - yes: automatic scoring; ambiguous frames are confirmed through the separate
-    `image-vision` skill when a key is available. The main model never reads a
-    frame by default; the bounded ≤6-image fallback in `SKILL.md` is the only
-    exception. A shared diagram may be reused on multiple cards;
+    `image-vision` skill when a key is available. The main model does not read a
+    frame unless the bounded fallback conditions in `SKILL.md` hold. A shared
+    diagram may be reused on multiple cards;
   - no: transcript-only.
 - If “find it”: search, prefer the official channel/playlist, and state the choice.
   Ask one confirmation if the match is not strong.
@@ -114,10 +114,11 @@ The picker is two-stage:
   slides search from the video title/description; register the URL as a second
   source and cite it. Do not invent diagrams or use a random mirror.
 - `--max` is a safety cap, not a per-video target.
-- **Never read an image with the main model by default.** No `read` on `media/*.png`, no
-  scan/contact-sheet review, no vision on the model's own stream; the bounded ≤6-image fallback in
-  `SKILL.md` is the only exception. These are the expensive, low-yield calls this pipeline exists
-  to avoid.
+- **Use image-vision first for pixels.** No `read` on `media/*.png` by default; use
+  `vision_check.py` for the frames you need to identify or verify. If image-vision is
+  unconfigured, has no usable model, or stops on a rate limit, the bounded main-model fallback
+  in `SKILL.md` is allowed for necessary frames; label the result unverified. These are the
+  expensive, low-yield calls this pipeline exists to avoid.
 
 Stop a background `vision_check` with the PID you started (`$!`) or a bracket
 pattern such as `pkill -f '[v]ision_check.py'`; never `pgrep -f` the literal name.

@@ -38,9 +38,6 @@ These are deliberate, not forgotten:
 
 ## v1.5.8 — Fixed review sample and safe live-deck sync
 
-*This release removes review-shape knobs and replaces ad-hoc Anki migration scripts with a
-read-only sync plan.*
-
 ### Changed
 
 **Review**
@@ -60,10 +57,24 @@ read-only sync plan.*
   entries.
 - Snapshots and revision backups stay under the dossier; there is no legacy `anki/<deck>` path.
 
+**Media and rendering**
+- Images now default on for figure-bearing PDFs as well as slides/video; only a confirmed
+  text-only source or explicit caller no turns them off. A gates warning surfaces
+  `images: no` when extraction found figures, without blocking an intentional opt-out.
+- `image-vision` is the first pixel path for every candidate, including `direct` figures.
+  `media_index` is only a text shortlist. A bounded main-model fallback remains available when
+  image-vision is unconfigured, has no usable model, or stops on a rate limit; label it
+  unverified.
+- The renderer unwraps math-only code spans, splits known section labels into paragraphs, skips
+  escaped dollars, and normalizes doubled MathJax delimiters. The validator warns on code-span
+  math and unseparated section labels, and errors on LaTeX outside math.
+
 ### Tests
 
 - Revision hardening covers `decks`/`inspect`, `snapshots --create`, sync update/add/retire, and
   duplicate-footer prevention.
+- Pipeline hardening covers the figure-count warning without blocking. Render/validator hardening
+  covers the capacitance-deck code-span/label failures, escaped dollars, and doubled delimiters.
 
 ### Compatibility
 

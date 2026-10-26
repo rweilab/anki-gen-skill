@@ -27,7 +27,7 @@ needs. The ten rules in `SKILL.md` are the hard floor.
 Required fields: `front`, `back`, `layer`, `topic`, `source`, `kc`. `deck` is legacy and optional; the build uses `--deck-name`. Minimum:
 
 ```json
-{"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.** **Why:** ...","layer":"L1","topic":"Voltage and Power","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
+{"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.**\n\n**Why:** ...","layer":"L1","topic":"Voltage and Power","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
 ```
 
 Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `evidence_quote`
@@ -36,6 +36,8 @@ Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `eviden
 **Fields.**
 - `source` is the locator (`Slides 2 p.2`, `Lec 04 Q7`, or `derived` for self-contained math).
   `source_ref` is a deprecated alias; do not write it. `source_url` is optional plain text.
+- Backs use a blank line before `**Why:**`, `**Glossary:**`, `**Symbols:**`, and other section
+  labels. Do not wrap `$...$` in backticks; code spans render literally.
 - `topic` is the chapter/lecture heading. `objects` is 0–2 lowercase cross-topic buckets; `[]`
   is normal. Tags are front-visible: never put the answer, method, or theorem in either.
 - `kc` must exist in `kcs.md`. `stratum` is optional; the KC `type` is the preferred family.
@@ -119,14 +121,16 @@ a back, or an answer-leaking term in `topic`/`objects`.
 
 ## Media (default by source)
 
-Images default on for slide and video sources, off for text-only sources. When images are on:
+Apply the media policy in `SKILL.md`: images default on for slides, video, and figure-bearing
+PDFs/images; off only for a confirmed text-only source or an explicit caller no. A request
+that does not mention images is not an opt-out. When images are on:
 
 1. Run `media_index.py "$WORK" --cards "$WORK/cards.jsonl" --per-card 2` once. It prints a
-   compact ranked list.
+   compact text-ranked shortlist; it is not a visual match.
 2. Pick only candidates that show the thing the front asks about. Prefer a full slide/frame;
    a crop needs confirmation.
-3. Batch every `confirm` image into one `image-vision` call (or one call per source if the
-   batch is truly large). No per-image calls, no corpus pre-confirmation, no galleries.
+3. Use `image-vision` first to identify/verify every candidate you need, including `direct`
+   ones. One batch by default; no per-image calls, no corpus pre-confirmation, no galleries.
 4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image per card.
 5. Build with `--media --media-root "$WORK"`.
 
@@ -135,8 +139,10 @@ Paths are relative to the media root.
 
 Never attach a title/outline/agenda slide, an incomplete crop, a whitespace-heavy frame, or a
 duplicate. If no good image exists, leave the card without one. “More images” does not lower
-the bar. If image-vision is unavailable, leave `confirm` images unattached and report it; do
-not bulk-read pixels with the main model.
+the bar. If image-vision is unconfigured, has no usable model, or stops on a rate limit, a
+bounded main-model fallback is allowed only for necessary images; keep the batch small, never
+use it for bulk selection, and label the result unverified. Do not use `read` as the default
+media path.
 
 Shared diagrams may appear on several related cards; the builder bundles the file once.
 Wrong images go in the review comment box, not into a new patch loop.

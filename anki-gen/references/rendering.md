@@ -9,7 +9,14 @@ in cards.jsonl; the builder converts to Anki's delimiters.
 **Subscripts and superscripts are MathJax, not underscores.** Write `$P_{0}$`, `$v_{0y}$`,
 `$A_{1}$`; use `\text{}` for descriptive words: `$\rho_{\text{oil}}$`, `$V_{\text{disp}}$`.
 Bare `P_0`, `ρ_obj`, or `V_{sphere}` is a validator warning; concatenated names such as
-`Vsphere` are a review defect. Code spans are exempt.
+`Vsphere` are a review defect. Code spans are exempt from the bare-symbol check, but they are
+not a way to write card math: a code span renders literally. Never write `` `$C$` `` when you
+mean `$C$`; the renderer repairs a math-only code span, but the validator warns so the source
+stays canonical.
+
+**Section labels get their own paragraph.** Put a blank line before `**Why:**`,
+`**Glossary:**`, `**Symbols:**`, `**Next:**`, and similar sections. The renderer also splits
+known labels when they are authored on one line, so the review page stays readable.
 
 **Deliberate line breaks inside a paragraph: use the markdown hard-break signal.** `render.py`
 re-flows wrapped source lines into single paragraphs; to force a break — needed for

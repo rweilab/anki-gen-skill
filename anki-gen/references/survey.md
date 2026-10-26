@@ -24,7 +24,7 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - ask **whole playlist or videos x–z**;
 - ask **pull still frames when the video shows a diagram?** yes/no (automatic
   scoring; ambiguous frames may be confirmed with image-vision; the main model
-  never reads frames by default; the bounded kernel fallback is the only exception);
+  does not read frames unless the bounded fallback conditions in `SKILL.md` hold);
 - if the caller supplied a URL, extract it first; search only around a missing/incomplete source;
 - if the user gave a description rather than a URL, use it as the seed for **one** bounded search,
   prefer the official channel/playlist/course page, and record the URL and why in `intake.md`;
@@ -57,8 +57,11 @@ for local media, confirm the file/directory, title, language, and whether sideca
 ```
 
 These are prose context, not new parser fields. `goal` and `minutes/day` help the scope gate and
-run report; `calibration` and `reference` prevent guessing. Images default on for slide/video sources and off for text-only sources; the caller can say no.
-When images are on, confirm only the images the cards actually need.
+run report; `calibration` and `reference` prevent guessing. Images default on for slides,
+video, and figure-bearing PDFs/images; off only for a confirmed text-only source or an
+explicit caller no. A request that does not mention images is not an opt-out. After
+extraction, if figures exist, keep images on unless the caller opted out; attach only the
+figures the cards actually need.
 
 **Read the course's own learner context and say what you found.** For a long `STUDY-LOG.md`, read
 the header and calibration section, not the whole file. A directory carries files written
