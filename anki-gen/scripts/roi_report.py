@@ -28,11 +28,9 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
-from difflib import SequenceMatcher
 from pathlib import Path
 
 from cardid import load_cards
-from validate_cards import similar_answer_pairs
 
 # Exam weights are deliberately NOT baked in. A hardcoded table only ever matches the
 # one course it was written for: keyed on "Ch N" in `source`, it sent every card of a
@@ -73,34 +71,6 @@ def always_together(front: str, back: str) -> bool:
     blob = front + " " + back
     return bool(CO_CHUNKS.search(blob)) or bool(
         re.search(r"\b(four|4)\s+(components|vertices|criteria|properties)\b", blob, re.I))
-
-
-def redundancy(cards) -> list[tuple]:
-    """Pairs where one answer largely subsumes the other."""
-    out = []
-    backs = [strip_math(c["back"]) for c in cards]
-    for i in range(len(cards)):
-        for j in range(i + 1, len(cards)):
-            a, b = backs[i].lower(), backs[j].lower()
-            if abs(len(a) - len(b)) > 400:
-                continue
-            r = SequenceMatcher(None, a, b).ratio()
-            if r > 0.88:
-                out.append((i + 1, j + 1, round(r, 3)))
-    return out
-
-
-def interference(cards) -> list[tuple]:
-    """Near-identical fronts: siblings that compete at the point of retrieval."""
-    out = []
-    for i in range(len(cards)):
-        for j in range(i + 1, len(cards)):
-            fi = re.sub(r"[^a-z ]", " ", strip_math(cards[i]["front"]).lower())
-            fj = re.sub(r"[^a-z ]", " ", strip_math(cards[j]["front"]).lower())
-            r = SequenceMatcher(None, fi, fj).ratio()
-            if r > 0.72:
-                out.append((i + 1, j + 1, round(r, 3)))
-    return out
 
 
 def repeated_content(cards) -> list[tuple]:
@@ -154,7 +124,7 @@ def topic_of(c) -> str:
     return str(c.get("topic") or "untopiced")
 
 
-def report(cards, weights=None, deep=False, as_json=False) -> str:
+def report(cards, weights=None, as_json=False) -> str:
     weights = weights or {}
     n = len(cards)
 
@@ -177,9 +147,6 @@ def report(cards, weights=None, deep=False, as_json=False) -> str:
         (keep_chunks if always_together(c["front"], c["back"]) else bundles).append(
             (i, items, c["topic"]))
 
-    red = redundancy(cards) if deep else []
-    inter = interference(cards) if deep else []
-    overlap = similar_answer_pairs(cards) if deep else []
     cost = cost_fn(cards)
     rep = repeated_content(cards)
 
@@ -196,9 +163,6 @@ def report(cards, weights=None, deep=False, as_json=False) -> str:
             "coverage": coverage,
             "bundle_candidates": bundles,
             "keep_together": keep_chunks,
-            "redundant_pairs": red,
-            "interference_pairs": inter,
-            "answer_overlap": overlap,
             "restatement": [(k, w, wh) for k, w, wh in rep],
             "costliest": cost[:12],
             "anchors": anchors,
@@ -255,23 +219,6 @@ def report(cards, weights=None, deep=False, as_json=False) -> str:
     if not rep:
         p("  none")
 
-    if deep:
-        p(f"\nREDUNDANCY (answer subsumed by a sibling) — {len(red)} pair(s)")
-        for i, j, r in red[:15]:
-            p(f"  card {i} ~ card {j}  ({r})")
-
-        p(f"\nINTERFERENCE (near-identical fronts compete) — {len(inter)} pair(s)")
-        for i, j, r in inter[:15]:
-            p(f"  card {i} ~ card {j}  ({r})")
-
-        p(f"\nANSWER OVERLAP (same ground; merge or justify a contrast) — {len(overlap)} pair(s)")
-        for i, j, r in overlap[:15]:
-            p(f"  card {i} ~ card {j}  ({r:.0%})")
-        if not overlap:
-            p("  none")
-    else:
-        p("\nPAIRWISE SIMILARITY: skipped (pass --deep for an explicit debloat pass)")
-
     p(f"\nSPLIT CANDIDATES ({len(bundles)}) — independent facts sharing one schedule")
     for i, items, topic in bundles[:CAP]:
         p(f"  card {i:>3}  {items} items  [{topic}]")
@@ -308,13 +255,11 @@ def main():
     ap.add_argument("--list", action="store_true",
                     help="print one line per card (number, topic, layer, front), "
                          "then exit; no backs")
+    ap.add_argument("--deep", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--show", type=int, default=None, metavar="N",
                     help="print card N's full front and back, then exit. Lets the "
                          "deblater cite a card without pulling every card's text "
                          "back into the conversation.")
-    ap.add_argument("--deep", action="store_true",
-                    help="also compute soft redundancy/interference/answer-overlap "
-                         "pairs (O(n^2); opt-in)")
     args = ap.parse_args()
 
     cards = load_cards(args.cards_json)
@@ -342,7 +287,7 @@ def main():
     if args.exam_weights:
         weights = json.loads(Path(args.exam_weights).read_text())
 
-    print(report(cards, weights, args.deep, as_json=args.json), end="")
+    print(report(cards, weights, as_json=args.json), end="")
     return 0
 
 

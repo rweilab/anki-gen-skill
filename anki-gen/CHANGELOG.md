@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.7** — JSON review actions, intake scope, revision boundary, and final card schema
 - **v1.5.6** — One maintainer read order, one installer, route-first runbook, and gate plumbing cleanup
 - **v1.5.5** — Default quality path, opt-in revision context, one quality contract, and design axioms
 - **v1.5.4** — Seven-step runbook, compact KCs, exact gates, and explicit done states
@@ -26,10 +27,57 @@ These are deliberate, not forgotten:
 - **Post-import learning loop.** AnkiConnect already exposes review history; a future version can
   map leeches and true retention back to cards/KCs and feed exam errors into rewrites. It is too
   much surface for this pass and most users will not re-run the skill a month later.
+- **Deck spin-off.** Copy selected live notes into a new deck with fresh scheduling; the source deck
+  stays untouched. Deferred because the current build/revision paths cover present needs and it adds
+  a new AnkiConnect surface and test matrix.
 - **FSRS / deck-option configuration.** Deck review settings belong to the user; the skill should
   not overwrite them.
 - **Full semantic duplicate detection and per-deck analytics.** Useful later; not on the critical
   path for the KC/review work.
+
+## v1.5.7 — JSON review actions, intake scope, revision boundary, final card schema
+
+*This release finishes the internal contract cleanup without trimming the runbook or changing
+card generation.*
+
+### Changed
+
+**Review and scope**
+- `review_actions.json` replaces `review_actions.md` for new runs. It carries `feedback_sha`, so
+  staleness is content-based; score-1 actions/targets and score-5 removals are checked by field.
+- Legacy `review_actions.md` remains readable for old work directories. New gates never write it.
+- Scope now lives in `intake.md` § Scope. `scope_gate.md` remains a read-only fallback for old work
+  directories.
+- `SKILL.md` keeps its atomic rules; only the changed contract text moved.
+
+**Revision boundary**
+- `pipeline.py` no longer imports `deck_context` or dossier code.
+- `--context` calls `revision.py context pack`; core and revision stay separate without moving files
+  or changing install paths.
+
+**Removed dead surface**
+- Deleted `author.py`, `new_cards.py`, and `parse_intent.py`; they were not on the runbook path.
+- Removed `--vision`, `--vision-max`, `--vision-seconds`, `--vision-timeout`, and the duplicate
+  vision pass. The separate `image-vision` skill is the normal path.
+- Removed `--manifest-full` and `--allow-media-risk`; `roi_report --deep` left the
+  documented surface.
+- Kept `--no-context` and `--deep` as hidden no-ops for old commands; removal target 2.0.
+- Kept `preflight`, `--status`, `--allow-invalid`, `--context`, and `--merge-existing`.
+
+**Card schema**
+- Required fields are now `front`, `back`, `layer`, `topic`, `source`, and `kc`.
+- `deck` is legacy and optional; `--deck-name` is the single source. The dossier falls back to the
+  manifest deck name.
+- `cards.jsonl` is the write format; `cards.json` remains read-only for old work directories.
+- New fields must be optional; unknown fields are ignored by the gate and preserved by the dossier.
+  There is no per-card schema version.
+
+### Compatibility
+
+- Old `cards.json`, cards with `deck`, old `scope_gate.md`, and old `review_actions.md` still work.
+- No change to `.apkg` output, build validation, review page, or install defaults.
+- No new compatibility shims; the legacy review/scope paths are read-only and have a 2.0 removal
+  target.
 
 ## v1.5.6 — One source for maintainers, one installer, route-first runbook
 

@@ -25,9 +25,6 @@ sys.path.insert(0, str(SCRIPTS))
 from build_apkg import normalize_objects, study_order  # noqa: E402
 from cardid import card_hash  # noqa: E402
 from validate_cards import similar_answer_pairs  # noqa: E402
-import new_cards  # noqa: E402
-from new_cards import C, CardError, dump  # noqa: E402
-from parse_intent import parse_intent  # noqa: E402
 from render import with_source  # noqa: E402
 
 BASE = {
@@ -152,14 +149,10 @@ def main() -> int:
     assert card_hash(stale) != "deadbeef", card_hash(stale)
     assert card_hash(edited) != card_hash(stale), (card_hash(stale), card_hash(edited))
     print("ok    stale explicit hash is ignored")
-
-    intent = parse_intent('make 30 cards --deck-name "My Deck" from Lec/')
-    assert intent["deck_name"] == "My Deck", intent
-    assert "max_cards" not in intent and "sources" not in intent, intent
-    assert "video_frames" not in intent, intent
-    help_run = run([sys.executable, str(SCRIPTS / "parse_intent.py"), "--help"])
-    assert help_run.returncode == 0 and "Usage:" in help_run.stdout, help_run
-    print("ok    intent keeps quoted deck names and --help")
+    no_deck = {k: v for k, v in BASE.items() if k != "deck"}
+    data, _ = validate([no_deck])
+    assert data["valid"] is True, data
+    print("ok    deck field is optional; old cards still carry it")
 
     # Rule 26 and markdown images are structural defects, not style choices.
     pointer = dict(BASE, back="See the magnitude card for the numbers. **Why:** it catches units.")
@@ -566,42 +559,6 @@ def main() -> int:
     data, _ = validate(topic_leak)
     assert any("topics" not in w and "appears only in the answer" in w
                for w in data["warnings"]), data
-    C(front=BASE["front"], back=BASE["back"], layer=BASE["layer"],
-      topic=BASE["topic"], deck="UNIQUE::TEST", source=BASE["source"])
-    try:
-        C(front=BASE["front"], back=BASE["back"], layer=BASE["layer"],
-          topic=BASE["topic"], deck="UNIQUE::TEST", source=BASE["source"])
-    except CardError as e:
-        assert "exact duplicate" in str(e), e
-    else:
-        raise AssertionError("new_cards.C accepted an exact duplicate")
-    print("ok    authoring helper rejects exact duplicates")
-
-    new_cards.ERRORS.clear()
-    new_cards.WARNINGS.clear()
-    new_cards._SEEN.clear()
-    bad1 = C(front="33 g Cu and 47 g Zn. What are the atom percents?",
-             back="Work it out.", layer="L1", topic="Alloys",
-             deck="BATCH::TEST", source="Lec 1 p.1", strict=False)
-    bad2 = C(front="Calculate the density from 10 g and 2 cm3.",
-             back="Work it out.", layer="L1", topic="Density",
-             deck="BATCH::TEST", source="Lec 1 p.2", strict=False)
-    assert len(new_cards.ERRORS) >= 2, new_cards.ERRORS
-    with tempfile.TemporaryDirectory() as td:
-        target = Path(td) / "cards.jsonl"
-        try:
-            with contextlib.redirect_stderr(io.StringIO()):
-                dump([bad1, bad2], target)
-        except CardError as e:
-            assert "refusing to write" in str(e), e
-        else:
-            raise AssertionError("new_cards.dump wrote cards with errors")
-        assert not target.exists(), target
-    new_cards.ERRORS.clear()
-    new_cards.WARNINGS.clear()
-    new_cards._SEEN.clear()
-    print("ok    authoring helper reports all batch errors and refuses to write")
-
     print("ok    front-visible tag leak warning")
     data, _ = validate([dict(BASE, front="What does P_0 mean at the surface?",
                              back="Use $P_0$ and `x_1` in prose.")])
@@ -683,35 +640,6 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
-        concepts = td / "concepts.jsonl"
-        concepts.write_text(json.dumps({
-            "layer": "L2", "topic": "Authoring",
-            "source": "Lec 1 p.1", "objects": ["authoring"],
-        }) + "\n")
-        stubs = td / "stubs.jsonl"
-        r = run([sys.executable, str(SCRIPTS / "author.py"), "scaffold",
-                 str(concepts), "-o", str(stubs), "--deck", "AUTHOR::TEST"])
-        assert r.returncode == 0, (r.stdout, r.stderr)
-        rows = [json.loads(x) for x in stubs.read_text().splitlines()]
-        assert len(rows) == 1 and rows[0]["front"] == rows[0]["back"] == "", rows
-        filled = td / "filled.jsonl"
-        rows[0]["front"] = "What does the authoring scaffold do?"
-        rows[0]["back"] = "It writes stubs. **Why:** it keeps the deck shape on disk."
-        filled.write_text("".join(json.dumps(x) + "\n" for x in rows))
-        r = run([sys.executable, str(SCRIPTS / "author.py"), "check", str(stubs)])
-        assert r.returncode == 1, (r.stdout, r.stderr)
-        r = run([sys.executable, str(SCRIPTS / "author.py"), "check", str(filled)])
-        assert r.returncode == 0, (r.stdout, r.stderr)
-        final = td / "final.json"
-        r = run([sys.executable, str(SCRIPTS / "author.py"), "finalize",
-                 str(stubs), str(final), "--deck", "AUTHOR::TEST"])
-        assert r.returncode == 2, (r.stdout, r.stderr)
-        r = run([sys.executable, str(SCRIPTS / "author.py"), "finalize",
-                 str(filled), str(final), "--deck", "AUTHOR::TEST"])
-        assert r.returncode == 0, (r.stdout, r.stderr)
-        assert "hash" not in json.loads(final.read_text())[0]
-        print("ok    author.py scaffold/check/finalize")
-
         good_apkg = td / "golden.apkg"
         r = run([sys.executable, str(SCRIPTS / "build_apkg.py"), str(GOLDEN),
                  str(good_apkg), "--deck-name", "GOLDEN::TEST"])

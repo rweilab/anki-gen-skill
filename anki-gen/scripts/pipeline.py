@@ -24,8 +24,6 @@ Usage
 -----
     pipeline.py --sources Lec/*.pdf --work .anki-gen-temp/midterm1
     pipeline.py --cards cards.jsonl --work .anki-gen-temp/midterm1 --gates-only
-    pipeline.py --sources "https://youtube.com/playlist?list=..." --work "$WORK" \
-        --images yes --vision auto --vision-max 12
 
 Media sources are processed one at a time with progress and `pipeline_state.json`;
 `--resume` skips completed sources. A corpus too large for one context still belongs in
@@ -34,6 +32,7 @@ separate runs, not one giant context.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -358,12 +357,12 @@ def _write_sources_md(out: Path, manifest: dict) -> None:
     (out / "sources.ready").write_text(_now() + "\n")
 
 
-def stage_extract(sources: list[str], out: Path, manifest_full: bool,
+def stage_extract(sources: list[str], out: Path,
                   date_filter: str | None = None,
                   page_crops: str = "auto") -> dict:
     from extract_pdf import run_batch
 
-    manifest = run_batch(sources, out, date_filter, manifest_full, page_crops)
+    manifest = run_batch(sources, out, date_filter, False, page_crops)
     _write_sources_md(out, manifest)
     ok = [s for s in manifest["sources"] if not s.get("error")]
     chars = sum(s.get("chars", 0) for s in ok)
@@ -373,7 +372,8 @@ def stage_extract(sources: list[str], out: Path, manifest_full: bool,
 
 
 
-REVIEW_ACTIONS = "review_actions.md"
+REVIEW_ACTIONS = "review_actions.json"
+LEGACY_REVIEW_ACTIONS = "review_actions.md"
 
 
 def _feedback_paths(out: Path) -> list[Path]:
@@ -412,17 +412,16 @@ def _card_number(row: dict, cards: list[dict], by_hash: dict[str, int]) -> int |
     return None
 
 
-def _card_label(card: dict, n: int) -> str:
-    bits = [f"card {n}"]
-    for key in ("topic", "stratum", "kc"):
-        value = str(card.get(key) or "").strip()
-        if value:
-            bits.append(value)
-    return " / ".join(bits)
+def _feedback_sha(out: Path) -> str:
+    digest = hashlib.sha256()
+    for path in _feedback_paths(out):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
-def _review_actions_text(cards: list[dict], plan: dict, out: Path,
-                         scale_rows: list[dict], recall_rows: list[dict]) -> str:
+def _review_actions_doc(cards: list[dict], plan: dict, out: Path,
+                        scale_rows: list[dict], recall_rows: list[dict]) -> dict:
     by_hash = {card_hash(c): i for i, c in enumerate(cards, 1)}
     score5, score1, score4, kept = [], {}, [], []
     for row in scale_rows:
@@ -432,14 +431,18 @@ def _review_actions_text(cards: list[dict], plan: dict, out: Path,
         score = row.get("score")
         comment = str(row.get("comment") or "").strip()
         if score == 5:
-            score5.append((n, comment))
+            score5.append({"card": n, "hash": card_hash(cards[n - 1]),
+                           "reason": comment})
         elif score == 1:
             c = cards[n - 1]
             key = (str(c.get("topic") or ""), str(c.get("stratum") or ""),
                    str(c.get("kc") or ""))
-            score1.setdefault(key, []).append((n, comment))
+            score1.setdefault(key, {"cards": [], "comments": []})
+            score1[key]["cards"].append(n)
+            if comment:
+                score1[key]["comments"].append(f"{n}: {comment}")
         elif score == 4:
-            score4.append((n, str(row.get("comment") or "").strip()))
+            score4.append({"card": n, "reason": comment, "decision": ""})
         elif score in (2, 3):
             kept.append(n)
     recalled_no = []
@@ -456,53 +459,37 @@ def _review_actions_text(cards: list[dict], plan: dict, out: Path,
         pass
     deck_note = str(done.get("deck_note") or "").strip()
 
-    lines = ["# Review actions", "status: open", ""]
-    if deck_note:
-        lines += ["## Deck-wide note", "", deck_note, ""]
-    lines += ["## Score 5 — remove from source", ""]
-    lines += ([f"- [ ] {_card_label(cards[n - 1], n)}"
-               + (f" — {comment}" if comment else "") for n, comment in score5]
-              or ["- none"])
-    lines += ["", "## Score 1 — rescope, do not auto-cut", ""]
-    if score1:
-        for (topic, stratum, kc), items in sorted(score1.items()):
-            where = " / ".join(x for x in (topic, stratum, kc) if x) or "untopiced"
-            nums = [n for n, _ in items]
-            lines.append(f"- [ ] {where} — cards {', '.join(map(str, nums))}")
-            comments = [f"{n}: {c}" for n, c in items if c]
-            if comments:
-                lines.append("  comments: " + " | ".join(comments))
-            lines += ["  action: merge | relevel | replace | keep anchor",
-                      "  target:",
-                      "  net delta:",
-                      ""]
-    else:
-        lines += ["- none", ""]
-    lines += ["## Score 4 — diagnose", ""]
-    lines += ([f"- [ ] {_card_label(cards[n - 1], n)}"
-               + (f" — {comment}" if comment else "") for n, comment in score4]
-              or ["- none"])
-    lines += ["", "## Recall failures", ""]
-    lines += ([f"- [ ] {_card_label(cards[n - 1], n)} — front demands work"
-               for n in recalled_no] or ["- none"])
-    lines += ["", "## Score 2–3 — keep", ""]
-    lines += [f"- {len(kept)} card(s)" + (f": {', '.join(map(str, kept))}" if kept else "")]
-    sr = plan.get("second_round") or {}
-    lines += ["", "## Not covered by the review sample", ""]
-    for key in ("topics_not_shown", "strata_under_shown",
-                "flag_patterns_not_shown", "media_not_shown"):
-        values = sr.get(key) or []
-        if values:
-            lines.append(f"- {key.replace('_', ' ')}: {', '.join(map(str, values))}")
-    lines += ["", "Set `status: resolved` after the source of truth is edited."]
-    return "\n".join(lines) + "\n"
+    groups = []
+    for (topic, stratum, kc), item in sorted(score1.items()):
+        groups.append({
+            "cards": item["cards"],
+            "topic": topic,
+            "stratum": stratum,
+            "kc": kc,
+            "comments": item["comments"],
+            "action": "",
+            "target": "",
+            "net_delta": 0,
+        })
+    return {
+        "schema": 1,
+        "status": "open",
+        "feedback_sha": _feedback_sha(out),
+        "deck_note": deck_note,
+        "score1": groups,
+        "score5": score5,
+        "score4": score4,
+        "recall_failures": [{"card": n} for n in recalled_no],
+        "kept": kept,
+        "second_round": plan.get("second_round") or {},
+    }
 
 
 VALID_REVIEW_ACTIONS = {"merge", "relevel", "replace", "keep anchor"}
 
 
 def _score1_actions_complete(text: str) -> bool:
-    """A resolved score-1 block must name a valid action and a target."""
+    """Legacy Markdown check: a resolved score-1 block must name a valid action/target."""
     in_score1 = False
     blocks: list[list[str]] = []
     current: list[str] = []
@@ -536,44 +523,82 @@ def _score1_actions_complete(text: str) -> bool:
     return True
 
 
-def review_actions_state(out: Path, cards_path: Path | None = None) -> dict:
-    """Whether feedback requires a resolved action file, and whether it is current."""
-    paths = _feedback_paths(out)
-    if not paths:
-        return {"required": False, "state": "not-run", "path": None}
-    action = out / REVIEW_ACTIONS
+def _legacy_review_actions_state(action: Path, paths: list[Path],
+                                 cards_path: Path | None) -> dict:
+    """Read a v1.5.6 review_actions.md; remove this branch at 2.0."""
     latest = max(p.stat().st_mtime for p in paths)
-    if cards_path is None:
-        for name in ("cards.jsonl", "cards.json"):
-            candidate = out / name
-            if candidate.is_file():
-                cards_path = candidate
-                break
-    if not action.is_file():
-        return {"required": True, "state": "missing", "path": action}
     text = action.read_text()
     match = re.search(r"(?mi)^status:\s*(\S+)", text)
     state = match.group(1).strip("`").lower() if match else "unset"
     if state != "resolved":
-        return {"required": True, "state": state, "path": action}
+        return {"required": True, "state": state, "path": action, "legacy": True}
     if not _score1_actions_complete(text):
-        return {"required": True, "state": "incomplete", "path": action}
+        return {"required": True, "state": "incomplete", "path": action, "legacy": True}
     if action.stat().st_mtime < latest:
-        return {"required": True, "state": "stale", "path": action}
+        return {"required": True, "state": "stale", "path": action, "legacy": True}
     if cards_path is not None and cards_path.is_file():
         if action.stat().st_mtime < cards_path.stat().st_mtime:
-            return {"required": True, "state": "stale", "path": action}
-    return {"required": True, "state": "resolved", "path": action}
+            return {"required": True, "state": "stale", "path": action, "legacy": True}
+    return {"required": True, "state": "resolved", "path": action, "legacy": True}
+
+
+def review_actions_state(out: Path, cards_path: Path | None = None,
+                         cards: list[dict] | None = None) -> dict:
+    """Whether feedback requires a resolved action file, and whether it is current."""
+    paths = _feedback_paths(out)
+    if not paths:
+        return {"required": False, "state": "not-run", "path": None, "legacy": False}
+    action = out / REVIEW_ACTIONS
+    legacy = out / LEGACY_REVIEW_ACTIONS
+    if cards is None and cards_path is not None and cards_path.is_file():
+        try:
+            cards = load_cards(cards_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            cards = None
+
+    if action.is_file():
+        try:
+            doc = json.loads(action.read_text())
+        except (OSError, json.JSONDecodeError):
+            return {"required": True, "state": "invalid", "path": action,
+                    "legacy": False}
+        state = str(doc.get("status") or "unset").lower()
+        if state != "resolved":
+            return {"required": True, "state": state, "path": action,
+                    "legacy": False}
+        if doc.get("feedback_sha") != _feedback_sha(out):
+            return {"required": True, "state": "stale", "path": action,
+                    "legacy": False}
+        for item in doc.get("score1") or []:
+            action_name = str(item.get("action") or "").strip().strip("`").lower()
+            target = str(item.get("target") or "").strip()
+            if action_name not in VALID_REVIEW_ACTIONS or not target:
+                return {"required": True, "state": "incomplete", "path": action,
+                        "legacy": False}
+        hashes = {card_hash(c) for c in (cards or [])}
+        for item in doc.get("score5") or []:
+            if str(item.get("hash") or "") in hashes:
+                return {"required": True, "state": "incomplete", "path": action,
+                        "legacy": False}
+        return {"required": True, "state": "resolved", "path": action,
+                "legacy": False}
+
+    if legacy.is_file():
+        return _legacy_review_actions_state(legacy, paths, cards_path)
+
+    return {"required": True, "state": "missing", "path": action, "legacy": False}
 
 
 def _ensure_review_actions(out: Path, cards: list[dict], plan: dict,
                            cards_path: Path | None = None) -> dict:
-    state = review_actions_state(out, cards_path)
-    if state["required"] and state["state"] == "missing":
+    state = review_actions_state(out, cards_path, cards)
+    if (state["required"] and state["state"] in ("missing", "stale")
+            and not ((out / LEGACY_REVIEW_ACTIONS).is_file()
+                     and not (out / REVIEW_ACTIONS).is_file())):
         scale_rows, recall_rows = _feedback_rows(out)
-        (out / REVIEW_ACTIONS).write_text(
-            _review_actions_text(cards, plan, out, scale_rows, recall_rows))
-        state = review_actions_state(out, cards_path)
+        doc = _review_actions_doc(cards, plan, out, scale_rows, recall_rows)
+        (out / REVIEW_ACTIONS).write_text(json.dumps(doc, indent=2) + "\n")
+        state = review_actions_state(out, cards_path, cards)
     return state
 
 
@@ -582,6 +607,19 @@ def _read_optional(path: Path) -> str:
         return path.read_text() if path.is_file() else ""
     except OSError:
         return ""
+
+
+def _scope_section(text: str) -> str:
+    match = re.search(r"(?ms)^##\s+Scope\s*$(.*?)(?=^##\s+|\Z)", text)
+    return match.group(1).strip() if match else ""
+
+
+def _scope_text(out: Path) -> str:
+    intake = _read_optional(out / "intake.md")
+    section = _scope_section(intake)
+    if section:
+        return "## Scope\n\n" + section + "\n"
+    return _read_optional(out / "scope_gate.md")
 
 
 def write_review_packet(out: Path, cards: list[dict], plan: dict,
@@ -608,7 +646,7 @@ def write_review_packet(out: Path, cards: list[dict], plan: dict,
              "Read only this packet. Do not open the full card deck or source corpus.",
              ""]
     intake = _read_optional(out / "intake.md")
-    scope = _read_optional(out / "scope_gate.md")
+    scope = "" if _scope_section(intake) else _read_optional(out / "scope_gate.md")
     if intake:
         lines += ["## Intake", "", intake.strip(), ""]
     if scope:
@@ -704,15 +742,13 @@ def stage_gates(cards_path: Path, out: Path, per_topic: int, max_total: int) -> 
     split_cards, restatements = _roi_risks(roi_text)
     media_risks = audit_cards(cards, out)
     ceiling = None
-    scope_path = out / "scope_gate.md"
-    if scope_path.is_file():
-        match = re.search(r"(?mi)^\s*Ceiling\s*[:~-]?\s*(\d+)",
-                          scope_path.read_text())
-        if match:
-            ceiling = int(match.group(1))
-            if len(cards) > ceiling:
-                warns.append(f"deck has {len(cards)} cards, above its own "
-                             f"Ceiling {ceiling}; park or justify")
+    scope_text = _scope_text(out)
+    match = re.search(r"(?mi)^\s*Ceiling\s*[:~-]?\s*(\d+)", scope_text)
+    if match:
+        ceiling = int(match.group(1))
+        if len(cards) > ceiling:
+            warns.append(f"deck has {len(cards)} cards, above its own "
+                         f"Ceiling {ceiling}; park or justify")
     review = _ensure_review_actions(out, cards, plan, cards_path)
     packet_path = write_review_packet(out, cards, plan, ledger_text)
     kc_map, _, _, _ = parse_kc_map(ledger_text or "")
@@ -763,76 +799,32 @@ def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
 
 def stage_context(out: Path, cards_path: Path, deck_name: str,
                   profile: str = "") -> dict:
-    """Persist the compact dossier before stage 14 deletes the work tree."""
-    from deck_context import pack
-    return pack(out, {"deck_name": deck_name, "profile": profile},
-                cards_path=cards_path)
-
-
-def _vision_candidates(rows: list[dict]) -> list[dict]:
-    """Only ambiguous frames need a vision call; direct frames are attachable."""
-    return [r for r in rows
-            if r.get("best") and r.get("attach") == "confirm"
-            and (r.get("canonical", True))
-            and r.get("local_kind") not in ("likely_code", "likely_webpage")]
-
-
-def stage_vision(out: Path, max_n: int, max_seconds: float,
-                 timeout: float) -> dict:
-    """One bounded vision pass over canonical frames; report is work-local."""
-    frames_path = out / "frames.jsonl"
-    if not frames_path.is_file():
-        return {"checked": 0, "stopped": "", "error": "no frames.jsonl"}
-    rows = []
+    """Persist the dossier through the revision CLI, keeping core imports separate."""
+    cmd = [sys.executable, str(Path(__file__).with_name("revision.py")),
+           "context", "pack", "--work", str(out), "--cards", str(cards_path),
+           "--deck", deck_name, "--json"]
+    if profile:
+        cmd += ["--profile", profile]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout)[-300:])
     try:
-        rows = [json.loads(line) for line in frames_path.read_text().splitlines()
-                if line.strip()]
-    except json.JSONDecodeError:
-        return {"checked": 0, "stopped": "", "error": "bad frames.jsonl"}
-    candidates = _vision_candidates(rows)
-    if not candidates:
-        return {"checked": 0, "stopped": "", "error": "no canonical frames"}
-    candidates.sort(key=lambda r: ({"high": 0, "medium": 1}.get(
-        r.get("quality"), 2), r.get("time", 0)))
-    script = (Path(__file__).resolve().parents[2] / "image-vision" /
-              "scripts" / "vision_check.py")
-    if not script.is_file():
-        return {"checked": 0, "stopped": "", "error": f"missing {script}"}
-    paths = [str(out / r["file"]) for r in candidates[:max(1, max_n)]]
-    report = out / "vision.jsonl"
-    cmd = [sys.executable, str(script), *paths, "--report", str(report),
-           "--max", str(max(1, max_n)), "--max-seconds", str(max_seconds),
-           "--timeout", str(timeout), "--mode", "frame"]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    summary = {}
-    for line in reversed(r.stdout.splitlines()):
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if "checked" in obj:
-            summary = obj
-            break
-    if r.returncode != 0 and not summary:
-        return {"checked": 0, "stopped": "",
-                "error": (r.stderr or r.stdout)[-300:]}
-    return {"checked": summary.get("checked", 0),
-            "stopped": summary.get("stopped", ""),
-            "errors": summary.get("errors", 0),
-            "report": str(report)}
-
-
-ARTIFACTS = ("intake.md", "scope_gate.md")
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"revision context pack returned no JSON: {exc}") from exc
 
 
 def artifact_state(out: Path) -> dict[str, bool]:
     """Which mandatory evidence files exist and are non-empty.
 
+    New runs put scope in intake.md; legacy runs may still carry scope_gate.md.
     New runs write kcs.md; legacy runs may still carry authoring_ledger.md.
-    Either satisfies the KC-map requirement.
     """
-    state = {name: (out / name).is_file() and (out / name).stat().st_size > 0
-             for name in ARTIFACTS}
+    intake = out / "intake.md"
+    state = {"intake.md": intake.is_file() and intake.stat().st_size > 0,
+             "scope": bool(_scope_section(_read_optional(intake)))
+                      or ((out / "scope_gate.md").is_file()
+                          and (out / "scope_gate.md").stat().st_size > 0)}
     kc = next((out / name for name in ("kcs.md", "authoring_ledger.md")
                if (out / name).is_file() and (out / name).stat().st_size > 0), None)
     state["kcs.md"] = kc is not None
@@ -868,8 +860,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--work", default=None, help="alias for --out (work directory)")
     ap.add_argument("--deck-name", default=None,
                     help="deck name for --build and the summary")
-    ap.add_argument("--manifest-full", action="store_true",
-                    help="list every image path in the manifest (diagnosis only)")
     ap.add_argument("--images", choices=("yes", "no", "auto"), default="auto",
                     help="extract frames from video sources; auto enables them for video")
     ap.add_argument("--model", default="auto", help="local Whisper model or auto")
@@ -893,12 +883,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--media", action="store_true")
     ap.add_argument("--media-root", default=None)
     ap.add_argument("--allow-missing-artifacts", action="store_true",
-                    help="build without intake.md/scope_gate.md/kcs.md "
+                    help="build without intake.md, scope, or kcs.md "
                          "(draft or diagnosis only)")
     ap.add_argument("--context", action="store_true",
                     help="persist the deck dossier after a successful build (opt-in)")
-    ap.add_argument("--no-context", action="store_true",
-                    help="deprecated; context is opt-in by default")
+    ap.add_argument("--no-context", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--anki-profile", default="",
                     help="Anki profile name to record in the deck dossier")
     ap.add_argument("--per-topic", type=int, default=1)
@@ -909,13 +898,6 @@ def main(argv: list[str] | None = None) -> int:
                     help="skip media sources already marked done in pipeline_state.json")
     ap.add_argument("--status", action="store_true",
                     help="print the last pipeline state and exit")
-    ap.add_argument("--allow-media-risk", action="store_true",
-                    help="build despite media risks (diagnosis only)")
-    ap.add_argument("--vision", choices=("off", "auto"), default="off",
-                    help="opt-in bounded vision pass over confirm frames")
-    ap.add_argument("--vision-max", type=int, default=12)
-    ap.add_argument("--vision-seconds", type=float, default=180)
-    ap.add_argument("--vision-timeout", type=float, default=20)
     args = ap.parse_args(argv)
 
     errors, warnings = preflight()
@@ -992,8 +974,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         if doc_sources:
             _mark(out, "extract", "running", sources=doc_sources)
-            ex = stage_extract(doc_sources, out, args.manifest_full,
-                               args.date_filter, args.page_crops)
+            ex = stage_extract(doc_sources, out, args.date_filter,
+                               args.page_crops)
             if not ex["sources"]:
                 lines.append(f"extract    0 source(s), {ex['failed']} FAILED")
                 print("\n".join(lines))
@@ -1010,21 +992,13 @@ def main(argv: list[str] | None = None) -> int:
                     lines.append(f"           ! {s['tag']}: {s['warning']}")
             _mark(out, "extract", "done", sources=len(ex["manifest"]["sources"]),
                   failed=ex["failed"])
-        if args.vision == "auto":
-            v = stage_vision(out, args.vision_max, args.vision_seconds,
-                             args.vision_timeout)
-            if v.get("error"):
-                lines.append(f"vision     skipped: {v['error']}")
-            else:
-                lines.append(f"vision     {v['checked']} checked, "
-                             f"{v.get('stopped') or 'ok'}, report {_short(v['report'], root)}")
         reads = []
         if doc_sources:
             reads.append("sources.md")
         if media_sources:
             reads.append("transcripts.md")
         lines.append(f"NEXT       read {' and '.join(reads) or 'the extracts'} "
-                     "once; write scope_gate.md and kcs.md before cards.jsonl; "
+                     "once; write intake.md § Scope and kcs.md before cards.jsonl; "
                      "re-run with --cards for the gates")
 
     g = None
@@ -1098,9 +1072,9 @@ def main(argv: list[str] | None = None) -> int:
                       "and re-run the gates.",
                       file=sys.stderr)
                 return 1
-            if g["media_risks"] and not args.allow_media_risk:
-                print("pipeline.py: refusing --build: media risks remain. Fix "
-                      "them or pass --allow-media-risk for diagnosis.", file=sys.stderr)
+            if g["media_risks"]:
+                print("pipeline.py: refusing --build: media risks remain. Fix them.",
+                      file=sys.stderr)
                 return 1
             if not args.deck_name:
                 print("pipeline.py: --build requires --deck-name", file=sys.stderr)
@@ -1131,7 +1105,7 @@ def main(argv: list[str] | None = None) -> int:
                 if not rv["required"]:
                     done += " — NOT REVIEWED"
                 lines.append(f"status     {done}")
-                if args.context and not args.no_context:
+                if args.context:
                     try:
                         c = stage_context(out, Path(args.cards), args.deck_name, args.anki_profile)
                         lines.append(f"context    {c['cards']} card(s) -> {c['path']}")

@@ -34,7 +34,8 @@ decks/<deck_uuid>/
   resources.jsonl      open resource index
   resources/           arbitrary files (media, notes, datasets, future kinds)
   thumbnails/          adaptive previews, not card media
-  evidence/            intake.md, scope_gate.md, kcs.md, review_actions.md (optional)
+  evidence/            intake.md, scope_gate.md, kcs.md,
+                       review_actions.json or legacy review_actions.md (optional)
   revisions/           plans, conflicts, affected-state backups, apply/verify/revert logs
   snapshots/           AnkiConnect exportPackage (deck.apkg) + metadata-only snapshot.json
 ```

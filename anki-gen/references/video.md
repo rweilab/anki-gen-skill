@@ -12,7 +12,7 @@ single-source diagnosis path. Long runs print `[media i/n]` and `[video i/n]` pr
 Confirmation is card-driven **after** the card text exists: confirm only a frame you are about to
 attach, not the corpus. Prefer `direct` frames; if many candidates need confirmation, prioritize
 front/answer-critical diagrams and leave decorative backs unconfirmed. There is no image mode and no
-fixed image count. `pipeline.py --vision` is an advanced diagnosis pass, not the normal path.
+fixed image count. Ambiguous frames go through the separate `image-vision` skill.
 
 ## Local recordings
 

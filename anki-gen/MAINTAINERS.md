@@ -137,7 +137,7 @@ This table is the ownership map, not a second rule list.
 | Self-contained front | `card-writing.md` § fronts | `validate_cards` front-image warning / review |
 | Media bar | `authoring.md`, `video.md` | `media_index` risk audit + review |
 | KCs and fields | `authoring.md` | `validate_cards` KC checks |
-| Review rescope | `review.md` | `review_actions.md` build gate |
+| Review rescope | `review.md` | `review_actions.json` build gate |
 | Build/import | `pipeline.py`, `validate_apkg.py` | build + real import |
 | Cleanup | `SKILL.md` | `smoke.sh` no-litter |
 
@@ -183,16 +183,17 @@ removal version in this table. Canonical docs never mention a deprecated path.
 
 | Item | Status | Replacement | Removal |
 |---|---|---|---|
-| `scripts/author.py` | Frozen, deprecated | `cards.jsonl` + `pipeline.py` | 2.0 |
-| `scripts/new_cards.py` | Frozen, deprecated | `cards.jsonl` + gates | 2.0 |
-| `scripts/parse_intent.py` | Frozen, deprecated | `pipeline.py` flags | 2.0 |
+| `scripts/author.py` | Removed now | `cards.jsonl` + `pipeline.py` | done |
+| `scripts/new_cards.py` | Removed now | `cards.jsonl` + gates | done |
+| `scripts/parse_intent.py` | Removed now | `pipeline.py` flags | done |
 | `scripts/handoff/install.sh` | Removed now | root `install.sh` | done |
 | `maintainers/README.md` | Removed now | `AGENTS.md` read order | done |
 | `maintainers/cold-audit.md` | Removed now | `AGENTS.md` cold audit section | done |
 | `scripts/setup_macos.sh` | Compatibility shim | `setup.sh` | keep; review at 2.0 |
-| `cards.json` | Accepted | `cards.jsonl` | keep reader; docs canonical |
-| `deck` field | Keep | `--deck-name` | review at 2.0 |
-| `scope_gate.md` | Keep | none | review at 2.0 |
-| `review_actions.md` | Keep | none | review at 2.0 |
-| `--no-context` | Deprecated no-op | omit it | 2.0 |
-| `--deep`, `--vision`, `--allow-invalid`, `--manifest-full`, `--status` | Advanced/maintainer | keep | review at 2.0 |
+| `cards.json` | Read-only legacy | `cards.jsonl` | keep reader |
+| `deck` field | Optional legacy | `--deck-name` | keep accepted |
+| `scope_gate.md` | Read-only fallback | `intake.md` § Scope | 2.0 |
+| `review_actions.md` | Legacy read-only | `review_actions.json` | 2.0 |
+| `--no-context` | Hidden no-op | omit it | 2.0 |
+| `--deep` | Hidden no-op | omit it | 2.0 |
+| `--allow-invalid`, `--status` | Advanced/maintainer | keep | review at 2.0 |

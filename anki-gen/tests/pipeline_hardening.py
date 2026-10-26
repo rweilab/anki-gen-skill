@@ -194,7 +194,7 @@ def main() -> int:
                  "--gates-only", "--build", "--context", "--deck-name", "LOCAL::TEST",
                  "--out-apkg", str(context_apkg)], td)
         assert r.returncode == 0, (r.stdout, r.stderr)
-        assert "context    " in r.stdout and "card(s)" in r.stdout, r.stdout
+        assert "context    " in r.stdout and "card(s)" in r.stdout, (r.stdout, r.stderr)
         assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
         print("ok    pipeline build+validate+opt-in context and quality status")
         bad = td / "bad.jsonl"
@@ -289,23 +289,21 @@ def main() -> int:
                  "--cards", str(review_cards), "--out", str(review_work),
                  "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
                  "--out-apkg", str(td / "review.apkg")], td)
-        assert r.returncode != 0 and "review_actions.md is open" in r.stderr, (
+        assert r.returncode != 0 and "review_actions.json is open" in r.stderr, (
             r.stdout, r.stderr)
-        actions = (review_work / "review_actions.md").read_text()
-        assert "status: open" in actions, actions
-        assert "Score 1 — rescope" in actions and "Score 5 — remove" in actions, actions
-        assert "Use the course's method names." in actions, actions
-        actions = actions.replace("status: open", "status: resolved")
-        (review_work / "review_actions.md").write_text(actions)
-        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
-                 "--cards", str(review_cards), "--out", str(review_work),
-                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
-                 "--out-apkg", str(td / "review.apkg")], td)
-        assert r.returncode != 0 and "incomplete" in r.stderr, (r.stdout, r.stderr)
-        actions = actions.replace(
-            "  action: merge | relevel | replace | keep anchor\n  target:",
-            "  action: keep anchor\n  target: n/a")
-        (review_work / "review_actions.md").write_text(actions)
+        actions = json.loads((review_work / "review_actions.json").read_text())
+        assert actions["status"] == "open", actions
+        assert actions["score1"] and actions["score1"][0]["action"] == "", actions
+        assert actions["score5"] and actions["score5"][0]["hash"], actions
+        assert actions["deck_note"] == "Use the course's method names.", actions
+        # The rejected card is removed from the source of truth before the actions
+        # are resolved; the score-5 hash is then absent from the current deck.
+        review_cards.write_text(json.dumps(review_rows[0]) + "\n")
+        actions["status"] = "resolved"
+        actions["score1"][0]["action"] = "keep anchor"
+        actions["score1"][0]["target"] = "n/a"
+        (review_work / "review_actions.json").write_text(
+            json.dumps(actions, indent=2) + "\n")
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--cards", str(review_cards), "--out", str(review_work),
                  "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
@@ -315,12 +313,37 @@ def main() -> int:
         assert "packet     " in r.stdout, r.stdout
         assert "shape      " in r.stdout and "strata     " in r.stdout, r.stdout
         assert (review_work / "review_packet.md").is_file(), r.stdout
-        review_cards.write_text(review_cards.read_text())
+        # New feedback after the actions were resolved regenerates an open skeleton.
+        with (review_work / "review_feedback.jsonl").open("a") as fh:
+            fh.write(json.dumps({"n": 1, "hash": card_hash(review_rows[0]),
+                                 "score": 3}) + "\n")
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--cards", str(review_cards), "--out", str(review_work),
                  "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
                  "--out-apkg", str(td / "review-stale.apkg")], td)
-        assert r.returncode != 0 and "stale" in r.stderr, (r.stdout, r.stderr)
+        assert r.returncode != 0 and "review_actions.json is open" in r.stderr, (
+            r.stdout, r.stderr)
+        legacy_work = td / "legacy-review-work"
+        legacy_work.mkdir()
+        legacy_cards = legacy_work / "cards.jsonl"
+        legacy_cards.write_text(json.dumps(review_rows[0]) + "\n")
+        for name in ("intake.md", "scope_gate.md", "authoring_ledger.md"):
+            (legacy_work / name).write_text("evidence\n")
+        (legacy_work / "review_feedback.jsonl").write_text(json.dumps(
+            {"n": 1, "hash": card_hash(review_rows[0]), "score": 1,
+             "comment": "Known material."}) + "\n")
+        (legacy_work / "review_actions.md").write_text(
+            "# Review actions\nstatus: resolved\n\n"
+            "## Score 1 — rescope, do not auto-cut\n\n"
+            "- [ ] Point Defects / concept / thermo.steady_flow — cards 1\n"
+            "  action: keep anchor\n  target: n/a\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(legacy_cards), "--out", str(legacy_work),
+                 "--gates-only", "--build", "--deck-name", "LEGACY::TEST",
+                 "--out-apkg", str(td / "legacy-review.apkg")], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "review     resolved" in r.stdout, r.stdout
+        print("ok    legacy review_actions.md still builds")
         packet_dir = td / "packet-test"
         packet_dir.mkdir()
         packet = pipeline.write_review_packet(
@@ -390,6 +413,20 @@ def main() -> int:
         assert any("Ceiling 2" in w for w in json.loads(
             (ceiling_work / "gates.json").read_text())["warnings"]), r.stdout
         print("ok    scope-gate ceiling warns without auto-cutting")
+        intake_scope_work = td / "intake-scope-work"
+        intake_scope_work.mkdir()
+        (intake_scope_work / "intake.md").write_text(
+            "# Intake\n\n## Scope\n\nCeiling: 2\n")
+        (intake_scope_work / "kcs.md").write_text((kc_work / "kcs.md").read_text())
+        (intake_scope_work / "sources.md").write_text(
+            (kc_work / "sources.md").read_text())
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(kc_cards), "--out", str(intake_scope_work),
+                 "--gates-only"], td)
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "above its own Ceiling 2" in r.stdout, r.stdout
+        assert (intake_scope_work / "review_packet.md").is_file(), r.stdout
+        print("ok    intake scope section replaces scope_gate.md")
 
         bad_kc_work = td / "bad-kc-work"
         bad_kc_work.mkdir()

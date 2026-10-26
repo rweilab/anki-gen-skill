@@ -267,6 +267,8 @@ Ch 2 · Lec 04 Q11 / slide 95
   the card stands alone, cite the lecture and chapter underneath.
 - **Never invent URLs.** No fabricated YouTube links with confident timestamps — if you have not
   opened it, do not cite it. Omit rather than guess.
+- **A standard misconception the source never states is not source-grounded.** Omit it, or mark it
+  plainly as general knowledge and keep it separate from the sourced claim.
 
 ### Fronts must stand alone
 

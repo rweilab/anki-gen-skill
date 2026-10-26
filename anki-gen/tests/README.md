@@ -23,7 +23,6 @@ Canonical ownership:
 - dossier format and archives: `context_hardening.py`
 - pipeline flag passthrough, combined sources, media state/resume, review actions, packet, shape, mixed sources: `pipeline_hardening.py`
 - per-video progress and playlist resume: `video_hardening.py`
-- authoring helpers and authors: `hardening.py`
 - vision confirmation selection: `visual_hardening.py`
 - review plan staleness, review page, and UI text: `scripts/smoke.sh`
 

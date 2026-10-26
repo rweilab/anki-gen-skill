@@ -183,14 +183,15 @@ when the deck is computation-heavy, or alone when recallability is in doubt.
 
 After the user reviews, the next `pipeline.py --gates-only` call reads `review_feedback.jsonl`
 plus `review_recall.jsonl`, reduces each log to its last row per card, and writes
-`$WORK/review_actions.md` when feedback exists. The skeleton groups score 1 by
+`$WORK/review_actions.json` when feedback exists. The skeleton groups score 1 by
 topic/KC, lists score 5 removals, score 4 diagnoses, recall failures, and the
 cards the sample did not cover.
 
-After feedback, the next gates call writes `review_actions.md` and regenerates the packet. Fill it
-in from the source of truth, then set `status: resolved`. Every score-1 block must name one of
-`merge | relevel | replace | keep anchor` and a non-empty target. `pipeline.py --build` refuses
-while the file is missing, open, unset, stale, or incomplete. Score 1 is rescope evidence, never an
+After feedback, the next gates call writes `review_actions.json` and regenerates the packet. Fill
+`score1[].action`, `score1[].target`, and any `score4[].decision` from the source of truth, then set
+`"status": "resolved"`. Every score-1 block must name one of `merge | relevel | replace | keep
+anchor` and a non-empty target. `pipeline.py --build` refuses while the file is missing, open,
+stale, or incomplete; a score-5 card still present is incomplete. Score 1 is rescope evidence, never an
 automatic cut; score 5 is the only removal verdict.
 
 The KC map and cards remain the reasoning record. Do not re-read the corpus, build script,
@@ -209,7 +210,7 @@ The risk is cross-topic anchors and duplicates.
   when there is none. That is the whole mechanism.
 - **1 → rescope the topic, not just the card.** “Easy” means the learner already knows it; use
   it to rebalance scope and difficulty, merge/re-level trivial variants, or protect an anchor.
-  Fill that cluster in `review_actions.md` with one of `merge | relevel | replace | keep anchor`,
+  Fill that cluster in `review_actions.json` with one of `merge | relevel | replace | keep anchor`,
   name the target, and report the net delta. Propose changes; never cut silently. A review comment
   is never a mandate to expand: if you add cards, make the addition replace a merged/cut card
   unless the user explicitly asked for more.
@@ -234,9 +235,8 @@ not reflexively split every hard card:
 change, but several comments can be applied in one step with several edit calls;
 each separate step re-sends the whole context.
 
-`roi_report.py` now prints image coverage per topic. Soft redundancy/interference/
-answer-overlap pairs are opt-in with `--deep`; the default report keeps coverage,
-restatement flags, costliest cards, and anchors. In the handoff, report the
+`roi_report.py` prints image coverage per topic, restatement flags, costliest
+cards, and anchors. In the handoff, report the
 image-card count, any topic with strong visual candidates but no images, and which
 images were confirmed versus merely listed.
 

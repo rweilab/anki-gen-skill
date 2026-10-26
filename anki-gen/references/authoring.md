@@ -11,8 +11,8 @@ it re-sends the whole file at every step.
 
 ## Order
 
-1. Write `$WORK/scope_gate.md`: what to card, what not to card, a `Ceiling: N` line, and the
-   parked list with reasons.
+1. Add a `## Scope` section to `$WORK/intake.md`: what to card, what not to card, a
+   `Ceiling: N` line, and the parked list with reasons.
 2. Write `$WORK/kcs.md`: the compact KC table. A KC is a concept, not a card. Single-card KCs
    are allowed when the card is a complete high-value decision and `why` makes the value case.
    A 1:1 map warns; exact duplicate claims are errors. Do not write filler cards.
@@ -24,10 +24,10 @@ needs. The ten rules in `SKILL.md` are the hard floor.
 
 ## Card JSON
 
-Required fields: `front`, `back`, `layer`, `topic`, `deck`, `source`, `kc`. Minimum:
+Required fields: `front`, `back`, `layer`, `topic`, `source`, `kc`. `deck` is legacy and optional; the build uses `--deck-name`. Minimum:
 
 ```json
-{"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.** **Why:** ...","layer":"L1","topic":"Voltage and Power","deck":"SCHOOL::CIRCUITS::Midterm2","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
+{"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.** **Why:** ...","layer":"L1","topic":"Voltage and Power","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
 ```
 
 Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `evidence_quote`
@@ -42,6 +42,15 @@ Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `eviden
 - `hash` is identity: leave it empty; it is `md5(front|back)`. Do not invent one.
 - `media` entries are `{file, side, caption, source}`; paths are relative to the media root.
   One image per card is the default.
+
+## Schema policy
+
+- Write `cards.jsonl`. `cards.json` is read-only for old work dirs.
+- Required fields are frozen. New fields must be optional.
+- Do not repurpose a field. Unknown fields are ignored by the gate and preserved by the dossier.
+- `deck` is legacy; `--deck-name` is the single deck-name source.
+- There is deliberately no per-card schema version. Additive changes only; a new required field
+  waits for a major version.
 
 **Shapes.** The build emits Basic and Cloze only.
 - L1 Basic: recall of a fact, definition, formula, or constant.
@@ -78,7 +87,7 @@ a back, or an answer-leaking term in `topic`/`objects`.
   `fix:` hint; if it is unclear, report the error.
 - Do not read other work’s handoff docs. Read the chosen sources, learner context, and the
   stage reference.
-- Put conclusions on disk in `scope_gate.md` or `kcs.md`; do not re-derive them at every step.
+- Put conclusions on disk in `intake.md` § Scope or `kcs.md`; do not re-derive them at every step.
 
 ## KCs
 
@@ -103,7 +112,7 @@ a back, or an answer-leaking term in `topic`/`objects`.
 - `type` is optional; if omitted, the review still judges the KC. Every `requires` resolves. A
   source-dependent KC needs a short quote that appears in the extracted corpus; `derived` is
   the exemption.
-- `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards. The gate warns when the deck
+- `intake.md` § Scope carries `Ceiling: N`, a soft cap on total cards. The gate warns when the deck
   exceeds it; it never auto-cuts. Park the weaker candidate instead.
 
 ## Media (default by source)

@@ -146,7 +146,7 @@ def preserve_extra(source: dict, dest: dict, known: set[str]) -> None:
 
 
 def card_from_source(card: dict, existing: dict | None = None,
-                     review_score=None) -> CardRecord:
+                     review_score=None, deck_name: str = "") -> CardRecord:
     existing = existing or {}
     front = str(card.get("front", ""))
     back = str(card.get("back", ""))
@@ -163,7 +163,7 @@ def card_from_source(card: dict, existing: dict | None = None,
         "content_hash_alg": CONTENT_HASH_ALG,
         "layer": str(card.get("layer", "")),
         "topic": str(card.get("topic", "")),
-        "deck": str(card.get("deck", "")),
+        "deck": str(card.get("deck") or deck_name),
         "objects": list(card.get("objects") or []),
         "tier_zero": bool(card.get("tier_zero", existing.get("tier_zero", False))),
         "cloze": bool(card.get("cloze", existing.get("cloze", False))),

@@ -47,8 +47,8 @@ def load_cards(path) -> list[dict]:
 def card_hash(c: dict) -> str:
     """A card's content identity: md5(front|back).
 
-    An explicit `hash` is ignored. `author.py finalize` used to write one, and the
-    review step edits text afterwards; trusting the stale field made a corrected
+    An explicit `hash` is ignored. The old authoring helper used to write one, and
+    the review step edits text afterwards; trusting the stale field made a corrected
     card keep its old GUID, so `--merge-existing` skipped the fix as "already
     present". A stable explicit ID belongs to the deferred revision path, not to
     the current content-addressed one.

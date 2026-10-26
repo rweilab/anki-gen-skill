@@ -359,7 +359,7 @@ def findings(cards):
 
     for i, c in enumerate(cards, 1):
         label = f"card {i}: {str(c.get('front', ''))[:52]!r}"
-        for key in ("front", "back", "layer", "topic", "deck"):
+        for key in ("front", "back", "layer", "topic"):
             if key not in c or not str(c.get(key, "")).strip():
                 add(i, "err", f"{label} -- missing/empty {key!r}")
 

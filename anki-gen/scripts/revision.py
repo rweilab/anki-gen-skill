@@ -263,7 +263,8 @@ def cmd_context(args) -> int:
         result = dc.pack(args.work, {"deck_name": args.deck,
                                      "deck_id": args.deck_id,
                                      "profile": args.profile,
-                                     "notetypes": args.notetypes})
+                                     "notetypes": args.notetypes},
+                          cards_path=args.cards)
         print(json.dumps(result, indent=2) if args.json else
               f"dossier {result['key']}: {result['cards']} card(s) -> {result['path']}")
         return 0
@@ -400,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
     cs = c.add_subparsers(dest="context_cmd", required=True)
     cp = cs.add_parser("pack")
     cp.add_argument("--work", required=True)
+    cp.add_argument("--cards", default=None)
     cp.add_argument("--deck", required=True)
     cp.add_argument("--deck-id", default="")
     cp.add_argument("--profile", default="")

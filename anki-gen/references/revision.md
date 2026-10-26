@@ -48,9 +48,10 @@ If setup fails, stop. Do not inspect the collection DB to work around it.
 | Undo the last applied change | `revision.py revert --deck NAME --last --yes` |
 | Inspect snapshots or storage | `revision.py snapshots --deck NAME --sizes` |
 
-If the supported command does not cover the request, stop and add the capability to the skill.
-Do not fall back to a `/tmp` Python script, a loop of raw `curl` calls, or a custom AnkiConnect
-wrapper. Those are where the field/tag argument mistakes and repeated retries came from.
+If the supported command does not cover the request, stop and report. Do not fall back to a
+`/tmp` Python script, a loop of raw `curl` calls, or a custom AnkiConnect wrapper. Those are where
+the field/tag argument mistakes and repeated retries came from. Deck spin-off is deferred and has
+no verb yet; do not invent one.
 
 Never use collection-wide tag operations for a deck edit. `replaceTagsInAllNotes` and
 `clearUnusedTags` can change other decks; the supported tag path is deck-scoped.
@@ -67,8 +68,8 @@ ${XDG_DATA_HOME:-~/.local/share}/anki-gen/decks/<deck-uuid>/
 cache, not the source of truth.
 
 `pipeline.py --build --context` packs after a successful build, before the work
-tree is removed. Without `--context`, no dossier is written; `--no-context` is a
-deprecated no-op. The dossier holds only distilled context: authored card records, live Anki state,
+tree is removed. Without `--context`, no dossier is written. The dossier holds only
+distilled context: authored card records, live Anki state,
 topic takeaways, course style/notation, learner preferences, deck-shape decisions,
 future work, source anchors/hashes, media-candidate metadata, adaptive previews,
 revision logs, and snapshots. `cards.jsonl` is authored identity/context;

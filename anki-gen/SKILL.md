@@ -20,9 +20,10 @@ Every artifact lives there. The `.apkg` is the only new file in the caller's dir
 ## Route first
 
 - **New deck** from sources: follow the seven-step runbook below.
-- **Existing imported deck / spin-off**: read `references/revision.md`; use
-  `scripts/revision.py` and AnkiConnect. Do not run the generation path.
-  Never open, copy, query, or inspect the live collection DB, even read-only.
+- **Existing imported deck**: read `references/revision.md`; use `scripts/revision.py` and
+  AnkiConnect. Do not run the generation path. Deck spin-off is deferred; do not invent an
+  AnkiConnect script for it. Never open, copy, query, or inspect the live collection DB, even
+  read-only.
 - **Scanned or handwritten source**: use the separate `image-vision` skill first,
   then the runbook.
 
@@ -64,8 +65,8 @@ read only the current step's reference; do not read ahead. More context is not b
    based on scope). No fixed numbers.
 2. **Extract.** Run one foreground extraction with all chosen documents and media. Wait for it
    to return. Do not background a second extractor; do not read `sources.md` until it exists.
-3. **Author.** Read the source table of contents and only the per-source files you need. Write
-   `$WORK/scope_gate.md` with a `Ceiling: N` line and `$WORK/kcs.md`. Then write
+3. **Author.** Read the source table of contents and only the per-source files you need. Add a
+   `## Scope` section to `$WORK/intake.md` with a `Ceiling: N` line, and write `$WORK/kcs.md`. Then write
    `$WORK/cards.jsonl` in one pass per topic. One authoring format; no deck script.
 4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`,
    `review_packet.md`, and `roi.txt`. Fix all errors in one rewrite, then run one gates call again.
@@ -74,8 +75,8 @@ read only the current step's reference; do not read ahead. More context is not b
    read-only subagent is available; skip only if unavailable or the caller declines. If no human
    reviewer is available, skip the page, say "not manually reviewed; static checks only," and still
    run the adversarial pass after the gates call if a subagent is available. Read only low scores and comments. Apply all
-   feedback in one rewrite. If feedback exists, run one gates call to create `review_actions.md`;
-   fill every score-1 action/target, set `status: resolved`, then build.
+   feedback in one rewrite. If feedback exists, run one gates call to create
+   `review_actions.json`; fill every score-1 action/target, set `"status": "resolved"`, then build.
 6. **Build.** Run one build call. It validates the real import.
 7. **Cleanup.** Stop the review server, delete `$WORK` in full, leave only the `.apkg`.
 
@@ -87,7 +88,7 @@ SKILL="<the directory containing this SKILL.md>"
 # Step 2 — extract all chosen sources (foreground; one call)
 python3 "$SKILL/scripts/pipeline.py" --sources <dirs-or-files> --out "$WORK"
 
-# Step 3 — author writes scope_gate.md, kcs.md, cards.jsonl first (no command).
+# Step 3 — author writes intake.md § Scope, kcs.md, cards.jsonl first (no command).
 # Step 3b — if images are on, index candidates once (cards.jsonl must exist).
 python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2
 # --per-card 2 is candidates, not attachments; attach one image per card.
@@ -140,15 +141,15 @@ Rules, all scale-free:
 - A map where every KC has exactly one card warns: inspect for card labels. No hard rejection.
 - Do not add a card or change a type just to clear a warning. The review judges value.
 - Two KCs with the exact same `claim` are an error: they are one KC.
-- No filler cards to satisfy a KC count. Park the weaker candidate in `scope_gate.md`.
+- No filler cards to satisfy a KC count. Park the weaker candidate in `intake.md` § Scope.
 - Every `requires` resolves.
 - A source-dependent KC carries an `evidence_quote` found in the extracted corpus; `derived`
   is exempt.
 - `type` and `stratum` are optional. When `type` is omitted, no type-based single-card warning
   fires; the review still judges the KC. The card’s `topic` is its scope link.
 
-A KC with no cards is a warning: remove it from the map or park it in `scope_gate.md` with a
-reason. `scope_gate.md` carries `Ceiling: N`, a soft cap on total cards. Set it **before** writing
+A KC with no cards is a warning: remove it from the map or park it in `intake.md` § Scope with a
+reason. `intake.md` § Scope carries `Ceiling: N`, a soft cap on total cards. Set it **before** writing
 cards, from the caller's target/scope; do not set it to the number you just wrote. The gate warns
 when the deck exceeds it but never auto-cuts. The human decides.
 
@@ -183,9 +184,9 @@ reopen it; if declined, say “not manually reviewed; static checks only.”
 
 Run the server in the background, hand over one sentence and the URL alone on its own line,
 then wait. Do not print card text into chat. On “done”, run one gates call; it reduces the
-feedback log and writes `review_actions.md` when feedback exists. Read only low scores and
-comments. Apply all feedback in one rewrite, then one gates call. Fill `review_actions.md` and
-set `status: resolved` before the build. If there is no feedback, no action file is required
+feedback log and writes `review_actions.json` when feedback exists. Read only low scores and
+comments. Apply all feedback in one rewrite, then one gates call. Fill `review_actions.json`
+and set `"status": "resolved"` before the build. If there is no feedback, no action file is required
 and the build proceeds.
 
 Stop a stuck server with `curl -X POST <url>/finish`, never `pkill -f`. Score 1 is calibration
@@ -199,8 +200,8 @@ or the caller declines. Do not rerun it after a formatting-only change; render o
 ## Build, cleanup, report
 
 The build command above runs gates and import validation in one call. The build refuses
-missing `intake.md`, `scope_gate.md`, and `kcs.md` unless `--allow-missing-artifacts` is for a
-draft. It also refuses unresolved `review_actions.md` when feedback exists, media risks, or
+missing `intake.md` § Scope and `kcs.md` unless `--allow-missing-artifacts` is for a
+draft. It also refuses unresolved `review_actions.json` when feedback exists, media risks, or
 validation errors. A dossier is not written unless `--context` is passed; the `.apkg` is the default
 output. Name the file from the deck name with `::` replaced by `-` (e.g., `COLD-TEST.apkg`).
 

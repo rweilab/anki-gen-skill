@@ -126,7 +126,7 @@ seven steps or the expected answers; the point is to see what the skill alone pr
 > background review server; do not wait. Skip the adversarial subagent if no read-only subagent
 > tool is available. No images. Do not leave background processes.
 >
-> Attempt the skill end to end. You may write intake.md, scope_gate.md, kcs.md, cards.jsonl, and
+> Attempt the skill end to end. You may write intake.md (with a Scope section), kcs.md, cards.jsonl, and
 > work files under the temporary folder. Use the skill's scripts directly. If a command fails, capture the exact
 > error and continue only if safe.
 >

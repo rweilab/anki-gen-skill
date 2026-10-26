@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -300,10 +301,15 @@ def _context_md(ident: dict, topics: list[dict], style: str, learner: str,
 def _artifacts(workdir: Path) -> dict[str, str]:
     out = {}
     for name in ("intake.md", "scope_gate.md", "authoring_ledger.md",
-                 "review_actions.md"):
+                 "review_actions.md", "review_actions.json"):
         path = workdir / name
         if path.is_file():
             out[name] = path.read_text()
+    intake = out.get("intake.md", "")
+    if "scope_gate.md" not in out:
+        match = re.search(r"(?ms)^##\s+Scope\s*$(.*?)(?=^##\s+|\Z)", intake)
+        if match:
+            out["scope_gate.md"] = "# Scope gate\n" + match.group(1).rstrip() + "\n"
     return out
 
 
@@ -363,11 +369,11 @@ def _write_context(stage: Path, ident: dict, uuid: str, rows: list[dict],
     evidence.mkdir(parents=True, exist_ok=True)
     artifacts = artifacts or {}
     for name in ("intake.md", "scope_gate.md", "authoring_ledger.md",
-                 "review_actions.md"):
+                 "review_actions.md", "review_actions.json"):
         path = evidence / name
         if name in artifacts:
             write_text(path, artifacts[name])
-        elif name == "review_actions.md":
+        elif name in ("review_actions.md", "review_actions.json"):
             continue
         elif not path.is_file():
             if confidence == "reconstructed":
@@ -440,7 +446,8 @@ def pack(workdir, deck, curated: dict | None = None,
         if match:
             i, old = match
             used.add(i)
-        row = card_from_source(card, old, scores.get(card_hash(card)))
+        row = card_from_source(card, old, scores.get(card_hash(card)),
+                               deck_name=ident["deck_name"])
         rows.append(row)
         state.append(state_from_existing(old_state.get(row["rev_id"], {
             "rev_id": row["rev_id"]})))
