@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import load_cards   # noqa: E402
 from render import DERIVED_SOURCES, SECTION_LABELS, to_html  # noqa: E402
+from schema_types import Card, KC  # noqa: E402
 
 # Scoped to FRONTS. A back legitimately says "set them equal and solve" as a method
 # step, or "convert before you compute". Rejecting those was a false positive that
@@ -137,6 +138,11 @@ POINTER = re.compile(
 MATH_SPAN = re.compile(r"\$[^$]+\$", re.S)
 SECTION_LABEL = re.compile(
     r"\*\*(" + "|".join(SECTION_LABELS) + r"):\*\*", re.I)
+# Structural HTML in the source is almost always a copy of built fields. Keep
+# this a warning: a deck whose subject is HTML/CSS may intentionally show tags,
+# and the renderer already escapes them.
+SOURCE_HTML = re.compile(
+    r"</?(?:p|b|i|ul|ol|li|div|span|br|img)\b[^>]*>", re.I)
 HTML_CODE = re.compile(r"<code>.*?</code>", re.I | re.S)
 BARE_SUB = re.compile(
     r"(?<![A-Za-z0-9])(?:[A-Za-zρ]|[A-Z][A-Z]?)_"
@@ -185,7 +191,7 @@ def _requires(raw: str) -> list[str]:
     return [x.strip().strip("`") for x in re.split(r"[,;]", raw) if x.strip()]
 
 
-def parse_kc_map(text: str) -> tuple[dict[str, dict], list[str], bool, bool]:
+def parse_kc_map(text: str) -> tuple[dict[str, KC], list[str], bool, bool]:
     """Read the compact `KCs` table from kcs.md (legacy: authoring_ledger.md).
 
     New format: `kc | type | claim | why | requires | evidence_quote | source`.
@@ -249,7 +255,7 @@ def parse_kc_map(text: str) -> tuple[dict[str, dict], list[str], bool, bool]:
     return rows, duplicates, has_evidence, has_why
 
 
-def kc_findings(cards: list[dict], kc_text: str,
+def kc_findings(cards: list[Card], kc_text: str,
                 source_text: str | None = None,
                 require_map: bool = False) -> list[tuple[str, str]]:
     """KC value/coverage checks.
@@ -342,7 +348,7 @@ def kc_findings(cards: list[dict], kc_text: str,
     return out
 
 
-def findings(cards):
+def findings(cards: list[Card]):
     """Every check below, as (card_index, severity, message) records.
 
     1-based `card_index` matches the numbering used everywhere else in the skill
@@ -718,7 +724,7 @@ def _norm_card(c: dict) -> tuple[str, str]:
     return front, back
 
 
-def exact_duplicate_pairs(cards) -> list[tuple[int, int]]:
+def exact_duplicate_pairs(cards: list[Card]) -> list[tuple[int, int]]:
     """1-based pairs whose normalized front+back are identical.
 
     Deterministic and O(n). This is the only in-deck duplicate check on the
@@ -751,7 +757,7 @@ def _tag_words(text: str) -> set[str]:
             if len(w) > 2 and w not in TAG_STOP}
 
 
-def tag_leak_findings(cards):
+def tag_leak_findings(cards: list[Card]):
     """Tags are front-visible. A one-topic object tag that only appears in the
     answer is an error; a topic that does so is a warning (topics are context).
 
@@ -795,7 +801,7 @@ def _outside_math(text: str) -> str:
     return re.sub(r"\$[^$]+\$", "", text, flags=re.S)
 
 
-def math_format_findings(cards):
+def math_format_findings(cards: list[Card]):
     """Warn on plain-text symbols, literal <br>, and obvious text debris.
 
     Math and code spans are exempt from the bare-symbol scan: a programming deck
@@ -822,6 +828,11 @@ def math_format_findings(cards):
                                               "line; split the sections"))
                         break
             prose = _outside_math(text)
+            if SOURCE_HTML.search(prose):
+                out.append((i, "warn", f"raw HTML tag in {field}; source is Markdown "
+                                      "and the build escapes tags. Use blank lines, "
+                                      "`**bold**`, and `- list` items. If the tags are "
+                                      "the lesson, put them in backticks."))
             if re.search(r"\\\\(?:[A-Za-z()\[\]]|$)", prose):
                 out.append((i, "err", f"double-escaped LaTeX in {field}; use one "
                                       "backslash in JSONL, not `\\frac`/`\\(`"))
@@ -857,7 +868,7 @@ def math_format_findings(cards):
     return out
 
 
-def similar_answer_pairs(cards) -> list[tuple[int, int, float]]:
+def similar_answer_pairs(cards: list[Card]) -> list[tuple[int, int, float]]:
     """[(i, j, containment)] for same-topic/source cards whose answers overlap.
 
     Front similarity alone flags contrasts (stack vs heap, bounded vs unbounded).
@@ -884,7 +895,7 @@ def similar_answer_pairs(cards) -> list[tuple[int, int, float]]:
     return out
 
 
-def check_cards(cards, deep: bool = False, ledger_text: str | None = None,
+def check_cards(cards: list[Card], deep: bool = False, ledger_text: str | None = None,
                 source_text: str | None = None, require_kc_map: bool = False):
     """The CLI's (errors, warnings, info) view.
 

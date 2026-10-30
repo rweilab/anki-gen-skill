@@ -73,7 +73,7 @@ def anki_available() -> bool:
         return False
 
 
-def render_test(apkg: str) -> list[str]:
+def _render_problems(col) -> list[str]:
     """Render every card. Catches the browser/reviewer template split.
 
     Anki renders in two places from two template pairs: qfmt/afmt in the
@@ -82,72 +82,74 @@ def render_test(apkg: str) -> list[str]:
     where a blank should be. No structural check can see this; only rendering the
     card and looking for leftover cloze markers can.
     """
-    try:
-        import tempfile
-        from anki.collection import Collection
-        from anki.importing import ImportAnkiPackageRequest
-    except ImportError:
+    backend = getattr(col, "_backend", None)
+    render = getattr(backend, "render_existing_card", None)
+    if render is None:
+        print("validate_apkg: render check unavailable (Anki API changed); "
+              "skipping", file=sys.stderr)
         return []
     problems = []
-    try:
-        with tempfile.TemporaryDirectory() as td:
-            col = Collection(str(Path(td) / "t.anki2"))
-            try:
-                col.import_anki_package(ImportAnkiPackageRequest(package_path=apkg))
-                for cid in col.find_cards(""):
-                    # BOTH paths matter: qfmt/afmt drive the reviewer,
-                    # bqfmt/bafmt drive the browser. Only the first being
-                    # populated reviews fine and previews as raw field text.
-                    for browser in (False, True):
-                        r = col._backend.render_existing_card(
-                            card_id=cid, browser=browser, partial_render=False)
-                        if "{{c" in str(r.question_nodes):
-                            where = "browser preview" if browser else "reviewer"
-                            problems.append(
-                                f"card {cid}: raw {{{{cN::}} marker in the "
-                                f"{where} FRONT -- the deletion is not being "
-                                "blanked (bqfmt/bafmt not populated?)")
-                            break
-                # Math damage check on the REVIEWER path only. Anki's renderer
-                # rewrites inline \(..\) to display \[..\], so unbalanced \[ is a
-                # real defect, not a formatting artefact. This catches the class
-                # of bug where a cloze deletion swallows the tail of a LaTeX
-                # expression, leaving \\frac{4R}{\\sqrt{3 orphaned on the front.
-                for cid in col.find_cards(""):
-                    r = col._backend.render_existing_card(
-                        card_id=cid, browser=False, partial_render=False)
-                    for attr in ("question_nodes", "answer_nodes"):
-                        body = re.sub(r"<[^>]+>", "", str(getattr(r, attr)))
-                        for o, c, lbl in ((r"\(", r"\)", r"inline \(\)"),
-                                          (r"\[", r"\]", r"display \[\]")):
-                            if body.count(o) != body.count(c):
-                                problems.append(
-                                    f"card {cid} {attr}: unbalanced {lbl} "
-                                    f"({body.count(o)} open vs {body.count(c)} close)")
-                        for m in re.finditer(r"\\\[(.*?)\\\]", body, re.S):
-                            if m.group(1).count("{") != m.group(1).count("}"):
-                                problems.append(
-                                    f"card {cid} {attr}: unbalanced LaTeX braces "
-                                    f"inside math: {m.group(1)[:60]!r}")
-            finally:
-                col.close()
-    except Exception as e:
-        problems.append(f"render check failed: {type(e).__name__}: {e}")
-        return problems
+    cards = list(col.find_cards(""))
+    for cid in cards:
+        # BOTH paths matter: qfmt/afmt drive the reviewer, bqfmt/bafmt drive the
+        # browser. Only the first being populated reviews fine and previews as raw
+        # field text.
+        for browser in (False, True):
+            r = render(card_id=cid, browser=browser, partial_render=False)
+            if "{{c" in str(r.question_nodes):
+                where = "browser preview" if browser else "reviewer"
+                problems.append(
+                    f"card {cid}: raw {{{{cN::}} marker in the "
+                    f"{where} FRONT -- the deletion is not being "
+                    "blanked (bqfmt/bafmt not populated?)")
+                break
+    # Math damage check on the REVIEWER path only. Anki's renderer rewrites
+    # inline \(..\) to display \[..\], so unbalanced \[ is a real defect, not a
+    # formatting artefact. This catches the class of bug where a cloze deletion
+    # swallows the tail of a LaTeX expression, leaving \\frac{4R}{\\sqrt{3
+    # orphaned on the front.
+    for cid in cards:
+        r = render(card_id=cid, browser=False, partial_render=False)
+        for attr in ("question_nodes", "answer_nodes"):
+            body = re.sub(r"<[^>]+>", "", str(getattr(r, attr)))
+            for o, c, lbl in ((r"\(", r"\)", r"inline \(\)"),
+                              (r"\[", r"\]", r"display \[\]")):
+                if body.count(o) != body.count(c):
+                    problems.append(
+                        f"card {cid} {attr}: unbalanced {lbl} "
+                        f"({body.count(o)} open vs {body.count(c)} close)")
+            for m in re.finditer(r"\\\[(.*?)\\\]", body, re.S):
+                if m.group(1).count("{") != m.group(1).count("}"):
+                    problems.append(
+                        f"card {cid} {attr}: unbalanced LaTeX braces "
+                        f"inside math: {m.group(1)[:60]!r}")
     return problems[:10]
 
 
-def import_test(apkg: str) -> list[str]:
-    """Actually import the package. The only check that proves Anki will accept it.
+def _media_problems(col) -> list[str]:
+    """Every <img src> that names a local file must be present in the package media."""
+    problems = []
+    for nid in col.db.list("select id from notes"):
+        for field in col.get_note(nid).fields:
+            for m in re.finditer(r'<img[^>]+src="([^"]+)"', field):
+                name = m.group(1)
+                if name.startswith(("http:", "https:", "data:")):
+                    continue
+                if not col.media.have(name):
+                    problems.append(
+                        f"note {nid}: image {name!r} is referenced but "
+                        "not present in the package media")
+    return problems[:10]
 
-    Structural inspection cannot predict this. A genanki-written package passes
-    every field/DDL check and still dies on import with
-    `InvalidColumnType(6, "type", Integer)`; and setting cards.type = ord+1 by
-    hand to fix cloze produces that exact error. Both were observed. Only a real
-    import settles it.
+
+def import_checks(apkg: str) -> list[str]:
+    """Import the package once, then run render and media checks on that collection.
+
+    The real import is the only check that proves Anki will accept the package;
+    structural inspection cannot predict it. Render and media checks share the
+    imported collection so validation costs one import, not three.
     """
     try:
-        import tempfile
         from anki.collection import Collection
         from anki.importing import ImportAnkiPackageRequest
     except ImportError:
@@ -159,42 +161,22 @@ def import_test(apkg: str) -> list[str]:
             col = Collection(str(Path(td) / "t.anki2"))
             try:
                 col.import_anki_package(ImportAnkiPackageRequest(package_path=apkg))
+                try:
+                    problems.extend(_render_problems(col))
+                except Exception as e:
+                    problems.append(
+                        f"render check failed: {type(e).__name__}: {e}")
+                try:
+                    problems.extend(_media_problems(col))
+                except Exception as e:
+                    problems.append(
+                        f"media check failed: {type(e).__name__}: {str(e)[:160]}")
             finally:
                 col.close()
     except Exception as e:
         problems.append(f"Anki refused to import this package: "
                         f"{type(e).__name__}: {str(e)[:180]}")
     return problems
-
-
-def media_test(apkg: str) -> list[str]:
-    """Every <img src> that names a local file must be present in the package media."""
-    try:
-        from anki.collection import Collection
-        from anki.importing import ImportAnkiPackageRequest
-    except ImportError:
-        return []
-    problems = []
-    try:
-        with tempfile.TemporaryDirectory() as td:
-            col = Collection(str(Path(td) / "t.anki2"))
-            try:
-                col.import_anki_package(ImportAnkiPackageRequest(package_path=apkg))
-                for nid in col.db.list("select id from notes"):
-                    for field in col.get_note(nid).fields:
-                        for m in re.finditer(r'<img[^>]+src="([^"]+)"', field):
-                            name = m.group(1)
-                            if name.startswith(("http:", "https:", "data:")):
-                                continue
-                            if not col.media.have(name):
-                                problems.append(
-                                    f"note {nid}: image {name!r} is referenced but "
-                                    "not present in the package media")
-            finally:
-                col.close()
-    except Exception as e:
-        problems.append(f"media check failed: {type(e).__name__}: {str(e)[:160]}")
-    return problems[:10]
 
 
 def cloze_integrity(tmpdir: str) -> list[str]:
@@ -250,8 +232,7 @@ def main():
         return 1
 
     import_ok = anki_available()
-    errors = ([] if not import_ok else
-              import_test(args.apkg) + render_test(args.apkg) + media_test(args.apkg))
+    errors = [] if not import_ok else import_checks(args.apkg)
     warnings, samples = [], []
     with tempfile.TemporaryDirectory() as td:
         with zipfile.ZipFile(args.apkg) as z:

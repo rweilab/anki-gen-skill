@@ -61,20 +61,45 @@ These are deliberate, not forgotten:
 - Images now default on for figure-bearing PDFs as well as slides/video; only a confirmed
   text-only source or explicit caller no turns them off. A gates warning surfaces
   `images: no` when extraction found figures, without blocking an intentional opt-out.
-- `image-vision` is the first pixel path for every candidate, including `direct` figures.
-  `media_index` is only a text shortlist. A bounded main-model fallback remains available when
-  image-vision is unconfigured, has no usable model, or stops on a rate limit; label it
-  unverified.
+- `direct` figures may attach on high-confidence deterministic evidence; `confirm` figures
+  require image-vision or explicit caller approval. Stale “vision first for every candidate”
+  prose is gone from `SKILL.md`, `authoring.md`, `video.md`, and the changelog. `media_index` is
+  only a text shortlist. A bounded main-model fallback remains available when image-vision is
+  unconfigured, has no usable model, or stops on a rate limit; label it unverified.
 - The renderer unwraps math-only code spans, splits known section labels into paragraphs, skips
   escaped dollars, and normalizes doubled MathJax delimiters. The validator warns on code-span
   math and unseparated section labels, and errors on LaTeX outside math.
+- Raw structural HTML in card source now warns: built fields are HTML, authoring is Markdown.
+  HTML/CSS-learning cards can still show tags inside code spans.
+
+**Reliability and contract**
+- Removed the unused same-context self-audit from `review.md`; the rubric is shared by the
+  adversarial reviewer and the human page. The adversarial pass is mandatory when a read-only
+  subagent exists, not caller-optional.
+- Replaced old rule/stage numbers in runtime references with their current names. The glossary
+  check is documented as a warning, and `evidence_quote` is documented as a KC field only.
+- A failed post-build validation no longer leaves an `.apkg` in the caller’s directory; the build
+  writes beside the target and publishes only after validation.
+- `_extracted_figures` reads the state key the extractor writes, and `Ceiling:` accepts a list
+  marker. Missing built-in Basic/Cloze notetypes now produce an actionable error.
+- `validate_apkg` imports the package once and runs render/media checks on that collection.
+  The render check degrades to a warning if Anki’s private API changes; `anki` is pinned below 27.
+- The installer restores the previous skills if the second swap fails.
+- The review server rejects cross-origin and non-JSON feedback. Review cards now show the object
+  tags the build will ship, and cloze backs include front images.
+- Added `scripts/schema_types.py` for the JSON shapes that cross module boundaries.
 
 ### Tests
 
 - Revision hardening covers `decks`/`inspect`, `snapshots --create`, sync update/add/retire, and
   duplicate-footer prevention.
-- Pipeline hardening covers the figure-count warning without blocking. Render/validator hardening
-  covers the capacitance-deck code-span/label failures, escaped dollars, and doubled delimiters.
+- Pipeline hardening covers the figure-count warning without blocking, bullet `Ceiling:` parsing,
+  state-backed figure counts, and failed-validation cleanup. Render/validator hardening covers the
+  capacitance-deck code-span/label failures, escaped dollars, doubled delimiters, and raw HTML
+  source.
+- The smoke docs audit now fails on stale rule/stage numbers, the removed self-audit, glossary
+  severity drift, `evidence_quote` as a card field, and the old media policy. It also checks
+  cross-origin/non-JSON feedback rejection and cloze front-image fidelity.
 
 ### Compatibility
 

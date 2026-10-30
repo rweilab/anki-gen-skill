@@ -8,10 +8,10 @@ Review happens in a throwaway localhost page, **not in the chat** — the chat v
 card's full text through the conversation, and `y/n/e` could not express the two signals that drive
 cutting and splitting (*too hard for me*, *I already know this cold*).
 
-### Quality rubric — one rubric, three users
+### Quality rubric — one rubric
 
-Use this on the triaged sample plus flagged cards. The self-audit, the adversarial reviewer, and
-the human page use the same rubric; do not maintain a second checklist.
+Use this on the triaged sample plus flagged cards. The adversarial reviewer and the human page
+use the same rubric; do not maintain a second checklist.
 
 1. **Source-grounded:** locator supports the claim, or `derived` is genuinely self-contained.
 2. **One retrieval decision:** a wrong answer points to one thing to repair. It is not a duplicate
@@ -40,11 +40,8 @@ remaining solution. Flag a missing/unknown
 Flag a KC that is a card label, a generic `why`, or a single card that is a fragment. A card count
 is not evidence of KC quality.
 
-**Self-audit:** run the rubric on the sampled cards, one line each. It is not independent review
-and does not certify the deck. Fix or park what fails; say what you checked and did not check.
-
-**Adversarial reviewer:** default when a read-only subagent is available; skip only if none exists
-or the caller declines. Start after the web review opens. Give it `$WORK/review_packet.md` only,
+**Adversarial reviewer:** run whenever a read-only subagent is available; skip only if none
+exists. Start after the web review opens. Give it `$WORK/review_packet.md` only,
 one line per sampled card: `KEEP|FIX|FAIL | card number | one-line reason`. Use the one rubric for
 source, symbols, and media, then apply this decision/overlap pass:
 
@@ -111,7 +108,7 @@ Never present the fixed sample as certification.
 
 ### Run it
 
-The command is stage 10. It binds `127.0.0.1` on a free port, prints the URL, and appends each
+The command is the review step. It binds `127.0.0.1` on a free port, prints the URL, and appends each
 answer to the feedback log. **Each card shows why it was selected** ("flagged: near-duplicate front:
 96% similar to cards 22, 25", "tier-zero") — a reviewer who knows why answers better. The plan is
 checked against the deck's hashes on startup; a stale plan **aborts**. Without `--plan` the server
@@ -170,8 +167,9 @@ python3 "$SKILL/scripts/review_server.py" \
 
 > **Could you answer this from memory, without working it out?** — `y` / `n`
 
-Rows carry `recall: true|false`; the finish screen lists the `false` cards as rule-8 failures —
-rewrite the front to ask about the concept, or cut it. Run it as a second pass over the same plan
+Rows carry `recall: true|false`; the finish screen lists the `false` cards as recallability
+failures (hard rule 4) — rewrite the front to ask about the concept, or cut it. Run it as a
+second pass over the same plan
 when the deck is computation-heavy, or alone when recallability is in doubt.
 
 ### Review actions (required after feedback)
@@ -195,9 +193,10 @@ full source, or raw log; pull a source page range only if an anchor needs checki
 **Check answer alignment before style.** A card can be factually true and still not answer its
 front. If the front asks “which enzyme/law/step,” the back must name it first; explanation follows.
 
-**Chunking:** only if the build still peaks >150k or a topic >40 cards. One scope gate/deck name,
-per-topic cards+KC rows, concatenate or `--merge-existing`, then a deck-wide validate/triage/ROI.
-The risk is cross-topic anchors and duplicates.
+**Chunking:** only when context pressure is real (for example, a build peaking around 150k or one
+topic exceeding ~40 cards). One scope gate/deck name, per-topic cards+KC rows, concatenate or
+`--merge-existing`, then a deck-wide validate/triage/ROI. The risk is cross-topic anchors and
+duplicates.
 
 ### How to apply it
 
@@ -219,11 +218,11 @@ not reflexively split every hard card:
 
 | Symptom on review | Diagnosis | Fix (rule) |
 |---|---|---|
-| front unanswerable / ambiguous | unresolvable reference | name the concrete thing (13) |
-| blank on a term it assumes | missing prerequisite | anchor / glossary (10, 5) |
-| paragraph back never read | front too short for its back | demand the mechanism (11) |
+| front unanswerable / ambiguous | unresolvable reference | name the concrete thing (hard rules 3 and 9) |
+| blank on a term it assumes | missing prerequisite | anchor / glossary (`card-writing.md` § Anchor cards) |
+| paragraph back never read | front too short for its back | demand the mechanism (`card-writing.md` § front/back length) |
 | two cards keep colliding | interference, not redundancy | contrastive pair |
-| answerable on paper, not memory | it is a computation front | rewrite to concept (8) |
+| answerable on paper, not memory | it is a computation front | rewrite to concept (hard rule 4) |
 | know the fact, fail the method | procedural gap | Procedure layer, or practise outside Anki |
 
 **Batch independent edits in one step.** A per-card comment is still a one-line
@@ -266,8 +265,8 @@ chat before touching anything:
    strata and flag patterns the subset did not show; they belong to the same families, so the same
    rules cover them. Offer a second targeted round *only* when the rules conflict or a withheld
    topic raises a question the first round could not answer.
-5. **Re-run the gates and rebuild** — a content change means steps 8 and 13 run again before the
-   next build, as one batched call.
+5. **Re-run the gates and rebuild** — a content change means the gates and build run again
+   before the next handoff, as one batched call.
 
 **A summary that says "applied the feedback to the reviewed cards" has failed** when the feedback
 was deck-wide — the reviewer scored a sample, and the point of a sample is that its lessons apply

@@ -30,8 +30,8 @@ Required fields: `front`, `back`, `layer`, `topic`, `source`, `kc`. `deck` is le
 {"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.**\n\n**Why:** ...","layer":"L1","topic":"Voltage and Power","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
 ```
 
-Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `evidence_quote`
-(for a card claim narrower than its KC), `stratum`, `rev_id`.
+Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `stratum`, `rev_id`.
+`evidence_quote` belongs to the KC row in `kcs.md`, not to a card.
 
 **Fields.**
 - `source` is the locator (`Slides 2 p.2`, `Lec 04 Q7`, or `derived` for self-contained math).
@@ -60,8 +60,8 @@ Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `eviden
 - L1 Basic: recall of a fact, definition, formula, or constant.
 - L1 reversible: a reciprocal pair, one card each direction.
 - L2 Basic: concept, why/how, derivation, or analogy.
-- L2 Cloze: only a rule-15 enumeration, one separately examinable item per deletion; never a
-  whole formula.
+- L2 Cloze: only an enumeration, one separately examinable item per deletion; never a whole
+  formula.
 - L3 Basic: boundary, failure mode, or edge case.
 - Procedure A/B: one decision per card; shapes live in `card-writing.md` under Procedure.
 No Type-in and no Image Occlusion notetype.
@@ -85,8 +85,10 @@ a back, or an answer-leaking term in `topic`/`objects`.
 
 ## Reading discipline
 
-- Read `sources.md` once if it fits, or read its table of contents and the per-source files
-  you need. Do not reload the whole corpus to confirm a card.
+- Read `sources.md` once if it fits; otherwise use its headings and `grep`/line ranges to read
+  only the relevant sections. Do not read every per-source `.md` just because it exists.
+- Batch independent reads and inspections in one turn. Do not re-read a file you just wrote;
+  let the next gate catch a problem.
 - Do not read `scripts/`, the validator source, or a file you just wrote. Use the gate’s
   `fix:` hint; if it is unclear, report the error.
 - Do not read other work’s handoff docs. Read the chosen sources, learner context, and the
@@ -129,8 +131,10 @@ that does not mention images is not an opt-out. When images are on:
    compact text-ranked shortlist; it is not a visual match.
 2. Pick only candidates that show the thing the front asks about. Prefer a full slide/frame;
    a crop needs confirmation.
-3. Use `image-vision` first to identify/verify every candidate you need, including `direct`
-   ones. One batch by default; no per-image calls, no corpus pre-confirmation, no galleries.
+3. `direct` candidates may attach on a high-confidence caption, nearby source text, geometry,
+   media-index rank, or a previously verified figure. Use `image-vision` for `confirm`
+   candidates and whenever the figure needs label/value/connectivity reading or is ambiguous.
+   Do not require a vision call per card. When you do use it, batch candidates into one call.
 4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image per card.
 5. Build with `--media --media-root "$WORK"`.
 

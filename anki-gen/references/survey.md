@@ -38,8 +38,8 @@ for local media, confirm the file/directory, title, language, and whether sideca
 - Local: sidecar captions first; otherwise faster-whisper or whisper.cpp locally.
   No cloud upload. The whisper.cpp model downloads on first use.
 
-**Write the answers to `$WORK/intake.md` before leaving the survey.** Stages 4b,
-7 and 10 read this instead of re-asking:
+**Write the answers to `$WORK/intake.md` before leaving the survey.** The extraction, authoring,
+and review steps read this instead of re-asking:
 
 ```markdown
 # Intake
@@ -72,7 +72,7 @@ second criterion), and the learner's level (the calibration table). A `STUDY-LOG
 up wt% and at%" is worth more than another lecture deck. Report anything that changes scope or
 scaffolding — or say plainly that none were found.
 
-## Extraction (stages 4–4b)
+## Extraction
 
 Use **one synchronous** `pipeline.py --sources <...> --out .anki-gen-temp/<topic>` call with all
 chosen PDFs, text, PowerPoint, URLs, directories, and media. A directory containing both documents
@@ -93,8 +93,8 @@ Video and local media are owned by `references/video.md`: the preferred path is
 [--whole-playlist | --items 2-5] [--title "..."]`; `extract_video.py` is the single-source
 diagnosis path.
 
-**The deck audit is opt-in; do not offer it.** Run stage 3 only when the request asks ("is there a
-deck for this", "check online", "merge with what exists", or `audit_web: true`). The modal outcome
+**The deck audit is opt-in; do not offer it.** Run the deck audit only when the request asks ("is
+there a deck for this", "check online", "merge with what exists", or `audit_web: true`). The modal outcome
 is "generate your own"; a real Callister deck audited at 58/100. It pays off only when a good deck
 already exists for a popular course — rare enough to be a sentence in the request, not a question
 every run.

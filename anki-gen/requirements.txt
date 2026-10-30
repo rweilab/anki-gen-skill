@@ -1,5 +1,5 @@
 # Core: building decks and reading PDF/text. Tested with Python 3.10+.
-anki>=26.9.3
+anki>=26.9.3,<27
 pymupdf>=1.28.2,<2
 
 # Optional image, YouTube, and local-transcription libraries live in

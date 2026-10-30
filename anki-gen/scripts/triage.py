@@ -54,12 +54,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import card_hash, load_cards                       # noqa: E402
+from schema_types import Card                                  # noqa: E402
 from validate_cards import TIER_ZERO, exact_duplicate_pairs, findings   # noqa: E402
 
 DEFAULT_PER_TOPIC = 1
 
 
-def is_tier_zero(c: dict) -> bool:
+def is_tier_zero(c: Card) -> bool:
     """The field, or (for older cards) the phrase in the front."""
     return bool(c.get("tier_zero")) or bool(TIER_ZERO.search(str(c.get("front", ""))))
 
@@ -73,7 +74,7 @@ def _short(msg: str) -> str:
     return msg.split(" -- ", 1)[1] if " -- " in msg else msg
 
 
-def flagged_reasons(cards: list[dict]) -> dict[int, list[str]]:
+def flagged_reasons(cards: list[Card]) -> dict[int, list[str]]:
     """card number -> the reasons the validators distrust it. Info lines excluded.
 
     Exact normalized duplicates are surfaced here; soft answer-overlap similarity is
@@ -134,7 +135,7 @@ def kind_label(layer: str, cloze: bool) -> str:
     return f"{'cloze' if cloze else 'basic'} {layer or '?'}"
 
 
-def stratum_of(c: dict) -> str:
+def stratum_of(c: Card) -> str:
     """A deck-authored sub-kind, if the deck chose to declare one.
 
     Triage never interprets this: it groups by it and counts it. A deck that cares about
@@ -160,7 +161,7 @@ def reason_type(reason: str) -> str:
     return r[:60]
 
 
-def select(cards: list[dict], per_topic: int, max_total: int):
+def select(cards: list[Card], per_topic: int, max_total: int):
     """Return (entries, stats) -- see the axis table above for what each entry is for."""
     flagged = flagged_reasons(cards)
     media_ids = [i for i, c in enumerate(cards, 1) if c.get("media")]
@@ -314,7 +315,7 @@ def select(cards: list[dict], per_topic: int, max_total: int):
     return entries, stats
 
 
-def build_plan(cards_json: str, cards: list[dict], entries, stats,
+def build_plan(cards_json: str, cards: list[Card], entries, stats,
                per_topic: int, max_total: int) -> dict:
     n = stats["total"]
     if not entries:
@@ -352,7 +353,7 @@ def build_plan(cards_json: str, cards: list[dict], entries, stats,
     }
 
 
-def report(plan: dict, cards: list[dict], out: Path) -> None:
+def report(plan: dict, cards: list[Card], out: Path) -> None:
     print(f"REVIEW TRIAGE — {plan['note']}")
     print("=" * 78)
     AXIS = [

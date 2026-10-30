@@ -92,7 +92,16 @@ if [ -e "$DEST/anki-gen" ] || [ -e "$DEST/image-vision" ]; then
 fi
 
 for name in anki-gen image-vision; do
-  mv "$STAGE/$name" "$DEST/$name"
+  if ! mv "$STAGE/$name" "$DEST/$name"; then
+    echo "Install failed for $name; restoring the previous skills." >&2
+    for restore in anki-gen image-vision; do
+      rm -rf "$DEST/$restore"
+      if [ -n "$BACKUP" ] && [ -e "$BACKUP/$restore" ]; then
+        mv "$BACKUP/$restore" "$DEST/$restore"
+      fi
+    done
+    exit 1
+  fi
   echo "Installed $name  ->  $DEST/$name"
 done
 

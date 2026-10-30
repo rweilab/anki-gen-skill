@@ -528,6 +528,13 @@ def main() -> int:
     case("math inside a code span",
          lambda: [dict(BASE, back="**The answer is `$C$`.**\n\n**Why:** geometry fixes it.")],
          "warning", "math inside a code span")
+    case("raw HTML source",
+         lambda: [dict(BASE, back="<p><b>The vacancy costs energy.</b></p><ul><li>one</li>"
+                                  "<li>two</li></ul> **Why:** entropy lowers the free energy.")],
+         "warning", "raw HTML tag")
+    html_code, _ = validate([dict(BASE, back="Use `<p>` as a literal HTML tag.\n\n"
+                                           "**Why:** the tag is the lesson.")])
+    assert not any("raw HTML tag" in w for w in html_code["warnings"]), html_code
     case("section label without blank line",
          lambda: [dict(BASE, back="The answer is fixed. **Why:** geometry fixes it.")],
          "warning", "not preceded by a blank line")

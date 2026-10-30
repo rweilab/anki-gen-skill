@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from cardid import card_hash, last_row_per_card, load_cards  # noqa: E402
 from preflight import check as preflight            # noqa: E402
+from schema_types import Card, FeedbackRow           # noqa: E402
 from validate_cards import fix_for                   # noqa: E402
 
 STATE_FILE = "pipeline_state.json"
@@ -386,10 +387,10 @@ def _feedback_paths(out: Path) -> list[Path]:
     return paths
 
 
-def _feedback_rows(out: Path) -> tuple[list[dict], list[dict]]:
+def _feedback_rows(out: Path) -> tuple[list[FeedbackRow], list[FeedbackRow]]:
     """Last row per card for the scale and recall logs, separately."""
-    scale: dict[str, dict] = {}
-    recall: dict[str, dict] = {}
+    scale: dict[str, FeedbackRow] = {}
+    recall: dict[str, FeedbackRow] = {}
     for path in _feedback_paths(out):
         rows = []
         try:
@@ -420,7 +421,7 @@ def _feedback_sha(out: Path) -> str:
     return digest.hexdigest()
 
 
-def _review_actions_doc(cards: list[dict], plan: dict, out: Path,
+def _review_actions_doc(cards: list[Card], plan: dict, out: Path,
                         scale_rows: list[dict], recall_rows: list[dict]) -> dict:
     by_hash = {card_hash(c): i for i, c in enumerate(cards, 1)}
     score5, score1, score4, kept = [], {}, [], []
@@ -543,7 +544,7 @@ def _legacy_review_actions_state(action: Path, paths: list[Path],
 
 
 def review_actions_state(out: Path, cards_path: Path | None = None,
-                         cards: list[dict] | None = None) -> dict:
+                         cards: list[Card] | None = None) -> dict:
     """Whether feedback requires a resolved action file, and whether it is current."""
     paths = _feedback_paths(out)
     if not paths:
@@ -632,7 +633,7 @@ def _intake_images(out: Path) -> str:
 def _extracted_figures(out: Path) -> int:
     """Figure count from extraction state, falling back to source manifests."""
     state = _load_state(out)
-    count = (state.get("extract") or {}).get("figures")
+    count = state.get("figures")
     if isinstance(count, int):
         return count
     total = 0
@@ -646,7 +647,7 @@ def _extracted_figures(out: Path) -> int:
     return total
 
 
-def write_review_packet(out: Path, cards: list[dict], plan: dict,
+def write_review_packet(out: Path, cards: list[Card], plan: dict,
                         ledger_text: str | None) -> Path:
     """A compact, packet-only input for the optional adversarial reviewer.
 
@@ -767,7 +768,7 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
     media_risks = audit_cards(cards, out)
     ceiling = None
     scope_text = _scope_text(out)
-    match = re.search(r"(?mi)^\s*Ceiling\s*[:~-]?\s*(\d+)", scope_text)
+    match = re.search(r"(?mi)^\s*(?:[-*+]\s*)?Ceiling\s*[:~-]?\s*(\d+)", scope_text)
     if match:
         ceiling = int(match.group(1))
         if len(cards) > ceiling:
@@ -802,25 +803,31 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
 def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
                 media: bool, media_root: str | None,
                 merge_existing: str | None = None) -> dict:
-    """Build and validate the package in one process, returning a compact result."""
+    """Build and validate the package, publishing it only after validation passes."""
     target = apkg or (out / "deck.apkg")
+    # Build beside the destination so a failed validation can never leave a bad
+    # deliverable in the caller's cwd.
+    tmp = target.with_name(f".{target.name}.tmp-{os.getpid()}")
     cmd = [sys.executable, str(Path(__file__).with_name("build_apkg.py")),
-           str(cards_path), str(target), "--deck-name", deck_name]
+           str(cards_path), str(tmp), "--deck-name", deck_name]
     if media:
         cmd += ["--media", "--media-root", str(media_root or cards_path.parent)]
     if merge_existing:
         cmd += ["--merge-existing", merge_existing]
     built = subprocess.run(cmd, capture_output=True, text=True)
     if built.returncode != 0:
+        tmp.unlink(missing_ok=True)
         return {"ok": False, "apkg": None, "error": built.stderr[-500:] or built.stdout[-500:]}
     validated = subprocess.run(
         [sys.executable, str(Path(__file__).with_name("validate_apkg.py")),
-         str(target)], capture_output=True, text=True)
+         str(tmp)], capture_output=True, text=True)
     if validated.returncode != 0:
-        return {"ok": False, "apkg": str(target),
+        tmp.unlink(missing_ok=True)
+        return {"ok": False, "apkg": None,
                 "error": validated.stderr[-500:] or validated.stdout[-500:]}
+    tmp.replace(target)
     summary = " | ".join(line.strip() for line in built.stdout.splitlines()
-                         if line.strip())
+                         if line.strip()).replace(str(tmp), str(target))
     return {"ok": True, "apkg": str(target), "validation": validated.stdout.strip(),
             "build": summary[-500:]}
 
@@ -859,7 +866,7 @@ def artifact_state(out: Path) -> dict[str, bool]:
     return state
 
 
-def evidence_line(cards: list[dict], out: Path) -> str:
+def evidence_line(cards: list[Card], out: Path) -> str:
     """A compact, human-readable evidence summary; no card text."""
     arts = artifact_state(out)
     sources = [str(c.get("source") or c.get("source_ref") or "").strip()

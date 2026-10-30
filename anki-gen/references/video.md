@@ -40,7 +40,8 @@ accepts `.mp4`, `.mkv`, `.mov`, `.webm`, `.m4v`, `.avi`, and audio-only
 
 ## Questions, once
 
-Answers go in `$WORK/intake.md`; stages 4b/7/10 read them instead of re-asking.
+Answers go in `$WORK/intake.md`; the extraction, authoring, and review steps read them instead of
+re-asking.
 
 - Local: which file/directory, title, language, and whether a sidecar caption exists?
 - YouTube: whole playlist, or videos x–z?
@@ -114,11 +115,12 @@ The picker is two-stage:
   slides search from the video title/description; register the URL as a second
   source and cite it. Do not invent diagrams or use a random mirror.
 - `--max` is a safety cap, not a per-video target.
-- **Use image-vision first for pixels.** No `read` on `media/*.png` by default; use
-  `vision_check.py` for the frames you need to identify or verify. If image-vision is
-  unconfigured, has no usable model, or stops on a rate limit, the bounded main-model fallback
-  in `SKILL.md` is allowed for necessary frames; label the result unverified. These are the
-  expensive, low-yield calls this pipeline exists to avoid.
+- **Use image-vision when you need to inspect pixels.** `direct` frames attach on deterministic
+  evidence; `confirm` frames need `vision_check.py` or explicit caller approval. No `read` on
+  `media/*.png` by default. If image-vision is unconfigured, has no usable model, or stops on a
+  rate limit, the bounded main-model fallback in `SKILL.md` is allowed for necessary frames;
+  label the result unverified. These are the expensive, low-yield calls this pipeline exists to
+  avoid.
 
 Stop a background `vision_check` with the PID you started (`$!`) or a bracket
 pattern such as `pkill -f '[v]ision_check.py'`; never `pgrep -f` the literal name.

@@ -1,4 +1,4 @@
-# Stage prompts
+# Runbook prompts
 
 Two prompts: CLASSIFIER at intake/authoring, DEBLOATER at review follow-up. The card-writing
 rules and gates are the writer/verifier contract; there is no second writer prompt.

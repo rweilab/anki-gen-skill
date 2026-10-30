@@ -131,7 +131,7 @@ This table is the ownership map, not a second rule list.
 | One retrieval decision | `card-writing.md` § recallability | `validate_cards` / review |
 | Unambiguous cue, no leak | `card-writing.md` § recallability | `validate_cards` tag leak / review |
 | Production, not recognition | `card-writing.md` § recallability | `validate_cards` computation front |
-| Conditions, units, symbols | `card-writing.md` § symbols | glossary info / review |
+| Conditions, units, symbols | `card-writing.md` § symbols | glossary warning / review |
 | Near-miss discrimination | `card-writing.md` | review / adversarial review |
 | Answer first, then why | `card-writing.md` § answer first | `validate_cards` proxy / review |
 | Self-contained front | `card-writing.md` § fronts | `validate_cards` front-image warning / review |
@@ -173,7 +173,7 @@ The runtime path is deliberately small. Before adding a runtime artifact, comman
    scale-free instead. The model writes its own budget in `intake.md` from scope.
 5. Does every quality lesson it carries have an owner: gate, reference, or review?
 
-`SKILL.md` stays under ~280 lines and ten hard rules. A gate should use the same
+`SKILL.md` stays under ~300 lines and ten hard rules. A gate should use the same
 `validate_cards` checks; a second validator call is a regression.
 
 ## Deprecations

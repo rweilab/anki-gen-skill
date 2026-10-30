@@ -41,6 +41,8 @@ from urllib.parse import unquote
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import card_hash, load_cards                 # noqa: E402
 from render import to_html, with_source, CSS  # noqa: E402
+from build_apkg import normalize_objects      # noqa: E402
+from schema_types import Card, FeedbackRow, PlanEntry  # noqa: E402
 import media  # noqa: E402
 
 # Vendored MathJax. One self-contained file with the glyphs embedded as SVG
@@ -105,7 +107,7 @@ META = '<div class="meta">{topic}</div>'
 
 # Same topic-first rule as build_native.py: the label is the chapter name, not
 # the internal layer code. The browser-side mapping lives in APP_JS.
-def render_cards(cards: list[dict], plan_entries: list[dict] | None = None,
+def render_cards(cards: list[Card], plan_entries: list[PlanEntry] | None = None,
                  media_root: str | None = None) -> list[dict]:
     """Build the front/back HTML for every card, mirroring build_native's templates.
 
@@ -157,7 +159,9 @@ def render_cards(cards: list[dict], plan_entries: list[dict] | None = None,
         if c.get("cloze"):
             text = str(c.get("front", ""))
             front = render_cloze(text, reveal=False) + "".join(front_imgs) + meta
-            back = (render_cloze(text, reveal=True)
+            # The deck's Text field carries front images, so the cloze answer
+            # side shows them too; mirror that in review.
+            back = (render_cloze(text, reveal=True) + "".join(front_imgs)
                     + '<hr id="answer">'
                     + with_source(to_html(str(c.get("back", ""))) + "".join(back_imgs),
                                   source, source_url))
@@ -189,7 +193,7 @@ def render_cards(cards: list[dict], plan_entries: list[dict] | None = None,
 
 
 # ------------------------------------------------------------------ state
-def row_key(row: dict) -> str:
+def row_key(row: FeedbackRow) -> str:
     """Card identity, not array position: hash, then note number, then old index."""
     h = row.get("hash")
     if h:
@@ -226,14 +230,14 @@ class Store:
                 if key:
                     self.rows[key] = r
 
-    def put(self, row: dict) -> None:
+    def put(self, row: FeedbackRow) -> None:
         with self.lock:
             self.rows[row_key(row)] = row
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a") as f:
                 f.write(json.dumps(row) + "\n")
 
-    def state(self) -> dict:
+    def state(self) -> dict[str, FeedbackRow]:
         with self.lock:
             return {k: v for k, v in sorted(self.rows.items())}
 
@@ -1091,11 +1095,33 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, "text/plain", b"not found")
 
+    def _cross_site(self) -> bool:
+        """Reject a POST made by another web origin; local curl is allowed."""
+        origin = self.headers.get("Origin")
+        if origin:
+            host = self.headers.get("Host", "")
+            if origin not in (f"http://{host}", f"https://{host}"):
+                return True
+        fetch_site = self.headers.get("Sec-Fetch-Site")
+        return bool(fetch_site and fetch_site not in ("same-origin", "none"))
+
     def do_POST(self):
         self._touch()
-        n = int(self.headers.get("Content-Length") or 0)
+        if self._cross_site():
+            self._send(403, "text/plain", b"forbidden")
+            return
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._send(400, "text/plain", b"bad content-length")
+            return
         if n > 1_000_000:                 # local server, but don't buffer unbounded input
             self._send(413, "text/plain", b"too large")
+            return
+        if self.path == "/feedback" and \
+                self.headers.get("Content-Type", "").split(";")[0].strip().lower() \
+                != "application/json":
+            self._send(415, "text/plain", b"application/json required")
             return
         raw = self.rfile.read(n)
         if self.path == "/feedback":
@@ -1201,6 +1227,8 @@ def main() -> int:
     if not isinstance(cards, list) or not cards:
         print("no cards to review", file=sys.stderr)
         return 2
+    # Show the tags the build will actually ship.
+    cards = normalize_objects(cards)
 
     plan_entries = None
     plan_note = ""

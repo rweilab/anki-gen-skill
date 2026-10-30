@@ -30,6 +30,7 @@ import re
 # render a card differently from the deck it was previewing. Import, do not copy.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from render import CSS, to_html, with_source  # noqa: E402
+from schema_types import Card                  # noqa: E402
 import media  # noqa: E402
 
 
@@ -125,7 +126,7 @@ def _retype(base: dict, *, name: str, field_names, qfmt, afmt) -> dict:
     return nt
 
 
-def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
+def build_with_anki(cards: list[Card], out_path: str, deck_name: str,
                     existing_apkg: str | None = None,
                     media_root: str | None = None,
                     enable_media: bool = False) -> dict:
@@ -166,15 +167,18 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
                 raise ValueError(
                     f"could not import merge target {existing_apkg}: {e}") from e
 
-        base_basic = col.models.by_name("Basic")
-        base_cloze = col.models.by_name("Cloze")
-
         # On a merge, the target deck already has these notetypes. Reuse them:
         # adding them again on every merge accumulated two duplicate notetypes
         # per run (8 -> 10 -> 12 on three merges), which is invisible in the
         # cards but bloats the collection and confuses the browser.
         basic_nt = col.models.by_name("3-Layer STEM")
         if basic_nt is None:
+            base_basic = col.models.by_name("Basic")
+            if base_basic is None:
+                col.close()
+                raise ValueError(
+                    "Anki's built-in Basic notetype is missing; restore it in "
+                    "Tools > Manage Note Types before building")
             col.models.add_dict(_retype(
                 base_basic, name="3-Layer STEM",
                 field_names=["Front", "Back", "Layer", "Topic", "Media"],
@@ -183,6 +187,12 @@ def build_with_anki(cards: list[dict], out_path: str, deck_name: str,
             basic_nt = col.models.by_name("3-Layer STEM")
         cloze_nt = col.models.by_name("3-Layer STEM Cloze")
         if cloze_nt is None:
+            base_cloze = col.models.by_name("Cloze")
+            if base_cloze is None:
+                col.close()
+                raise ValueError(
+                    "Anki's built-in Cloze notetype is missing; restore it in "
+                    "Tools > Manage Note Types before building")
             col.models.add_dict(_retype(
                 base_cloze, name="3-Layer STEM Cloze",
                 field_names=["Text", "Extra", "Layer", "Topic", "Media"],

@@ -71,8 +71,8 @@ read only the current step's reference; do not read ahead. More context is not b
 4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`,
    `review_packet.md`, and `roi.txt`. Fix all errors in one rewrite, then run one gates call again.
    Do not run a separate validator after every edit.
-5. **Review.** Start the web review. Wait. Run one adversarial subagent pass by default when a
-   read-only subagent is available; skip only if unavailable or the caller declines. If no human
+5. **Review.** Start the web review. Wait. Run one adversarial subagent pass whenever a
+   read-only subagent is available; skip only if none exists. If no human
    reviewer is available, skip the page, say "not manually reviewed; static checks only," and still
    run the adversarial pass after the gates call if a subagent is available. Read only low scores and comments. Apply all
    feedback in one rewrite. If feedback exists, run one gates call to create
@@ -166,12 +166,13 @@ caller opted out; default-on still means attach only figures that show what the 
   **once**; it prints a compact ranked candidate list.
 - Attach only a candidate that shows the thing the front asks about. Prefer the full slide or
   frame; a crop needs confirmation. One image per card.
-- `media_index.py` is a text shortlist, not a visual check. Use
-  `python3 "$SKILL/../image-vision/scripts/vision_check.py"` first for every candidate
-  figure you need to identify or verify, including `direct` candidates. `direct` means
-  extraction quality, not semantic correctness.
-- Batch candidates into one `image-vision` call by default (or one call per source if the
-  batch is genuinely large); no per-image calls, no corpus pre-confirmation, no galleries.
+- `media_index.py` is a text shortlist, not a visual check. `direct` candidates may attach on
+  high-confidence deterministic evidence: the caption, nearby source text, figure geometry, the
+  media-index rank, or a previously verified figure. Use image-vision for `confirm` candidates
+  and whenever you need to read labels, values, connectivity, or an ambiguous figure. `direct`
+  means extraction quality, not semantic correctness.
+- When you do use image-vision, batch the candidates into one call (or one call per source if
+  the batch is genuinely large); no per-image calls, no corpus pre-confirmation, no galleries.
 - If no good image exists, leave the card without one and say so. Never lower the bar to hit an
   image count.
 - If image-vision is unconfigured, has no usable model, or stops on a rate limit, a bounded
@@ -199,10 +200,11 @@ and the build proceeds.
 Stop a stuck server with `curl -X POST <url>/finish`, never `pkill -f`. Score 1 is calibration
 (“known / too easy”), not automatic rejection; score 5 is the only removal verdict.
 
-The adversarial reviewer is the default when a read-only subagent/task tool is available. Give it
+The adversarial reviewer is mandatory when a read-only subagent/task tool is available. Give it
 `$WORK/review_packet.md` only (the gates call writes it), after the web review is open or after the
-gates call when the page is skipped, and ask for findings by card number. It never rewrites or certifies. Skip only when no subagent exists
-or the caller declines. Do not rerun it after a formatting-only change; render one card instead.
+gates call when the page is skipped, and ask for findings by card number. It never rewrites or
+certifies. Skip only when no subagent exists. Do not rerun it after a formatting-only change;
+render one card instead.
 
 ## Build, cleanup, report
 
@@ -225,7 +227,8 @@ Quality: DONE / DONE WITH WARNINGS / NOT REVIEWED / BLOCKED — one line
 <optional: a one-line cut list>
 ```
 
-Never narrate stages, validator counts, or work-file names. Never quote card text; that is
+Do not narrate jargon — stage numbers, validator counts, or work-file names; short plain-language
+status while it runs is fine. Never quote card text; that is
 what the review page is for. For an expert caller, add validator warnings, ROI reading, and
 what the review found. The `Assumed:` line is mandatory whenever you skipped a question.
 
@@ -251,7 +254,9 @@ what the review found. The `Assumed:` line is mandatory whenever you skipped a q
 - Do not probe for LibreOffice, Office, desktop converters, or random system tools. Use the
   declared extractors. After two failed probes, stop and report the limitation.
 - No filler cards to satisfy a KC count; park the weaker candidate.
-- No command that only confirms a file you wrote. No re-reading an artifact.
+- Batch independent reads and inspections. No command that only confirms a file you
+  wrote; no re-reading an artifact. Use `sources.md` headings plus `grep`/line ranges
+  instead of reading every per-source file.
 - If a command fails twice for the same reason, stop and report the blocker.
 - If you exceed your own budget by 50%, stop and report. Do not spend more to avoid reporting.
 

@@ -134,7 +134,7 @@ pass "render matrix"
 python3 - "$SCRIPTS" <<'PY' || fail "cloze preview fidelity"
 import sys
 sys.path.insert(0, sys.argv[1])
-from review_server import render_cloze
+from review_server import render_cloze, render_cards
 from render import to_html
 answer = r"$Q_v$ and **two**"
 preview = render_cloze("{{c1::" + answer + "}}", True)
@@ -143,6 +143,10 @@ assert to_html(answer) in preview, (to_html(answer), preview)
 assert "$Q_v$" not in preview
 hint = render_cloze("{{c1::answer::$h$}}", False)
 assert r"\(h\)" in hint, hint
+card = {"front": "A {{c1::B}}", "back": "x", "layer": "L1", "topic": "T",
+        "cloze": True, "media": [{"file": "media/pixel.png", "side": "front"}]}
+rendered = render_cards([card])[0]
+assert "/media/media/pixel.png" in rendered["back"], rendered["back"]
 PY
 pass "cloze preview fidelity"
 
@@ -213,6 +217,29 @@ for name in ("NOTES.md", "TODO.md", "SUMMARY.md", "PLAN.md"):
     for path in (root / name, root / "maintainers" / name):
         if path.exists():
             bad.append(f"scratch doc committed: {path.relative_to(root)}")
+runtime_docs = [root / "SKILL.md", root / "MAINTAINERS.md", root / "AGENTS.md",
+                *sorted((root / "references").glob("*.md"))]
+for md in runtime_docs:
+    text = md.read_text()
+    rel = md.relative_to(root)
+    if re.search(r"\brule-\d+|\bstage[s]? \d", text):
+        bad.append(f"{rel}: stale rule/stage number")
+    if "self-audit" in text:
+        bad.append(f"{rel}: self-audit is not a runtime step")
+    if "caller declines" in text:
+        bad.append(f"{rel}: adversarial review is mandatory when available")
+    if "glossary info" in text or "reports (info, not a warning)" in text:
+        bad.append(f"{rel}: glossary severity is a warning")
+authoring = (root / "references" / "authoring.md").read_text()
+for line in authoring.splitlines():
+    if line.startswith("Optional fields:") and "evidence_quote" in line:
+        bad.append("references/authoring.md: evidence_quote is a KC field, not a card field")
+video = (root / "references" / "video.md").read_text()
+for stale in ("first pixel path", "Use image-vision first"):
+    if stale in video:
+        bad.append(f"references/video.md: stale media policy: {stale}")
+if not re.search(r"`direct` candidates may attach", (root / "SKILL.md").read_text()):
+    bad.append("SKILL.md: missing direct/confirm media policy")
 if bad:
     print("\n".join(bad), file=sys.stderr)
     raise SystemExit(1)
@@ -428,6 +455,16 @@ rows = [json.loads(x) for x in open(sys.argv[1]) if x.strip()]
 assert any(r.get("score") == 1 and r.get("comment") == "too easy" for r in rows), rows
 FEEDBACK
 pass "POST /feedback stores a row"
+
+code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Origin: https://evil.example' -H 'Content-Type: application/json' \
+  --data '{"n":1,"i":1,"score":5}' "${URL%/}/feedback" || true)"
+[ "$code" = "403" ] || fail "cross-origin feedback was not rejected"
+code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Content-Type: text/plain' --data '{"n":1,"i":1,"score":5}' \
+  "${URL%/}/feedback" || true)"
+[ "$code" = "415" ] || fail "non-JSON feedback was not rejected"
+pass "review server rejects cross-origin and non-JSON feedback"
 
 curl -s -m 3 -X POST "${URL%/}/finish" >/dev/null 2>&1 || true
 [ -f "$WORK/review_done" ] || fail "finish sentinel was not written beside the feedback log"

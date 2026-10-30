@@ -416,7 +416,7 @@ def main() -> int:
         intake_scope_work = td / "intake-scope-work"
         intake_scope_work.mkdir()
         (intake_scope_work / "intake.md").write_text(
-            "# Intake\n\n## Scope\n\nCeiling: 2\n")
+            "# Intake\n\n## Scope\n\n- Ceiling: 2\n")
         (intake_scope_work / "kcs.md").write_text((kc_work / "kcs.md").read_text())
         (intake_scope_work / "sources.md").write_text(
             (kc_work / "sources.md").read_text())
@@ -498,6 +498,26 @@ def main() -> int:
                  "--out-apkg", str(td / "bad.apkg")], td)
         assert r.returncode != 0 and not (td / "bad.apkg").exists(), (r.stdout, r.stderr)
         print("ok    pipeline refuses build on alignment error")
+
+        fig_state = td / "fig-state"
+        fig_state.mkdir()
+        (fig_state / "pipeline_state.json").write_text(json.dumps({"figures": 3}))
+        assert pipeline._extracted_figures(fig_state) == 3, "figure state key drifted"
+        print("ok    figure count reads the state key the extractor writes")
+
+        target = td / "atomic.apkg"
+        def fake_run(cmd, *args, **kwargs):
+            if any(str(x).endswith("build_apkg.py") for x in cmd):
+                Path(cmd[3]).write_bytes(b"not a package")
+                return subprocess.CompletedProcess(cmd, 0, "Built 1 note", "")
+            return subprocess.CompletedProcess(cmd, 1, "", "validation failed")
+        with mock.patch("pipeline.subprocess.run", side_effect=fake_run):
+            result = pipeline.stage_build(
+                Path("cards.jsonl"), td, "DECK", target, False, None)
+        assert result["ok"] is False, result
+        assert not target.exists(), "failed validation published an .apkg"
+        assert not list(td.glob(".atomic.apkg.tmp-*")), "temp build left behind"
+        print("ok    failed validation leaves no .apkg or temp file")
 
         fake_home = td / "home"
         (fake_home / ".claude" / "skills" / ".backups" / "old").mkdir(parents=True)

@@ -15,13 +15,15 @@ from __future__ import annotations
 import html
 from pathlib import Path
 
+from schema_types import Card, MediaItem
+
 DEFAULT_SIDE = "back"
 MAX_PER_CARD = 2
 MAX_BYTES = 1_000_000
 MAX_PX = 1600
 
 
-def items(card: dict) -> list[dict]:
+def items(card: Card) -> list[MediaItem]:
     """Normalize a card's media list to [{file, side, caption, source}]."""
     out = []
     for m in card.get("media") or []:
@@ -126,7 +128,7 @@ def img_html(url: str, caption: str = "", missing: bool = False) -> str:
             f'alt="{alt}" loading="lazy"></div>{cap}')
 
 
-def primary_source(items_: list[dict]) -> tuple[str, str]:
+def primary_source(items_: list[MediaItem]) -> tuple[str, str]:
     """The footer source for a card with media: one line, no duplicate label."""
     for m in items_:
         if m.get("source"):

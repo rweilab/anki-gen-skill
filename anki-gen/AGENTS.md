@@ -69,7 +69,7 @@ documentation.
 `SKILL.md` is the 7-step runbook. Do not add diagnosis commands, deck-script authoring paths,
 per-card ledgers, or fixed card/KC/call quotas to it. The model writes its own budget from scope;
 runtime rules are structural and scale-free. A new runtime artifact or command must replace an
-existing one, not sit beside it. Keep `SKILL.md` under ~280 lines and ten hard rules.
+existing one, not sit beside it. Keep `SKILL.md` under ~300 lines and ten hard rules.
 
 Do not edit the live skill while a deck run is active. Use a copy or finish the run first; a gate
 schema change under a running model forces rework.

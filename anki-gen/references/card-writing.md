@@ -11,7 +11,7 @@ topic/objects · KC.
 
 If a front or back contains symbols, the back defines each with units — `N` = total atomic
 lattice sites, with the required density units named. "Identify all variables" is an exam
-objective, so a formula card without the glossary tests half the thing. `validate_cards` reports (info, not a warning) symbol-heavy L1/L2 cards with no
+objective, so a formula card without the glossary tests half the thing. `validate_cards` reports a warning for symbol-heavy L1/L2 cards with no
 structural glossary or definition line; the review checklist still asks for one.
 
 Write symbols in MathJax, not plain text: `$P_{0}$`, not `P_0`; `$\rho_{\text{oil}}$`, not
@@ -390,7 +390,7 @@ Establish this first, because it changes how much a back carries:
 | Attended the lectures, cramming | the distinction and the trap; assume the vocabulary | only for symbols the course flags | one, at most | **a decision** — which move, which condition, which way the result moves |
 | Already strong, narrow weakness | the boundary or the exception | never | none | **the boundary** — where the limit lies |
 
-**The last column is a preference, not a formality** (hard rule 9). "Spot the error in this finished
+**The last column is a calibration preference, not a hard rule.** "Spot the error in this finished
 answer" and "which move do you make here" are both legal L3s and *not the same card*: a learner
 who rejects a diagnosis-shaped L3 reads it as a trap, not a decision. Reframe the front around
 the decision, keep the trap in the back. A 5 with "I'd rather have a procedural question" is the

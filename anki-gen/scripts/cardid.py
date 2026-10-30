@@ -24,8 +24,10 @@ import hashlib
 import json
 from pathlib import Path
 
+from schema_types import Card, FeedbackRow
 
-def load_cards(path) -> list[dict]:
+
+def load_cards(path) -> list[Card]:
     """Read a deck in either form: one JSON array, or one card per line (JSONL).
 
     Both are supported because they answer different needs. JSONL is the better
@@ -44,7 +46,7 @@ def load_cards(path) -> list[dict]:
     return json.loads(text)
 
 
-def card_hash(c: dict) -> str:
+def card_hash(c: Card) -> str:
     """A card's content identity: md5(front|back).
 
     An explicit `hash` is ignored. The old authoring helper used to write one, and
@@ -57,7 +59,7 @@ def card_hash(c: dict) -> str:
         f"{c.get('front', '')}|{c.get('back', '')}".encode()).hexdigest()
 
 
-def last_row_per_card(rows: list[dict]) -> dict[str, dict]:
+def last_row_per_card(rows: list[FeedbackRow]) -> dict[str, FeedbackRow]:
     """Reduce an append-only feedback log to one row per card: the LAST one.
 
     The log is append-per-event and last-write-wins (see review_server.Store), so

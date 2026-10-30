@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # agree on what a card *is* by construction rather than by convention. Re-exported
 # here because build_native.py calls build_apkg.card_hash.
 from cardid import card_hash, load_cards   # noqa: E402,F401
+from schema_types import Card              # noqa: E402
 
 # L3 and Procedure share the last rank: neither is reliably "easier", so keep
 # them in the order the author wrote them.
@@ -43,7 +44,7 @@ def _same_stem(a: str, b: str) -> bool:
     return len(a) >= 6 and len(b) >= 6 and a[:6] == b[:6]
 
 
-def normalize_objects(cards: list[dict]) -> list[dict]:
+def normalize_objects(cards: list[Card]) -> list[Card]:
     """Keep broad, cross-topic buckets; drop topic/subtopic and one-topic tags.
 
     The writer's object list is deliberately a suggestion. A topic already tags
@@ -97,7 +98,7 @@ def normalize_objects(cards: list[dict]) -> list[dict]:
     return out
 
 
-def _grouped_order(cards: list[dict]) -> list[dict]:
+def _grouped_order(cards: list[Card]) -> list[Card]:
     topic_order: dict[str, int] = {}
     for c in cards:
         topic = str(c.get("topic", ""))
@@ -112,7 +113,7 @@ def _grouped_order(cards: list[dict]) -> list[dict]:
     )
 
 
-def study_order(cards: list[dict]) -> list[dict]:
+def study_order(cards: list[Card]) -> list[Card]:
     """Scatter topics loosely, without breaking a topic's tier-zero anchor.
 
     Small decks stay grouped. Larger decks interleave topics: a topic's tier-zero
