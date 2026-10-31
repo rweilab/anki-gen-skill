@@ -76,6 +76,12 @@ These are deliberate, not forgotten:
 - Removed the unused same-context self-audit from `review.md`; the rubric is shared by the
   adversarial reviewer and the human page. The adversarial pass is mandatory when a read-only
   subagent exists, not caller-optional.
+- Review feedback is applied in one complete `cards.jsonl` write. Per-card edit guidance is gone
+  from `SKILL.md`, `authoring.md`, `review.md`, and `prompts.md`.
+- The media policy now documents up to two images per card; the builder already capped at two.
+  Authoring and prompts state the full `sources.md`/`transcripts.md` read, not cherry-picking.
+- The root README’s no-human review path now mentions the automatic checks and independent
+  reviewer instead of saying “static checks only.”
 - Replaced old rule/stage numbers in runtime references with their current names. The glossary
   check is documented as a warning, and `evidence_quote` is documented as a KC field only.
 - A failed post-build validation no longer leaves an `.apkg` in the caller’s directory; the build

@@ -4,10 +4,10 @@ One authoring format: `$WORK/cards.jsonl`. One line per card. No deck script, no
 `make_cards.py`, no ad hoc Python patches. `cards.json` is still read for old work dirs;
 new runs write `cards.jsonl`.
 
-Write the whole file in one pass per topic. To change a card, rewrite the file (or the
-affected topic batch) in one write. Never shuttle the source through a shell
-`read → replace → write` loop: it is a near-miss matcher, it silently corrupts cards, and
-it re-sends the whole file at every step.
+Write the whole file in one pass per topic during initial authoring. After review, write the
+complete file once; do not edit one card or one topic batch at a time. Never shuttle the source
+through a shell `read → replace → write` loop: it is a near-miss matcher, it silently corrupts
+cards, and it re-sends the whole file at every step.
 
 ## Order
 
@@ -76,19 +76,20 @@ a back, or an answer-leaking term in `topic`/`objects`.
 
 ## Batching
 
-- Write one topic batch in one `write` call. Do not append card-by-card.
-- Run one gates call after the batch. Fix all errors in one rewrite.
-- After review, apply all feedback in one rewrite; then one gates call.
-- A global symbol or formatting change is one rewrite of `cards.jsonl`, not one edit per card
-  or per symbol.
-- A deck of any size is a sequence of topic batches. The batch is the unit, not the deck.
+- Write one topic batch in one `write` call during initial authoring. Do not append card-by-card.
+- Run one gates call after the batch. Fix all errors in one whole-file rewrite.
+- After review, apply all feedback in one complete whole-file write; then one gates call.
+- A global symbol or formatting change is one whole-file write, not one edit per card or per symbol.
+- A deck of any size is a sequence of topic batches during initial authoring. A review change is
+  applied to the completed file in one write, not per topic.
 
 ## Reading discipline
 
-- Read `sources.md` once if it fits; otherwise use its headings and `grep`/line ranges to read
-  only the relevant sections. Do not read every per-source `.md` just because it exists.
-- Batch independent reads and inspections in one turn. Do not re-read a file you just wrote;
-  let the next gate catch a problem.
+- Read `sources.md` once in full before authoring; if it is large, read it in order in chunks.
+  Use its headings and `grep`/line ranges only for a later narrow check. Do not read every
+  per-source `.md` just because it exists.
+- Batch independent reads and inspections in one turn. Do not re-read a file you just wrote; the
+  one exception is reading `cards.jsonl` once before the whole-file review rewrite.
 - Do not read `scripts/`, the validator source, or a file you just wrote. Use the gate’s
   `fix:` hint; if it is unclear, report the error.
 - Do not read other work’s handoff docs. Read the chosen sources, learner context, and the
@@ -135,7 +136,8 @@ that does not mention images is not an opt-out. When images are on:
    media-index rank, or a previously verified figure. Use `image-vision` for `confirm`
    candidates and whenever the figure needs label/value/connectivity reading or is ambiguous.
    Do not require a vision call per card. When you do use it, batch candidates into one call.
-4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image per card.
+4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image per card by default;
+   up to two when both are needed.
 5. Build with `--media --media-root "$WORK"`.
 
 Media entry: `{"file":"<tag>/media/<file>","side":"front|back","caption":"...","source":"..."}`.

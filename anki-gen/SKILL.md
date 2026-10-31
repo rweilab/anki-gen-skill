@@ -46,8 +46,8 @@ the file once at authoring, not at intake.
    `Vsphere` is a defect. Code spans are exempt.
 9. **Self-contained front.** No “shown,” “this circuit,” or “the slide” without the image on
    the front. No cross-card pointers.
-10. **Media bar.** Full slide/frame by default; crops need confirmation; one image per card;
-    no title, outline, agenda, incomplete crop, or whitespace-heavy image.
+10. **Media bar.** Full slide/frame by default; crops need confirmation; one image per card by
+    default, up to two when both are needed; no title, outline, agenda, incomplete crop, or whitespace-heavy image.
 
 A gate passing is not a quality certificate. The review is.
 
@@ -65,18 +65,20 @@ read only the current step's reference; do not read ahead. More context is not b
    based on scope). No fixed numbers.
 2. **Extract.** Run one foreground extraction with all chosen documents and media. Wait for it
    to return. Do not background a second extractor; do not read `sources.md` until it exists.
-3. **Author.** Read the source table of contents and only the per-source files you need. Add a
-   `## Scope` section to `$WORK/intake.md` with a `Ceiling: N` line, and write `$WORK/kcs.md`. Then write
-   `$WORK/cards.jsonl` in one pass per topic. One authoring format; no deck script.
+3. **Author.** Read the combined source (`sources.md` for documents, `transcripts.md` for video)
+   once in full; use per-source files only for a narrow check. Add a `## Scope` section to
+   `$WORK/intake.md` with a `Ceiling: N` line, and write `$WORK/kcs.md`. Then write
+   `$WORK/cards.jsonl` in one pass per topic during initial authoring. One authoring format; no deck script.
 4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`,
-   `review_packet.md`, and `roi.txt`. Fix all errors in one rewrite, then run one gates call again.
-   Do not run a separate validator after every edit.
+   `review_packet.md`, and `roi.txt`. Fix all errors in one whole-file rewrite, then run one gates
+   call again. Do not run a separate validator after every edit.
 5. **Review.** Start the web review. Wait. Run one adversarial subagent pass whenever a
    read-only subagent is available; skip only if none exists. If no human
    reviewer is available, skip the page, say "not manually reviewed; static checks only," and still
-   run the adversarial pass after the gates call if a subagent is available. Read only low scores and comments. Apply all
-   feedback in one rewrite. If feedback exists, run one gates call to create
-   `review_actions.json`; fill every score-1 action/target, set `"status": "resolved"`, then build.
+   run the adversarial pass after the gates call if a subagent is available. Read only low scores and
+   comments. If feedback exists, run one gates call to create `review_actions.json`; apply all
+   feedback in one complete write of `cards.jsonl`; fill every score-1 action/target, set
+   `"status": "resolved"`, then build.
 6. **Build.** Run one build call. It validates the real import.
 7. **Cleanup.** Stop the review server, delete `$WORK` in full, leave only the `.apkg`.
 
@@ -91,7 +93,7 @@ python3 "$SKILL/scripts/pipeline.py" --sources <dirs-or-files> --out "$WORK"
 # Step 3 — author writes intake.md § Scope, kcs.md, cards.jsonl first (no command).
 # Step 3b — if images are on, index candidates once (cards.jsonl must exist).
 python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2
-# --per-card 2 is candidates, not attachments; attach one image per card.
+# --per-card 2 is candidates, not attachments; attach one image per card by default, up to two.
 
 # Step 4 — gates (exact errors, review plan, ROI)
 python3 "$SKILL/scripts/pipeline.py" --cards "$WORK/cards.jsonl" --gates-only --out "$WORK"
@@ -165,7 +167,7 @@ caller opted out; default-on still means attach only figures that show what the 
   `python3 "$SKILL/scripts/media_index.py" "$WORK" --cards "$WORK/cards.jsonl" --per-card 2`
   **once**; it prints a compact ranked candidate list.
 - Attach only a candidate that shows the thing the front asks about. Prefer the full slide or
-  frame; a crop needs confirmation. One image per card.
+  frame; a crop needs confirmation. One image per card by default, up to two when both are needed.
 - `media_index.py` is a text shortlist, not a visual check. `direct` candidates may attach on
   high-confidence deterministic evidence: the caption, nearby source text, figure geometry, the
   media-index rank, or a previously verified figure. Use image-vision for `confirm` candidates
@@ -193,9 +195,9 @@ reopen it; if declined, say “not manually reviewed; static checks only.”
 Run the server in the background, hand over one sentence and the URL alone on its own line,
 then wait. Do not print card text into chat. On “done”, run one gates call; it reduces the
 feedback log and writes `review_actions.json` when feedback exists. Read only low scores and
-comments. Apply all feedback in one rewrite, then one gates call. Fill `review_actions.json`
-and set `"status": "resolved"` before the build. If there is no feedback, no action file is required
-and the build proceeds.
+comments. Apply all feedback in one complete write of `cards.jsonl`, fill `review_actions.json`,
+and set `"status": "resolved"`. Then build; the build runs the gates once more. If there is no
+feedback, no action file is required and the build proceeds.
 
 Stop a stuck server with `curl -X POST <url>/finish`, never `pkill -f`. Score 1 is calibration
 (“known / too easy”), not automatic rejection; score 5 is the only removal verdict.
@@ -234,15 +236,15 @@ what the review found. The `Assumed:` line is mandatory whenever you skipped a q
 
 ## Stop rules
 
-- One extraction. One cards write per topic batch, plus the one media rewrite and one
-  post-feedback rewrite. One gates call per batch, one repeat after a fix, and one after review
-  when feedback exists; the build has its own internal gate. One build.
+- One extraction. One cards write per topic batch during initial authoring, plus the one media
+  write and one post-feedback whole-file write. One gates call per batch, one repeat after a fix,
+  and one after review when feedback exists; the build has its own internal gate. One build.
 - No background extraction, no `nohup`, no second extractor.
 - Never spawn a child `opencode` process (including `opencode run` or `debug`) or recursively
   invoke this skill.
 - No deck scripts and no ad hoc Python to patch cards. Rewrite the file.
-- A global symbol or formatting change is one rewrite of `cards.jsonl`, not one edit per
-  card or per symbol. Apply all review feedback in one rewrite.
+- A global symbol or formatting change is one whole-file write of `cards.jsonl`, not one edit per
+  card or per symbol. Apply all review feedback in one complete write.
 - A blank line is a paragraph; two trailing spaces are a deliberate hard break. A literal
   `<br>` in `cards.jsonl` is a warning, not the default paragraph separator.
 - After a render or formatting change, reopen the review or render one card. Source
@@ -255,8 +257,9 @@ what the review found. The `Assumed:` line is mandatory whenever you skipped a q
   declared extractors. After two failed probes, stop and report the limitation.
 - No filler cards to satisfy a KC count; park the weaker candidate.
 - Batch independent reads and inspections. No command that only confirms a file you
-  wrote; no re-reading an artifact. Use `sources.md` headings plus `grep`/line ranges
-  instead of reading every per-source file.
+  wrote; no re-reading an artifact. The one exception is reading `cards.jsonl` once before the
+  post-feedback whole-file write. Use `sources.md` headings plus `grep`/line ranges instead of
+  reading every per-source file.
 - If a command fails twice for the same reason, stop and report the blocker.
 - If you exceed your own budget by 50%, stop and report. Do not spend more to avoid reporting.
 
@@ -284,7 +287,7 @@ Read each file once, at the step named. The rules above are the contract; refere
 |---|---|---|
 | `references/card-writing.md` | before authoring | calibration, symbols, tier-zero, anchors, cloze, recallability, provenance, topic/objects, Procedure |
 | `references/authoring.md` | before authoring | fields/shapes, `cards.jsonl`, KC map, media policy, JSON escaping, batching |
-| `references/prompts.md` | authoring | classifier and debloater only |
+| `references/prompts.md` | authoring and review follow-up | classifier and debloater only |
 | `references/review.md` | review and follow-up | triage, score meanings, review actions, rescope |
 | `references/survey.md` | intake and extraction | source survey, learner context, deck name |
 | `references/video.md` | video sources | transcripts, playlists, frames |

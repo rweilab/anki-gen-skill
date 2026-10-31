@@ -7,10 +7,11 @@ rules and gates are the writer/verifier contract; there is no second writer prom
 
 You are the CLASSIFIER. Segment source material into atomic concepts and classify each.
 
-**Input:** `$WORK/sources.md` for document batches and/or `$WORK/transcripts.md` for video (the
-single-source `.md` for a diagnosis run; per-source `<tag>.md` only for a narrow check), the
-course name/context, and `media/` if images are on. Classify broadly; the scope gate filters the
-list before anything is written. If `intake.md` has a `## Scope` section, read it first.
+**Input:** read `$WORK/sources.md` once in full for document batches and/or `$WORK/transcripts.md`
+once in full for video (the single-source `.md` for a diagnosis run; per-source `<tag>.md` only for
+a later narrow check), the course name/context, and `media/` if images are on. Classify broadly;
+the scope gate filters the list before anything is written. If `intake.md` has a `## Scope`
+section, read it first.
 
 **Task:** (1) identify the course domain; (2) segment into atomic concepts explicitly present in
 the source; (3) classify each with `layer` (L1/L2/L3/Procedure), `topic`, `objects`, `type`
@@ -52,4 +53,5 @@ feedback outranks it. Never auto-cut.
   Compress long backs before deleting; keep the why.
 - **Report protections as well as cuts.** Name the card by topic and number; do not quote card
   text.
-- **Apply to `cards.jsonl`**, then rerun the gates and review. Never edit the `.apkg`.
+- **Apply to `cards.jsonl` in one complete whole-file write**, then run one gates call. Never edit
+  the `.apkg`.

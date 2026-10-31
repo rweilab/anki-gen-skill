@@ -37,9 +37,10 @@ Review the local page, then use **File → Import** in Anki.
 - **Existing deck:** “revise my imported deck.” Uses AnkiConnect; open Anki
   first, and never inspect the collection database.
 - **Images:** slide/video images are on by default; candidates are never
-  auto-attached; one image per card.
-- **Review:** open the local page, score and comment, then import. If no human
-  review is available, the deck is reported as static-checks only.
+  auto-attached; one image per card by default, up to two when both are needed.
+- **Review:** open the local page, score and comment, then import. If no human is
+  available to review, the deck is marked “not manually reviewed”; the automatic
+  checks and the second AI reviewer still run when available.
 
 ## Setup, doctor, update
 

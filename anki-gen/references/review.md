@@ -30,7 +30,8 @@ use the same rubric; do not maintain a second checklist.
 9. **Self-contained front and back:** no “shown/this circuit/the slide” without front media; no
    cross-card or cross-context pointer (“the table above”, “the previous result”, “the earlier
    example”).
-10. **Media bar:** a full image that illustrates the card; no title/outline/crop/whitespace.
+10. **Media bar:** a full image that illustrates the card; one by default, up to two when both are
+    needed; no title/outline/crop/whitespace.
 
 Hard-fail an unanswerable or vague front, a back unrelated to the front, obvious extraction
 debris/truncation, a computed final value, an unsupported source claim, a cross-card or
@@ -174,20 +175,22 @@ when the deck is computation-heavy, or alone when recallability is in doubt.
 
 ### Review actions (required after feedback)
 
-After the user reviews, the next `pipeline.py --gates-only` call reads `review_feedback.jsonl`
+After the user reviews, run one `pipeline.py --gates-only` call. It reads `review_feedback.jsonl`
 plus `review_recall.jsonl`, reduces each log to its last row per card, and writes
-`$WORK/review_actions.json` when feedback exists. The skeleton groups score 1 by
-topic/KC, lists score 5 removals, score 4 diagnoses, recall failures, and the
-cards the sample did not cover.
+`$WORK/review_actions.json` when feedback exists and regenerates `review_packet.md`. The skeleton
+groups score 1 by topic/KC, lists
+score 5 removals, score 4 diagnoses, recall failures, and the cards the sample did not cover.
 
-After feedback, the next gates call writes `review_actions.json` and regenerates the packet. Fill
-`score1[].action`, `score1[].target`, and any `score4[].decision` from the source of truth, then set
+In one pass, apply all card changes in one complete write of `cards.jsonl` and fill
+`score1[].action`, `score1[].target`, and any `score4[].decision` from the source of truth; set
 `"status": "resolved"`. Every score-1 block must name one of `merge | relevel | replace | keep
 anchor` and a non-empty target. `pipeline.py --build` refuses while the file is missing, open,
-stale, or incomplete; a score-5 card still present is incomplete. Score 1 is rescope evidence, never an
-automatic cut; score 5 is the only removal verdict.
+stale, or incomplete; a score-5 card still present is incomplete. Score 1 is rescope evidence,
+never an automatic cut; score 5 is the only removal verdict. Then build; the build runs the gates
+once more.
 
-The KC map and cards remain the reasoning record. Do not re-read the corpus, build script,
+The KC map and cards remain the reasoning record. Read `cards.jsonl` once before the whole-file
+rewrite if it is not current; do not re-read it after. Do not re-read the corpus, build script,
 full source, or raw log; pull a source page range only if an anchor needs checking.
 
 **Check answer alignment before style.** A card can be factually true and still not answer its
@@ -225,9 +228,10 @@ not reflexively split every hard card:
 | answerable on paper, not memory | it is a computation front | rewrite to concept (hard rule 4) |
 | know the fact, fail the method | procedural gap | Procedure layer, or practise outside Anki |
 
-**Batch independent edits in one step.** A per-card comment is still a one-line
-change, but several comments can be applied in one step with several edit calls;
-each separate step re-sends the whole context.
+**Apply the whole feedback batch in one complete write.** Read `cards.jsonl` once if it is not
+already current, then write the complete file once. A per-card comment changes one card inside that
+single write; it is not a separate edit. Do not re-read the file after the write; let the gates
+check it.
 
 `roi_report.py` prints image coverage per topic, restatement flags, costliest
 cards, and anchors. In the handoff, report the
@@ -254,13 +258,14 @@ chat before touching anything:
    down so the next step has something to apply.
 3. **Apply it at the width it actually has.** A deck-wide rule (the note box, or a comment that
    generalises) touches every card it covers; a family rule touches that family; a per-card comment
-   or score touches that card only. The old wording said re-scope and regenerate the *whole* set for
-   any feedback, which turns one comment into 61 rewrites and is why rounds get abandoned;
-   patched-not-regenerated is the failure the other way. **Edit at the width the feedback has.** A
-   per-card comment is a one-line edit in `cards.jsonl`; a deck-wide rule touches every card, and
-   only then is a full regenerate the honest cost. A regenerate **is** still required when the rules
-   change the deck's *shape* — cuts, new anchors or tier-zero cards, re-balancing a topic —
-   because those change which cards should exist.
+   or score touches that card only. The old wording said re-scope and rethink the *whole* set for
+   any feedback, which turns one comment into 61 content decisions and is why rounds get abandoned;
+   patched-not-regenerated is the failure the other way. **Change the content at the width the
+   feedback has, but write the file once.** A per-card comment changes one card; a deck-wide rule
+   changes every card; both are applied in the same single whole-file write. A regenerate **is**
+   still required when the rules change the deck's *shape* — cuts, new anchors or tier-zero cards,
+   re-balancing a topic — because those change which cards should exist; it is a content-scope
+   decision, not a different write mechanism.
 4. **Apply the rules to the withheld cards.** `review_plan.json`'s `second_round` names the topics,
    strata and flag patterns the subset did not show; they belong to the same families, so the same
    rules cover them. Offer a second targeted round *only* when the rules conflict or a withheld
