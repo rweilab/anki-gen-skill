@@ -505,6 +505,41 @@ def main() -> int:
         assert pipeline._extracted_figures(fig_state) == 3, "figure state key drifted"
         print("ok    figure count reads the state key the extractor writes")
 
+        base = [{"front": "a", "back": "b", "topic": "T"}]
+        base_sig = pipeline._cards_signature(base)
+        one_change = pipeline._cards_signature([{"front": "a", "back": "c", "topic": "T"}])
+        two_changes = pipeline._cards_signature([
+            {"front": "a", "back": "c", "topic": "T"},
+            {"front": "d", "back": "e", "topic": "T"}])
+        media_change = pipeline._cards_signature([
+            {"front": "a", "back": "b", "topic": "T",
+             "media": [{"file": "media/x.png"}]}])
+        assert base_sig != media_change, "media-only edit did not change signature"
+        assert pipeline._loop_state(None, base_sig, 0, True) == (1, "")
+        assert pipeline._loop_state(base_sig, base_sig, 1, True)[0] == 2
+        assert "no card changed" in pipeline._loop_state(base_sig, base_sig, 1, True)[1]
+        assert "only 1 card changed" in pipeline._loop_state(base_sig, one_change, 1, True)[1]
+        assert pipeline._loop_state(base_sig, two_changes, 1, True) == (0, "")
+        assert pipeline._loop_state(base_sig, base_sig, 1, False) == (0, "")
+        print("ok    loop guard detects small-change repeats and resets")
+
+        loop_work = td / "loop-work"
+        loop_work.mkdir()
+        loop_bad = td / "loop-bad.jsonl"
+        loop_bad.write_text(json.dumps({
+            "front": "Calculate the current when V = 12 V and R = 3 ohm.",
+            "back": "4 A.", "layer": "L1", "topic": "Ohm's Law",
+            "source": "notes p.1"}) + "\n")
+        first = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                     "--cards", str(loop_bad), "--out", str(loop_work),
+                     "--gates-only"], td)
+        second = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                      "--cards", str(loop_bad), "--out", str(loop_work),
+                      "--gates-only"], td)
+        assert "loop       " not in first.stdout, first.stdout
+        assert "loop       no card changed" in second.stdout, second.stdout
+        print("ok    pipeline prints the loop warning on an unchanged repeat")
+
         target = td / "atomic.apkg"
         def fake_run(cmd, *args, **kwargs):
             if any(str(x).endswith("build_apkg.py") for x in cmd):

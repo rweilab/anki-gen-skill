@@ -78,6 +78,8 @@ These are deliberate, not forgotten:
   subagent exists, not caller-optional.
 - Review feedback is applied in one complete `cards.jsonl` write. Per-card edit guidance is gone
   from `SKILL.md`, `authoring.md`, `review.md`, and `prompts.md`.
+- The checker now warns when a second run changes 0 or 1 cards while errors remain: apply all
+  remaining fixes in one whole-file write, then re-run once.
 - The media policy now documents up to two images per card; the builder already capped at two.
   Authoring and prompts state the full `sources.md`/`transcripts.md` read, not cherry-picking.
 - The root README’s no-human review path now mentions the automatic checks and independent

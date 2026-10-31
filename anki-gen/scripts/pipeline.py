@@ -79,6 +79,42 @@ def _mark(out: Path, stage: str, status: str, **fields) -> None:
     _write_state(out, state)
 
 
+def _cards_signature(cards: list[Card]) -> list[str]:
+    """One stable fingerprint per card, including media/source/topic changes."""
+    return [hashlib.sha256(json.dumps(card, sort_keys=True,
+                                      ensure_ascii=False).encode()).hexdigest()
+            for card in cards]
+
+
+def _changed_cards(previous: list[str], current: list[str]) -> int:
+    changed = abs(len(previous) - len(current))
+    return changed + sum(a != b for a, b in zip(previous, current))
+
+
+def _loop_state(previous: list[str] | None, current: list[str],
+                previous_streak: int, has_errors: bool) -> tuple[int, str]:
+    """Warn when a second check follows no change or a one-card change.
+
+    The first check is the baseline. Any clean run or a change of two or more
+    cards resets the streak; one-card drips are the loop this catches.
+    """
+    if not has_errors:
+        return 0, ""
+    if previous is None:
+        return 1, ""
+    changed = _changed_cards(previous, current)
+    if changed > 1:
+        return 0, ""
+    streak = previous_streak + 1
+    if streak < 2:
+        return streak, ""
+    if changed == 0:
+        return streak, ("no card changed since the last check; apply all remaining "
+                        "fixes in one whole-file write, then re-run once.")
+    return streak, ("only 1 card changed since the last check; apply all remaining "
+                    "fixes in one whole-file write, then re-run once.")
+
+
 def _pid_alive(pid) -> bool:
     try:
         os.kill(int(pid), 0)
@@ -740,6 +776,10 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
     import roi_report
 
     cards = load_cards(cards_path)
+    cards_sig = _cards_signature(cards)
+    state = _load_state(out)
+    previous_sig = state.get("cards_sig")
+    previous_streak = int(state.get("small_change_streak") or 0)
     kc_path = out / "kcs.md"
     if not kc_path.is_file():
         kc_path = out / "authoring_ledger.md"
@@ -753,6 +793,9 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
     errs, warns, info = check_cards(cards, ledger_text=ledger_text,
                                     source_text=source_text,
                                     require_kc_map=kc_path.name == "kcs.md")
+    small_change_streak, loop = _loop_state(
+        previous_sig if isinstance(previous_sig, list) else None,
+        cards_sig, previous_streak, bool(errs))
 
     entries, stats = select(cards, 1, 12)
     plan = build_plan(str(cards_path), cards, entries, stats, 1, 12)
@@ -797,6 +840,8 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
             "kc_total": len(kc_map),
             "kc_linked": sum(1 for c in cards if c.get("kc")),
             "ceiling": ceiling,
+            "cards_sig": cards_sig, "small_change_streak": small_change_streak,
+            "loop": loop,
             "layers": dict(layers), "strata": dict(strata)}
 
 
@@ -1043,9 +1088,12 @@ def main(argv: list[str] | None = None) -> int:
         g = stage_gates(Path(args.cards), out)
         _mark(out, "gates", "done", cards=g["cards"], errors=g["errors"],
               warnings=g["warnings"], media_risks=len(g["media_risks"]),
-              roi_split=len(g["roi_split"]))
+              roi_split=len(g["roi_split"]), cards_sig=g["cards_sig"],
+              small_change_streak=g["small_change_streak"])
         lines.append(f"gates      {g['cards']} card(s): {g['errors']} error(s), "
                      f"{g['warnings']} warning(s)")
+        if g["loop"]:
+            lines.append(f"loop       {g['loop']}")
         for msg in g["errs"][:20]:
             lines.append(f"error      {msg}")
             hint = fix_for(msg)
