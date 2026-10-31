@@ -133,7 +133,7 @@ This table is the ownership map, not a second rule list.
 | Production, not recognition | `card-writing.md` § recallability | `validate_cards` computation front |
 | Conditions, units, symbols | `card-writing.md` § symbols | glossary warning / review |
 | Near-miss discrimination | `card-writing.md` | review / adversarial review |
-| Answer first, then why | `card-writing.md` § answer first | `validate_cards` proxy / review |
+| Answer first, then why | `card-writing.md` § Backs answer, then explain | `validate_cards` proxy / review |
 | Self-contained front | `card-writing.md` § fronts | `validate_cards` front-image warning / review |
 | Media bar | `authoring.md`, `video.md` | `media_index` risk audit + review |
 | KCs and fields | `authoring.md` | `validate_cards` KC checks |

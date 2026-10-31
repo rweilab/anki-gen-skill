@@ -18,11 +18,10 @@ use the same rubric; do not maintain a second checklist.
    of another card’s target; a contrastive pair is fine.
 3. **Clean, unambiguous cue:** a reader can tell what is asked; no vague or orphaned fragment,
    truncated sentence, repeated page header/footer, broken glyph, or extraction debris.
-4. **Production, not recognition:** the front does not demand a final numeric value (basic
-   counting of visible steps/items is allowed), contain its own answer, or reduce to a yes/no or
-   multiple-choice recognition prompt. A Procedure card may show problem data and an equation sheet.
-5. **Conditions and symbols:** assumptions, units, and every symbol are on this card. A
-   standard-looking symbol is still undefined unless the card names it and its units.
+4. **Production, not recognition:** no final numeric value on the front (basic counting is allowed),
+   no self-answer, no yes/no or multiple-choice recognition. Procedure may show data/equation sheet.
+5. **Conditions and symbols:** assumptions, units, and every symbol are on the card; a
+   standard-looking symbol is undefined unless named with units.
 6. **Near-miss discrimination:** the card separates the target from a tempting alternative.
 7. **Answer first and related:** the first back sentence answers the front; a vague front or a
    back that answers something else is a hard fail.
@@ -33,13 +32,11 @@ use the same rubric; do not maintain a second checklist.
 10. **Media bar:** a full image that illustrates the card; one by default, up to two when both are
     needed; no title/outline/crop/whitespace.
 
-Hard-fail an unanswerable or vague front, a back unrelated to the front, obvious extraction
-debris/truncation, a computed final value, an unsupported source claim, a cross-card or
-cross-context pointer, a whole-formula/prose cloze, or a Procedure card that is a worked or
-remaining solution. Flag a missing/unknown
-`kc`, an unresolved `requires`, or a KC whose `evidence_quote` is absent from the packet excerpt.
-Flag a KC that is a card label, a generic `why`, or a single card that is a fragment. A card count
-is not evidence of KC quality.
+Hard-fail: vague/unanswerable front, back unrelated to front, extraction debris/truncation, computed
+final value, unsupported source claim, cross-card/context pointer, whole-formula/prose cloze, or a
+Procedure card that is a worked/remaining solution. Flag: missing/unknown `kc`, unresolved `requires`,
+absent `evidence_quote`, a card-label KC, generic `why`, or a fragment KC. Card count is not KC
+quality.
 
 **Adversarial reviewer:** run whenever a read-only subagent is available; skip only if none
 exists. Start after the web review opens. Give it `$WORK/review_packet.md` only,
@@ -69,11 +66,9 @@ full review. Reopen the review or render one card; source inspection is not a vi
 
 ### Review a chosen subset, not the deck
 
-**Per-card adjudication does not scale.** On the first real run the user stopped after nine cards of
-fifty-five — and their edits generalised to the whole deck anyway, so the other forty-six bought
-nothing. The `pipeline.py --gates-only` call picks the set and **always** runs, any deck size;
-even a small deck gets its flagged cards surfaced. Set `SKILL` to the directory containing
-`SKILL.md`.
+**Per-card adjudication does not scale.** The `pipeline.py --gates-only` call picks the set and
+**always** runs; even a small deck gets its flagged cards surfaced. Set `SKILL` to the directory
+containing `SKILL.md`.
 
 ```bash
 python3 "$SKILL/scripts/pipeline.py" --cards $WORK/cards.jsonl \
@@ -88,44 +83,28 @@ python3 "$SKILL/scripts/pipeline.py" --cards $WORK/cards.jsonl \
 | **Format** | does it read right? | one per card kind (layer × cloze), preferring an unflagged card |
 | **Breadth** | is the coverage right? | one per topic, preferring its `tier_zero` card — one slot answers both |
 
-**The sample is fixed at 12.** There is no `--max` or `--per-topic`; a bigger sample is a different
-task (certification), not a quality setting. Risk and format are never dropped. The fixed sample is
-deliberately hard: the previous "every flagged + every tier-zero + one per topic" spent 25 of a real
-61-card deck and still never showed a Procedure card. The default shows 12 (19%) across all four
-kinds and 12 of 14 topics.
+**The sample is fixed at 12.** No `--max`/`--per-topic`; a bigger sample is certification, not a
+quality setting. Risk and format are never dropped. The default spans all four kinds and most
+topics.
 
-**A stratum is a family, so it costs one slot.** The format axis keys on `(layer, cloze, stratum)`,
-so a card family earns its own exemplar. When one is under-shown, add one card, never the whole
-stratum — a run that hand-added seven Shape A/B cards instead of two spent three extra slots to
-re-learn what one per shape already generalises.
+**A stratum is a family, so it costs one slot.** The format axis keys on `(layer, cloze, stratum)`;
+when one is under-shown, add one card, never the whole stratum.
 
-**A clean review is not proof the deck is sound.** The subset is chosen by axis so each card *stands
-for a family* — excellent at surfacing defects, structurally incapable of certifying their absence.
-A card that **passes** says nothing about its unshown siblings; `second_round` names the topics,
-strata and flag patterns the budget held back, and those are **unreviewed**, not approved. Report a
-round as *what it found*, never as coverage. Certification is an explicit all-card pass, in
-sittings — run the review server without `--plan` and say it is certification, not the default.
-Never present the fixed sample as certification.
+**A clean review is not proof.** Each card stands for a family, so the sample surfaces defects but
+cannot certify absence. `second_round` names the unreviewed topics/strata/patterns. Report what a
+round found, not coverage. Certification is an explicit all-card pass without `--plan`; never call
+the sample certification.
 
 ### Run it
 
-The command is the review step. It binds `127.0.0.1` on a free port, prints the URL, and appends each
-answer to the feedback log. **Each card shows why it was selected** ("flagged: near-duplicate front:
-96% similar to cards 22, 25", "tier-zero") — a reviewer who knows why answers better. The plan is
-checked against the deck's hashes on startup; a stale plan **aborts**. Without `--plan` the server
-renders every card — the fallback, not the flow.
+The command binds `127.0.0.1`, prints the URL, and appends answers. **Each card shows why it was
+selected** ("flagged: near-duplicate front", "tier-zero"); a stale plan **aborts**. Without
+`--plan` it renders every card — the fallback, not the flow.
 
-**Before opening the port:** first generation runs the review by default. When the user is asking
-for changes or adjustments, ask whether to reopen it; do not assume. If they decline, say the deck
-was not manually reviewed and report static checks only.
-
-**Around it:** start in the background, say one short sentence — what the page is and to come back
-when done — then give the URL **alone on its own line** (paste-able whole; the server prints it
-bare). The sentence is not padding: it is the only thing that tells someone who has never seen this
-what they are about to open and what happens next. **Do not print card text into the chat** — that
-is what this replaces. Wait; the user says "done" whenever they stop, so read whatever is on disk.
-Then generalise and re-scope, stop the server, verify nothing is listening. Stop it with
-`curl -s -X POST <url>/finish`; never `pkill -f`, which can match and kill its own shell.
+First generation runs review by default; later changes ask whether to reopen; if declined, say not
+manually reviewed/static checks only. Start in the background, hand over one sentence and the URL
+**alone**, never print card text. Wait; on "done" read disk, generalise, stop with
+`curl -s -X POST <url>/finish`; never `pkill -f`.
 
 **The score scale:**
 
@@ -169,17 +148,16 @@ python3 "$SKILL/scripts/review_server.py" \
 > **Could you answer this from memory, without working it out?** — `y` / `n`
 
 Rows carry `recall: true|false`; the finish screen lists the `false` cards as recallability
-failures (hard rule 4) — rewrite the front to ask about the concept, or cut it. Run it as a
-second pass over the same plan
-when the deck is computation-heavy, or alone when recallability is in doubt.
+failures (hard rule 4) — rewrite the front to ask about the concept, or cut it. Run it as a second
+pass over the same plan when the deck is computation-heavy, or alone when recallability is in doubt.
 
 ### Review actions (required after feedback)
 
 After the user reviews, run one `pipeline.py --gates-only` call. It reads `review_feedback.jsonl`
 plus `review_recall.jsonl`, reduces each log to its last row per card, and writes
 `$WORK/review_actions.json` when feedback exists and regenerates `review_packet.md`. The skeleton
-groups score 1 by topic/KC, lists
-score 5 removals, score 4 diagnoses, recall failures, and the cards the sample did not cover.
+groups score 1 by topic/KC and lists score 5 removals, score 4 diagnoses, recall failures, and the
+cards the sample did not cover.
 
 In one pass, apply all card changes in one complete write of `cards.jsonl` and fill
 `score1[].action`, `score1[].target`, and any `score4[].decision` from the source of truth; set
@@ -223,7 +201,7 @@ not reflexively split every hard card:
 |---|---|---|
 | front unanswerable / ambiguous | unresolvable reference | name the concrete thing (hard rules 3 and 9) |
 | blank on a term it assumes | missing prerequisite | anchor / glossary (`card-writing.md` § Anchor cards) |
-| paragraph back never read | front too short for its back | demand the mechanism (`card-writing.md` § front/back length) |
+| paragraph back never read | front too short for its back | demand the mechanism (`card-writing.md` § Match the front to the back's length) |
 | two cards keep colliding | interference, not redundancy | contrastive pair |
 | answerable on paper, not memory | it is a computation front | rewrite to concept (hard rule 4) |
 | know the fact, fail the method | procedural gap | Procedure layer, or practise outside Anki |
@@ -249,43 +227,24 @@ everywhere it fits, and say which cards you changed.
 The subset was chosen by axis so each card stands for a *family*. Do the reasoning explicitly in the
 chat before touching anything:
 
-1. **Name what each piece of feedback implicates.** Not "card 34 was too hard" but "the four
-   structure cards sharing this frame can only be answered by recalling a table" — the axis a card
-   was chosen for tells you its family. A comment on one cloze card is a statement about the cloze
-   cards.
-2. **Restate it as rules about the deck** — deck-wide ("don't invent labels"), topic-wide ("this
-   topic has no anchor"), kind-wide ("the Procedure fronts never state their demand"). Write them
-   down so the next step has something to apply.
-3. **Apply it at the width it actually has.** A deck-wide rule (the note box, or a comment that
-   generalises) touches every card it covers; a family rule touches that family; a per-card comment
-   or score touches that card only. The old wording said re-scope and rethink the *whole* set for
-   any feedback, which turns one comment into 61 content decisions and is why rounds get abandoned;
-   patched-not-regenerated is the failure the other way. **Change the content at the width the
-   feedback has, but write the file once.** A per-card comment changes one card; a deck-wide rule
-   changes every card; both are applied in the same single whole-file write. A regenerate **is**
-   still required when the rules change the deck's *shape* — cuts, new anchors or tier-zero cards,
-   re-balancing a topic — because those change which cards should exist; it is a content-scope
+1. **Name the family.** Not "card 34 was too hard" but "the four structure cards sharing this frame
+   can only be answered by recalling a table"; a cloze comment is about cloze cards.
+2. **Restate as rules** — deck-wide ("don't invent labels"), topic-wide ("this topic has no anchor"),
+   kind-wide ("Procedure fronts never state their demand"). Write them down to apply.
+3. **Apply at the width the feedback has.** A deck-wide rule touches every card; a family rule
+   touches that family; a per-card comment touches that card. **Change the content at that width,
+   but write the file once.** A shape change — cuts, new anchors/tier-zero, rebalance — is a content
    decision, not a different write mechanism.
-4. **Apply the rules to the withheld cards.** `review_plan.json`'s `second_round` names the topics,
-   strata and flag patterns the subset did not show; they belong to the same families, so the same
-   rules cover them. Offer a second targeted round *only* when the rules conflict or a withheld
-   topic raises a question the first round could not answer.
-5. **Re-run the gates and rebuild** — a content change means the gates and build run again
-   before the next handoff, as one batched call.
+4. **Apply to withheld cards.** `second_round` names unshown topics/strata/patterns; same families,
+   same rules. Offer a second targeted round only when rules conflict or a withheld topic raises a
+   question the first round could not answer.
+5. **Re-run gates and build** — a content change means both run again before handoff, as one batch.
 
-**A summary that says "applied the feedback to the reviewed cards" has failed** when the feedback
-was deck-wide — the reviewer scored a sample, and the point of a sample is that its lessons apply
-widely. But a summary that rewrote all 61 cards in response to one comment has failed the other way:
-it spent a full rebuild on a one-line change, which is how review rounds stop happening.
+**A summary that applied feedback only to reviewed cards has failed** when the rule was deck-wide.
 
-**Removing a rejected card.** Score 5 means the card should not exist, so **remove it from the
-source of truth** — the emitting script, or `cards.jsonl`. No second mechanism: a hash list was tried
-and removed, because a re-scope *rewrites card text*, so a rejected card re-emitted a word different
-carries a new hash and slips the filter — it protected only the case that was never the risk (an
-unmodified re-run) while enabling a stale list to drop live notes. **A 5 is a verdict on whether the
-card exists, not its wording** — do not reword it and let it back, delete it. Read the log reduced
-to its **last row per card** (`cardid.last_row_per_card`): the log is append-per-event, so a card
-clicked 5 then left on 3 still carries that 5, and the raw log would drop a card the reviewer kept.
+**Removing a rejected card.** Score 5 means remove it from `cards.jsonl`; do not reword it and let it
+back. A hash-list tombstone failed because re-scoping changes the hash. Read the log’s **last row per
+card** (`cardid.last_row_per_card`); a 5 followed by 3 must still be removed.
 
 **Fallback.** If the server will not start, generate a self-contained HTML file, let the user review
 it, and accept one pasted JSON blob. The exception, not the flow.

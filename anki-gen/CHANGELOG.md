@@ -82,6 +82,9 @@ These are deliberate, not forgotten:
   Authoring and prompts state the full `sources.md`/`transcripts.md` read, not cherry-picking.
 - The root README’s no-human review path now mentions the automatic checks and independent
   reviewer instead of saying “static checks only.”
+- Compressed runtime prose without removing safeguards: `SKILL.md`, `authoring.md`, `review.md`,
+  `card-writing.md`, `survey.md`, `video.md`, `rendering.md`, and `prompts.md`. Cross-file safety
+  repetition stays inline; history and throat-clearing are gone.
 - Replaced old rule/stage numbers in runtime references with their current names. The glossary
   check is documented as a warning, and `evidence_quote` is documented as a KC field only.
 - A failed post-build validation no longer leaves an `.apkg` in the caller’s directory; the build

@@ -125,16 +125,11 @@ The picker is two-stage:
 Stop a background `vision_check` with the PID you started (`$!`) or a bracket
 pattern such as `pkill -f '[v]ision_check.py'`; never `pgrep -f` the literal name.
 
-`image-vision` is card-driven and sparing: confirm only a frame you are about to
-attach, only when it is `confirm`/`needs_vision`. If it has no key or its one
-bounded retry fails, the ≤6-image main-model fallback from `SKILL.md` is allowed
-only for necessary frames and must be labeled unverified. Use
-`image-vision/scripts/vision_check.py --max N` for the fast accept/reject pass;
-it resolves the model, retries 503/429 briefly, caches by SHA, and stops on a
-quota error. One call per unique frame. Use the full `image-vision` pipeline for
-labels, relationships, handwriting, and ambiguous figures only. For long dense
-series, process by chapter/topic and confirm only the candidates needed by
-cards; there is no fixed per-video confirmation count.
+`image-vision` is card-driven: confirm only a frame you are about to attach, only when it is
+`confirm`/`needs_vision`. `vision_check.py --max N` is the fast accept/reject pass (resolves the
+model, retries 503/429, caches by SHA, stops on quota); one call per unique frame. Use the full
+pipeline for labels, relationships, handwriting, and ambiguous figures. For long series, process by
+chapter/topic and confirm only what cards need; no fixed per-video count.
 
 Attach frames only when they illustrate the card. Title/outline/agenda slides are
 not images: `frames.py` marks them `skip`, and a frame whose caption is only

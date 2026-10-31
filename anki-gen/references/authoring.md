@@ -11,60 +11,47 @@ cards, and it re-sends the whole file at every step.
 
 ## Order
 
-1. Add a `## Scope` section to `$WORK/intake.md`: what to card, what not to card, a
-   `Ceiling: N` line, and the parked list with reasons.
-2. Write `$WORK/kcs.md`: the compact KC table. A KC is a concept, not a card. Single-card KCs
-   are allowed when the card is a complete high-value decision and `why` makes the value case.
-   A 1:1 map warns; exact duplicate claims are errors. Do not write filler cards.
-3. Write `$WORK/cards.jsonl` topic by topic in source order. Each card carries `kc`; `stratum`
-   is optional. A normal topic is a small batch, not a quota.
+1. `intake.md` § Scope: what to card/not card, `Ceiling: N`, parked list with reasons.
+2. `kcs.md`: compact KC table. A KC is a concept, not a card; single-card KCs are allowed when
+   `why` makes the value case. A 1:1 map warns; duplicate claims are errors; no filler.
+3. `cards.jsonl` topic by topic in source order. `kc` is required; `stratum` is optional. A topic
+   is a small batch, not a quota.
 
-Read `references/card-writing.md` before the first card; read only the sections the card
-needs. The ten rules in `SKILL.md` are the hard floor.
+Read `references/card-writing.md` before the first card; read only the sections the card needs.
+The ten rules in `SKILL.md` are the hard floor.
 
 ## Card JSON
 
-Required fields: `front`, `back`, `layer`, `topic`, `source`, `kc`. `deck` is legacy and optional; the build uses `--deck-name`. Minimum:
+Required: `front`, `back`, `layer`, `topic`, `source`, `kc`. `deck` is legacy; the build uses
+`--deck-name`.
 
 ```json
 {"front":"What does a 9 V battery rating measure?","back":"**Energy per unit charge.**\n\n**Why:** ...","layer":"L1","topic":"Voltage and Power","source":"Slides 2 p.2","kc":"power.voltage_meaning","tier_zero":true}
 ```
 
-Optional fields: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `stratum`, `rev_id`.
-`evidence_quote` belongs to the KC row in `kcs.md`, not to a card.
+Optional: `objects`, `cloze`, `tier_zero`, `media`, `source_url`, `stratum`, `rev_id`.
+`evidence_quote` is a KC field in `kcs.md`, not a card field.
 
-**Fields.**
-- `source` is the locator (`Slides 2 p.2`, `Lec 04 Q7`, or `derived` for self-contained math).
-  `source_ref` is a deprecated alias; do not write it. `source_url` is optional plain text.
-- Backs use a blank line before `**Why:**`, `**Glossary:**`, `**Symbols:**`, and other section
-  labels. Do not wrap `$...$` in backticks; code spans render literally.
-- `topic` is the chapter/lecture heading. `objects` is 0–2 lowercase cross-topic buckets; `[]`
-  is normal. Tags are front-visible: never put the answer, method, or theorem in either.
-- `kc` must exist in `kcs.md`. `stratum` is optional; the KC `type` is the preferred family.
-- `hash` is identity: leave it empty; it is `md5(front|back)`. Do not invent one.
-- `rev_id` is optional and only for syncing an authored set into an already-attached dossier.
-  Copy it from the dossier; omit it on new cards; never invent one.
-- `media` entries are `{file, side, caption, source}`; paths are relative to the media root.
-  One image per card is the default.
+- `source` is the locator (`Slides 2 p.2`, `Lec 04 Q7`, `derived`). `source_ref` is deprecated;
+  `source_url` is optional plain text.
+- Backs use a blank line before `**Why:**`/`**Glossary:**`/`**Symbols:**`; never wrap `$...$` in
+  backticks.
+- `topic` is the chapter heading. `objects` is 0–2 lowercase cross-topic buckets; `[]` is normal.
+  Tags are front-visible: never put the answer, method, or theorem in either.
+- `kc` must exist in `kcs.md`; `stratum` is optional; KC `type` is the preferred family.
+- `hash` is identity (`md5(front|back)`); leave empty. `rev_id` is dossier-sync only; copy it or
+  omit it.
+- `media` entries are `{file, side, caption, source}` relative to the media root; one image by
+  default, up to two when both are needed.
 
-## Schema policy
+`cards.jsonl` is canonical; `cards.json` is legacy read-only. Required fields are frozen; new
+fields optional; unknown fields preserved. No per-card schema version; a new required field waits
+for a major version.
 
-- Write `cards.jsonl`. `cards.json` is read-only for old work dirs.
-- Required fields are frozen. New fields must be optional.
-- Do not repurpose a field. Unknown fields are ignored by the gate and preserved by the dossier.
-- `deck` is legacy; `--deck-name` is the single deck-name source.
-- There is deliberately no per-card schema version. Additive changes only; a new required field
-  waits for a major version.
-
-**Shapes.** The build emits Basic and Cloze only.
-- L1 Basic: recall of a fact, definition, formula, or constant.
-- L1 reversible: a reciprocal pair, one card each direction.
-- L2 Basic: concept, why/how, derivation, or analogy.
-- L2 Cloze: only an enumeration, one separately examinable item per deletion; never a whole
-  formula.
-- L3 Basic: boundary, failure mode, or edge case.
-- Procedure A/B: one decision per card; shapes live in `card-writing.md` under Procedure.
-No Type-in and no Image Occlusion notetype.
+**Shapes** (Basic/Cloze only): L1 fact/formula/constant; L1 reversible = reciprocal pair, one card
+each; L2 concept/why/derivation; L2 cloze = enumeration only, one item per deletion, never a whole
+formula; L3 boundary/failure/edge case; Procedure A/B = one decision per card, shapes in
+`card-writing.md`. No Type-in or Image Occlusion.
 
 `cards.jsonl` is JSON, not Python. Double every LaTeX backslash (`\\frac`, `\\text`). A
 single `\frac` can become a formfeed and corrupt the card. The validator catches control
@@ -109,46 +96,38 @@ a back, or an answer-leaking term in `topic`/`objects`.
 | thermo.steady_flow | procedure | Apply the steady-flow energy equation. | One-card method decision | thermo.control_volume | "Apply the steady-flow energy equation" | Lec 04 p.12 |
 ```
 
-- A KC is a concept, not a card. Single-card KCs are allowed when the card is a complete,
-  high-value decision.
-- `why` is the value case: reused, exam-weighted, error-prone, a prerequisite, or a high-value
-  exception. Do not write filler cards to satisfy a count.
-- A single-card `concept`/`mechanism` warns; all other types are allowed as singles.
-- A 1:1 map warns; exact duplicate claims are errors. Do not add a card or change a type just
-  to clear a warning.
-- `type` is optional; if omitted, the review still judges the KC. Every `requires` resolves. A
-  source-dependent KC needs a short quote that appears in the extracted corpus; `derived` is
-  the exemption.
-- `intake.md` § Scope carries `Ceiling: N`, a soft cap on total cards. The gate warns when the deck
-  exceeds it; it never auto-cuts. Park the weaker candidate instead.
+- A KC is a concept, not a card. Single-card KCs are allowed when `why` makes the value case:
+  reused, exam-weighted, error-prone, prerequisite, high-value exception.
+- Single-card `concept`/`mechanism` warns; other types may be singles. A 1:1 map warns; duplicate
+  claims are errors. Do not add cards/types to clear a warning; no filler.
+- `type` is optional. Every `requires` resolves. Source-dependent KCs need a short quote from the
+  corpus; `derived` exempts.
+- `Ceiling: N` is a soft cap; the gate warns, never cuts. Park the weaker candidate.
 
 ## Media (default by source)
 
-Apply the media policy in `SKILL.md`: images default on for slides, video, and figure-bearing
-PDFs/images; off only for a confirmed text-only source or an explicit caller no. A request
-that does not mention images is not an opt-out. When images are on:
+Images default on for slides/video/figure-bearing PDFs; off only for a confirmed text-only source
+or explicit no; silence is not opt-out. When images are on:
 
-1. Run `media_index.py "$WORK" --cards "$WORK/cards.jsonl" --per-card 2` once. It prints a
-   compact text-ranked shortlist; it is not a visual match.
-2. Pick only candidates that show the thing the front asks about. Prefer a full slide/frame;
-   a crop needs confirmation.
+1. Run `media_index.py "$WORK" --cards "$WORK/cards.jsonl" --per-card 2` once. It is a compact
+   text shortlist, not a visual match.
+2. Pick only candidates that show the thing the front asks about. Prefer a full slide/frame; a
+   crop needs confirmation.
 3. `direct` candidates may attach on a high-confidence caption, nearby source text, geometry,
-   media-index rank, or a previously verified figure. Use `image-vision` for `confirm`
-   candidates and whenever the figure needs label/value/connectivity reading or is ambiguous.
-   Do not require a vision call per card. When you do use it, batch candidates into one call.
-4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image per card by default;
-   up to two when both are needed.
+   media-index rank, or a previously verified figure. Use `image-vision` for `confirm` candidates
+   and whenever the figure needs label/value/connectivity reading or is ambiguous. Do not require
+   a vision call per card; when you use it, batch candidates into one call.
+4. Add `media` entries to `cards.jsonl` and rewrite the file once. One image by default; up to two
+   when both are needed.
 5. Build with `--media --media-root "$WORK"`.
 
 Media entry: `{"file":"<tag>/media/<file>","side":"front|back","caption":"...","source":"..."}`.
 Paths are relative to the media root.
 
-Never attach a title/outline/agenda slide, an incomplete crop, a whitespace-heavy frame, or a
-duplicate. If no good image exists, leave the card without one. “More images” does not lower
-the bar. If image-vision is unconfigured, has no usable model, or stops on a rate limit, a
-bounded main-model fallback is allowed only for necessary images; keep the batch small, never
-use it for bulk selection, and label the result unverified. Do not use `read` as the default
-media path.
+Never attach a title/outline/agenda slide, incomplete crop, whitespace-heavy frame, or duplicate.
+No good image → leave it off; “more images” never lowers the bar. If image-vision is unavailable, a
+small bounded main-model fallback is allowed for necessary images; label it unverified. Do not use
+`read` as the default media path.
 
 Shared diagrams may appear on several related cards; the builder bundles the file once.
 Wrong images go in the review comment box, not into a new patch loop.

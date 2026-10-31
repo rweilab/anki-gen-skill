@@ -56,48 +56,36 @@ and review steps read this instead of re-asking:
 - assumed: <one line per assumption>
 ```
 
-These are prose context, not new parser fields. `goal` and `minutes/day` help the scope gate and
-run report; `calibration` and `reference` prevent guessing. Images default on for slides,
-video, and figure-bearing PDFs/images; off only for a confirmed text-only source or an
-explicit caller no. A request that does not mention images is not an opt-out. After
-extraction, if figures exist, keep images on unless the caller opted out; attach only the
-figures the cards actually need.
+These are prose context, not parser fields. `goal`/`minutes/day` inform the scope gate/report;
+`calibration`/`reference` prevent guessing. Images default on; off only for confirmed text-only or
+explicit no; silence is not opt-out.
 
-**Read the course's own learner context and say what you found.** For a long `STUDY-LOG.md`, read
-the header and calibration section, not the whole file. A directory carries files written
-for whoever works in it — `AGENTS.md`, `CLAUDE.md`, `STUDY-LOG.md`, `README`, notes-to-self.
-Nothing else in the pipeline opens them, and they are the cheapest source of the two signals that
-decide what a deck is *for*: what has already caused a recurring error (the value-case test's
-second criterion), and the learner's level (the calibration table). A `STUDY-LOG.md` saying "I keep mixing
-up wt% and at%" is worth more than another lecture deck. Report anything that changes scope or
-scaffolding — or say plainly that none were found.
+**Read the course’s learner context.** For a long `STUDY-LOG.md`, read the header and calibration
+only, not the whole file. `AGENTS.md`/`CLAUDE.md`/`README`/notes-to-self are cheap sources of
+recurring errors and learner level; “I keep mixing wt% and at%” beats another lecture deck. Report
+scope/scaffolding changes, or say none were found.
 
 ## Extraction
 
 Use **one synchronous** `pipeline.py --sources <...> --out .anki-gen-temp/<topic>` call with all
-chosen PDFs, text, PowerPoint, URLs, directories, and media. A directory containing both documents
-and media is split by file type, so the PDF is not silently skipped. Do not start a second
-background extractor. For a single-source diagnosis use `extract_pdf.py`; `--date-filter` limits
-directory sources. PPTX text, notes, and embedded images are parsed without Office.
+chosen files and media. Directories split by type, so a PDF beside a recording is not skipped; never
+start a second background extractor. Single-source diagnosis: `extract_pdf.py`; `--date-filter`
+limits directories. PPTX text/notes/images parse without Office.
 
-Never pass the course root when `$WORK` is inside it: directory extraction recurses and can ingest
-the generated transcript/source files. Pass explicit source subdirectories.
+Never pass the course root when `$WORK` is inside it; extraction recurses into generated files. Pass
+explicit subdirectories.
 
-Single-source extraction prints `content`, `source_type`, `source_path`, `images_count`, a 3-name
-sample, and the `.md` path; batch prints a manifest with counts, samples of `<tag>` dirs, and `.md`
-paths, and writes `sources.md` with the chosen texts. Read `sources.md` **once after extraction completes**, when classifying; use a per-source `.md` only
-for a narrow check. Cite the file the text came from ("Lec 04 · p.12"), not the topic directory.
+Batch writes `manifest.json` and `sources.md`. Read `sources.md` **once in full** when classifying;
+a per-source `.md` is only for a narrow check. Cite the file (“Lec 04 · p.12”), not the directory.
 
 Video and local media are owned by `references/video.md`: the preferred path is
 `pipeline.py --sources "<url-or-local-path>" --out "$WORK" [--images auto|yes|no] [--model auto]
 [--whole-playlist | --items 2-5] [--title "..."]`; `extract_video.py` is the single-source
 diagnosis path.
 
-**The deck audit is opt-in; do not offer it.** Run the deck audit only when the request asks ("is
-there a deck for this", "check online", "merge with what exists", or `audit_web: true`). The modal outcome
-is "generate your own"; a real Callister deck audited at 58/100. It pays off only when a good deck
-already exists for a popular course — rare enough to be a sentence in the request, not a question
-every run.
+**Deck audit is opt-in; never offer it.** Only when asked (“is there a deck”, “check online”, “merge
+with what exists”, or `audit_web: true`). Modal outcome: generate your own; a real Callister deck
+scored 58/100. It pays only when a good deck already exists.
 
 **Deck naming is the caller's.** Ask for it here too, suggesting a shape:
 `SCHOOL::CIRCUITS::TOPIC`. Their answer is the name, flat included; `--deck-name` is

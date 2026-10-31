@@ -1,17 +1,15 @@
 # Runbook prompts
 
-Two prompts: CLASSIFIER at intake/authoring, DEBLOATER at review follow-up. The card-writing
-rules and gates are the writer/verifier contract; there is no second writer prompt.
+CLASSIFIER at authoring; DEBLOATER at review follow-up. Card-writing rules and gates are the
+writer/verifier contract; no second writer prompt.
 
-## CLASSIFIER PROMPT
+## CLASSIFIER
 
-You are the CLASSIFIER. Segment source material into atomic concepts and classify each.
+Segment source material into atomic concepts and classify each.
 
-**Input:** read `$WORK/sources.md` once in full for document batches and/or `$WORK/transcripts.md`
-once in full for video (the single-source `.md` for a diagnosis run; per-source `<tag>.md` only for
-a later narrow check), the course name/context, and `media/` if images are on. Classify broadly;
-the scope gate filters the list before anything is written. If `intake.md` has a `## Scope`
-section, read it first.
+**Input:** read `sources.md`/`transcripts.md` once in full (single-source `.md` for diagnosis;
+per-source only for a later narrow check), course context, and `media/` if on. Classify broadly;
+the scope gate filters. Read `intake.md` § Scope first.
 
 **Task:** (1) identify the course domain; (2) segment into atomic concepts explicitly present in
 the source; (3) classify each with `layer` (L1/L2/L3/Procedure), `topic`, `objects`, `type`
@@ -19,17 +17,15 @@ the source; (3) classify each with `layer` (L1/L2/L3/Procedure), `topic`, `objec
 `thermo.steady_flow`), `kc_type`, optional `stratum`, `requires` (KC IDs), and `source` (file +
 page/slide/line). Use `source`, not `source_ref`.
 
-`topic` is the chapter/lecture heading a student could look up — never a layer code, lecture
-number, single fact, or subtopic. Cards from the same lecture/chapter share the topic. `objects`
-is 0–2 broad cross-topic buckets; prefer `[]`. Tags are front-visible: never put the answer,
-method, theorem, or named technique in `topic` or `objects`. `kc_id` is for the KC map, not a tag.
+`topic` is the chapter/lecture heading, never a layer code, lecture number, fact, or subtopic; same
+lecture shares the topic. `objects` is 0–2 cross-topic buckets; prefer `[]`. Tags are front-visible:
+never put the answer/method/theorem/technique in either. `kc_id` is for the KC map, not a tag.
 
-**Do not produce concepts for:** anything not explicitly in the source; computed final-value
-fronts; proofs and worked examples (unless a Procedure decision card); relations the material does
-not discuss. Method- and next-step problem-solving fronts are Procedure cards, not exclusions. The
-scope gate is the brake on volume; coverage is not a reason for more cards.
+**Do not produce concepts for:** anything not explicitly in the source; computed final-value fronts;
+proofs/worked examples (unless a Procedure decision); relations the material does not discuss.
+Method/next-step problem fronts are Procedure cards, not exclusions. Scope is the brake on volume.
 
-**Every concept has:** `source`, `layer`, `topic`, `type`, and `objects` (0–2, may be `[]`).
+**Every concept has:** `source`, `layer`, `topic`, `type`, `objects` (0–2, may be `[]`).
 
 **Output only a JSON array:**
 
@@ -45,12 +41,11 @@ scope gate is the brake on volume; coverage is not a reason for more cards.
 A short judgement pass after review, not a subagent. `roi_report.py` is a signal; measured review
 feedback outranks it. Never auto-cut.
 
-- **Audience sets aggressiveness.** A cramming learner keeps anchors; someone who owns the basics
-  can lose them.
-- **Redundancy** → drop or merge. **Bad bundling** (independently examinable facts share one
-  schedule) → split. **Good chunk** (items always transfer together) → keep.
-- **Protect** anchors, reciprocal procedures, and one procedure walkthrough per procedure.
-  Compress long backs before deleting; keep the why.
+- **Audience sets aggressiveness:** cramming keeps anchors; a strong learner can lose them.
+- **Redundancy** → drop/merge. **Bad bundling** (independent facts share a schedule) → split.
+  **Good chunk** (items always transfer together) → keep.
+- **Protect** anchors, reciprocal procedures, one procedure walkthrough per procedure. Compress long
+  backs before deleting; keep the why.
 - **Report protections as well as cuts.** Name the card by topic and number; do not quote card
   text.
 - **Apply to `cards.jsonl` in one complete whole-file write**, then run one gates call. Never edit

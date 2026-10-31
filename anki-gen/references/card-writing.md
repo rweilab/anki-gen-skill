@@ -20,9 +20,8 @@ Code spans are the exception. A bare `X_y` outside math is a validator warning.
 
 ### Every card belongs to a KC
 
-A card is one retrieval rep; `kcs.md` owns the KC/value contract and `authoring.md` owns the
-fields. A single-card KC is allowed when the card is a complete high-value decision; the gate
-and review judge value. Do not add filler cards.
+A card is one retrieval rep. `kcs.md` owns the KC/value contract; `authoring.md` owns fields.
+Single-card KCs are allowed when the card is a complete high-value decision; no filler.
 
 ### A tier-zero card comes before the formula cards
 
@@ -135,24 +134,19 @@ from the writer's side:** the reader is always a novice, because they have forgo
 
 ### No cross-card pointers
 
-A back must never defer to a sibling. "See the magnitude check card" and "as shown above" fail
-because **each card is reviewed alone, in random order, with no knowledge of what else is in the
-deck** — the pointer resolves to nothing on the one screen where it was needed, and the card it
-points at may itself have been cut. This is distinct from a *stale* cross-reference (a pointer to
-a card merged away, which the deblater catches); this one is structural. **Write the information
-instead.** A fact on two cards costs seconds of review; a fact on one card that defers to a
-sibling costs a blank and a wasted rep. Required duplication is correct here (glossaries repeat); a
-pointer is the same mistake inverted. It is a rule because the reference is easy to write, feels
-economical, and fails silently — a run quoting "see the magnitude check card" produced a card
-unanswerable for the one topic where it mattered most, and nothing flagged it.
+A back must never defer to a sibling. "See the magnitude check card"/"as shown above" fail because
+**each card is reviewed alone**, and the target may itself be cut. This is structural, not a stale
+reference; **write the information instead**. Required duplication is correct (glossaries repeat);
+a pointer is the same mistake inverted and fails silently.
 
-### Backs explain, they do not just display
+### Backs answer, then explain
 
-A back that restates the front tests recall of a string. It must add at least one of: **why it
-works** (the mechanism, plain language); **an intuition or analogy** ("like a balloon: same mass,
-more volume, less dense"); **the variable glossary** (hard rule 8); **a boundary** (when it breaks, the
-common error). Prefer sentences over fragments. If a student who skipped the lecture could not
-follow the back, it is too thin.
+A back that restates the front tests a string. **The first sentence must answer the exact question.**
+If the front asks “which enzyme/law/step,” name it first, then explain. A true explanation that never
+states the requested answer is a broken card. After the answer, add at least one of: why it works,
+intuition/analogy, glossary (hard rule 8), boundary. Prefer sentences; if a student who skipped the
+lecture could not follow, it is too thin. Use a glossary/next-step line for neighbours; do not bury
+the answer.
 
 **A why must do work.** Pass this test before writing it:
 
@@ -168,19 +162,9 @@ follow the back, it is too thin.
 5. Would you keep this line if you were the learner? If not, delete it. A bare `2^3 -> 8` is better
    than a padded restatement.
 
-Good hooks are concrete: `2^10 ≈ 10^3` within 2.4%; `2^6 = 64` gives Base64 its alphabet;
-`2^16` is the 64 KiB segment size; `2^32` is the IPv4 address space; `2^3` is one octal digit
-(`chmod 755`). Bad hooks are positional restatements: “45 degrees past vertical, the upward
-component is still 0.707” or “512-byte sectors are common.” Those explain nothing.
-
-Do not write:
-
-- the same **“Concept: \(2^n\) counts the states…”** paragraph on every power card;
-- **“Where it shows up: 45 degrees past vertical…”** or any left/right/quadrant restatement;
-- **“512-byte sectors and 9-bit status fields are common”** — “is common” is not a consequence;
-- a citation on **\(2^3 = 8\)** or **\(\sin 30^\circ = 1/2\)** just to satisfy the source field;
-- a history line unless it explains why the standard/number exists. The 8086 belongs on 64 KiB
-  and 1 MiB because 20 address lines explain those sizes; it does not belong on every power card.
+Good hooks are concrete: `2^10 ≈ 10^3`; `2^6 = 64` gives Base64 its alphabet; `2^16` is the
+64 KiB segment; `2^32` is the IPv4 space; `2^3` is one octal digit. Positional restatements
+(“45 degrees past vertical…”, “512-byte sectors are common”) explain nothing.
 
 ### The recallability test — no front may demand a computed answer
 
@@ -280,20 +264,6 @@ make the front answerable: the learner sees the front first, with no back image.
 A method-intro card that only asks “what does X find first / what law does it apply?” is usually a
 table-of-contents card. Rewrite it around why the method reduces unknowns, or fold it into the
 topic’s Procedure card.
-
-### The back answers the front before it explains it
-
-**The first sentence of the back must answer the exact question.** If the front asks “which
-enzyme,” “which law,” “which step,” or “name the X,” the back names X first, then explains the
-mechanism. A true explanation that never states the requested answer is a broken card.
-
-- Bad: “Fructose-1,6-bisphosphate → DHAP + G3P. **Why:** the six-carbon sugar splits into two
-  trioses...” — the front asked for the enzyme; the back never names it.
-- Good: “**Aldolase** (fructose-bisphosphate aldolase) cleaves fructose-1,6-bisphosphate into
-  DHAP and G3P. **Why:** ... **Next:** triose phosphate isomerase (TPI) converts DHAP to G3P.”
-
-Use a glossary/next-step line for the neighbouring molecules; do not bury the answer under the
-reaction or the why.
 
 ### The topic is a chapter name
 
