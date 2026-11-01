@@ -104,6 +104,15 @@ def main() -> int:
         assert "work-dir sentence" not in combined, combined
         print("ok    directory extraction excludes the work dir")
 
+        same = td / "same-dir"
+        same.mkdir()
+        (same / "notes.txt").write_text("A note inside the work dir.\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--sources", str(same / "notes.txt"), "--out", str(same)], td)
+        assert r.returncode != 0 and "no sources left" in r.stderr, (r.stdout, r.stderr)
+        assert not (same / "pipeline_state.json").exists(), "failed extract left state"
+        print("ok    failed same-dir extraction leaves no state file")
+
         # Two URL sources must merge their metadata, not leave only the last.
         merged = td / "url-merge"
         merged.mkdir()
@@ -177,6 +186,7 @@ def main() -> int:
         gates.mkdir(parents=True)
         for name in ("intake.md", "scope_gate.md", "authoring_ledger.md"):
             (gates / name).write_text("evidence\n")
+        (gates / "intake.md").write_text("evidence\n\n- review: no review\n")
         r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
                  "--cards", str(cards), "--out", str(gates),
                  "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
@@ -197,6 +207,19 @@ def main() -> int:
         assert "context    " in r.stdout and "card(s)" in r.stdout, (r.stdout, r.stderr)
         assert list((td / "xdg" / "decks").glob("*/cards.jsonl")), r.stdout
         print("ok    pipeline build+validate+opt-in context and quality status")
+
+        unreviewed = td / "unreviewed"
+        unreviewed.mkdir()
+        for name in ("scope_gate.md", "authoring_ledger.md"):
+            (unreviewed / name).write_text("evidence\n")
+        (unreviewed / "intake.md").write_text("evidence\n\n- review: default\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(cards), "--out", str(unreviewed),
+                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(td / "unreviewed.apkg")], td)
+        assert r.returncode != 0 and "review page was not opened" in r.stderr, (
+            r.stdout, r.stderr)
+        print("ok    pipeline refuses an unreviewed default build")
         bad = td / "bad.jsonl"
         bad.write_text(json.dumps({
             "front": "Why does a missing source fail?",
@@ -296,6 +319,18 @@ def main() -> int:
         assert actions["score1"] and actions["score1"][0]["action"] == "", actions
         assert actions["score5"] and actions["score5"][0]["hash"], actions
         assert actions["deck_note"] == "Use the course's method names.", actions
+        actions["status"] = "resolved"
+        actions["score1"][0]["action"] = "rewritten as a clearer card"
+        actions["score1"][0]["target"] = "card 1"
+        (review_work / "review_actions.json").write_text(
+            json.dumps(actions, indent=2) + "\n")
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(review_cards), "--out", str(review_work),
+                 "--gates-only", "--build", "--deck-name", "LOCAL::TEST",
+                 "--out-apkg", str(td / "invalid-action.apkg")], td)
+        assert r.returncode != 0 and "score1[0].action" in r.stderr, (
+            r.stdout, r.stderr)
+        assert "merge|relevel|replace|keep anchor" in r.stderr, r.stderr
         # The rejected card is removed from the source of truth before the actions
         # are resolved; the score-5 hash is then absent from the current deck.
         review_cards.write_text(json.dumps(review_rows[0]) + "\n")
@@ -350,7 +385,8 @@ def main() -> int:
             packet_dir, review_rows, {"entries": [{"i": 1, "reasons": ["test"]}]}, None)
         packet_text = packet.read_text()
         assert review_rows[0]["front"] in packet_text, packet_text
-        assert review_rows[1]["front"] not in packet_text, packet_text
+        assert review_rows[1]["front"] in packet_text, packet_text
+        assert "Why selected: test" in packet_text, packet_text
         assert "sources.md" not in packet_text, packet_text
         print("ok    review feedback creates actions, packet, and shape line")
 
@@ -397,7 +433,7 @@ def main() -> int:
                  "--cards", str(kc_cards), "--out", str(kc_work),
                  "--gates-only"], td)
         assert r.returncode == 0, (r.stdout, r.stderr)
-        assert "kc         3/3 card(s) linked to 2 KC(s)" in r.stdout, r.stdout
+        assert "kc         3/3 card(s) linked to 2 KC(s), 1 single-card" in r.stdout, r.stdout
         assert (kc_work / "review_packet.md").is_file(), r.stdout
         print("ok    pipeline gates link cards to the KC map and source quotes")
         ceiling_work = td / "ceiling-work"

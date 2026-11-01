@@ -12,7 +12,7 @@ the deck still imported fine, it just looked broken on screen.
   6. near-duplicate fronts
   7. glossary signal           symbol card without a definitions section (warning)
   8. missing provenance        no `source`, or a source with no locator
-  9. KC coverage              missing/unknown kc, unresolved requires, 1:1 map
+  9. KC coverage              missing/unknown kc, unresolved requires, too-granular map
  10. evidence quote           source-dependent quote missing or not in the extract
 """
 import argparse
@@ -262,7 +262,7 @@ def kc_findings(cards: list[Card], kc_text: str,
 
     Hard errors are structural: missing map, missing/unknown kc, duplicate id,
     missing claim/why, exact duplicate claim, unresolved requires, ungrounded
-    evidence. Single-card KCs and a 1:1 map are warnings; value is judged by the
+    evidence. A too-granular KC map is a warning; value is judged by the
     adversarial and human reviews, not by a card count.
     """
     kcs, duplicates, has_evidence, has_why = parse_kc_map(kc_text or "")
@@ -295,10 +295,11 @@ def kc_findings(cards: list[Card], kc_text: str,
             out.append(("warn", f"{label} -- unknown stratum {stratum!r}; use one of "
                                f"{', '.join(sorted(STRATA))}, or omit it and use the KC type"))
 
-    if len(kcs) > 1 and all(counts.get(kc_id, 0) == 1 for kc_id in kcs):
-        out.append(("warn", "every KC has exactly one card; the map mirrors the deck. "
-                           "Inspect for card labels; one-card KCs are allowed when the "
-                           "card is a complete high-value decision."))
+    if len(cards) > 1 and len(kcs) * 2 > len(cards):
+        out.append(("warn", f"KC map has {len(kcs)} KCs for {len(cards)} cards; it "
+                           "reads as a card index. Group cards under shared concepts; "
+                           "keep singles only for anchors, boundaries, errors, or "
+                           "integrations."))
 
     for kc_id, row in kcs.items():
         count = counts.get(kc_id, 0)
@@ -620,8 +621,8 @@ def findings(cards: list[Card]):
         has_sym = bool(set(SYM.findall(front) + SYM.findall(back)) | math_vars)
         if has_sym and layer in {"L1", "L2"} and not STRUCT_GLOSSARY.search(back):
             add(i, "warn",
-                f"{label} -- card uses symbols but has no glossary/definition "
-                "line; name each symbol and its units on the card")
+                f"{label} -- card uses symbols but has no glossary/definition line; "
+                "add a **Symbols:** line (symbol = meaning, unit)")
 
         # 9. unterminated cloze deletion. Anki closes at the first '}}'; a card
         # with no close at all renders the remainder as literal text. Braces
@@ -676,7 +677,7 @@ def findings(cards: list[Card]):
         if count >= 3 and topic not in tier_topics:
             add(0, "warn",
                 f"topic {topic!r} has {count} formula-bearing cards and no tier-zero "
-                "concept card; consider one, but do not add it automatically")
+                "concept card; convert an existing concept card or add one if scope allows")
     if len(cards) >= 8:
         singles = sorted(t for t, n in topics.items() if n == 1)
         if len(singles) >= max(3, len(topics) // 2):
@@ -821,7 +822,7 @@ def math_format_findings(cards: list[Card]):
             if field == "back":
                 prose = CODE_SPAN.sub("", text)
                 for match in SECTION_LABEL.finditer(prose):
-                    before = prose[:match.start()].rstrip()
+                    before = prose[:match.start()]
                     if before and not before.endswith("\n\n"):
                         out.append((i, "warn", f"section label {match.group(0)} in "
                                               "the back is not preceded by a blank "

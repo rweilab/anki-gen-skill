@@ -76,8 +76,20 @@ These are deliberate, not forgotten:
 - Removed the unused same-context self-audit from `review.md`; the rubric is shared by the
   adversarial reviewer and the human page. The adversarial pass is mandatory when a read-only
   subagent exists, not caller-optional.
+- The adversarial reviewer now receives every card; the human page remains a capped sample.
+  Reports show human and adversarial coverage separately.
+- A KC map with more KCs than half the deck warns as a card index; the pipeline reports the
+  single-card count. Authoring shows the bad/good map example.
+- The section-label check no longer strips the newlines it is testing, removing false warnings.
+- Build refuses a `review: default` deck without a review page; `review: no review` is explicit.
+- Work directories include a timestamp, so a prior run cannot be reused silently.
+- `review_actions.json` drops unused fields, and an invalid score-1 action names the allowed values.
 - Review feedback is applied in one complete `cards.jsonl` write. Per-card edit guidance is gone
   from `SKILL.md`, `authoring.md`, `review.md`, and `prompts.md`.
+- Gate hints now name the `**Symbols:**` line, say to convert or add a tier-zero card, and mark
+  `roi-split` as report-only.
+- A failed extraction that leaves no sources no longer writes `pipeline_state.json` to the
+  caller's directory.
 - The checker now warns when a second run changes 0 or 1 cards while errors remain: apply all
   remaining fixes in one whole-file write, then re-run once.
 - The media policy now documents up to two images per card; the builder already capped at two.

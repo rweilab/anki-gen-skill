@@ -72,4 +72,3 @@ class ReviewAction(TypedDict, total=False):
     comments: list[str]
     action: str
     target: str
-    net_delta: int

@@ -10,8 +10,8 @@ cutting and splitting (*too hard for me*, *I already know this cold*).
 
 ### Quality rubric — one rubric
 
-Use this on the triaged sample plus flagged cards. The adversarial reviewer and the human page
-use the same rubric; do not maintain a second checklist.
+Use this on the human sample plus flagged cards and on the full-deck adversarial pass. Both use
+the same rubric; do not maintain a second checklist.
 
 1. **Source-grounded:** locator supports the claim, or `derived` is genuinely self-contained.
 2. **One retrieval decision:** a wrong answer points to one thing to repair. It is not a duplicate
@@ -35,13 +35,15 @@ use the same rubric; do not maintain a second checklist.
 Hard-fail: vague/unanswerable front, back unrelated to front, extraction debris/truncation, computed
 final value, unsupported source claim, cross-card/context pointer, whole-formula/prose cloze, or a
 Procedure card that is a worked/remaining solution. Flag: missing/unknown `kc`, unresolved `requires`,
-absent `evidence_quote`, a card-label KC, generic `why`, or a fragment KC. Card count is not KC
-quality.
+absent `evidence_quote`, a card-label KC, generic `why`, or a fragment KC. A KC map with more KCs than
+half the deck, or mostly single-card KCs, is a card index — flag it and group cards under shared
+concepts. Card count is not KC quality.
 
-**Adversarial reviewer:** run whenever a read-only subagent is available; skip only if none
-exists. Start after the web review opens. Give it `$WORK/review_packet.md` only,
-one line per sampled card: `KEEP|FIX|FAIL | card number | one-line reason`. Use the one rubric for
-source, symbols, and media, then apply this decision/overlap pass:
+**Full-deck adversarial reviewer:** run whenever a read-only subagent is available; skip only if
+none exists. Start after the web review opens, or after the gates call when the page is skipped.
+Give it `$WORK/review_packet.md` only; it contains every card. Ask for one line per card: `KEEP|FIX|FAIL | card number | one-line reason`. Use the one
+rubric for source, symbols, and media, then apply this decision/overlap pass. Also flag a KC map
+that is mostly one-card; the packet contains every KC.
 
 - Reduce each front to the exact answer it demands.
 - FAIL when the demand is a final numeric value requiring computation (basic counting of visible
@@ -83,17 +85,18 @@ python3 "$SKILL/scripts/pipeline.py" --cards $WORK/cards.jsonl \
 | **Format** | does it read right? | one per card kind (layer × cloze), preferring an unflagged card |
 | **Breadth** | is the coverage right? | one per topic, preferring its `tier_zero` card — one slot answers both |
 
-**The sample is fixed at 12.** No `--max`/`--per-topic`; a bigger sample is certification, not a
-quality setting. Risk and format are never dropped. The default spans all four kinds and most
-topics.
+**The human sample is capped at 12.** No `--max`/`--per-topic`; a bigger sample is certification,
+not a quality setting. Fewer families can mean fewer than 12. Risk and format are never dropped.
+The default spans all four kinds and most topics.
 
 **A stratum is a family, so it costs one slot.** The format axis keys on `(layer, cloze, stratum)`;
 when one is under-shown, add one card, never the whole stratum.
 
-**A clean review is not proof.** Each card stands for a family, so the sample surfaces defects but
-cannot certify absence. `second_round` names the unreviewed topics/strata/patterns. Report what a
-round found, not coverage. Certification is an explicit all-card pass without `--plan`; never call
-the sample certification.
+**The human sample is not proof.** Each card stands for a family, so the sample surfaces defects
+but cannot certify absence. `second_round` names the unreviewed topics/strata/patterns. The
+full-deck adversarial pass covers every card, but it is still a review, not certification.
+Certification is an explicit all-card human pass without `--plan`; never call the sample
+certification.
 
 ### Run it
 
@@ -102,7 +105,7 @@ selected** ("flagged: near-duplicate front", "tier-zero"); a stale plan **aborts
 `--plan` it renders every card — the fallback, not the flow.
 
 First generation runs review by default; later changes ask whether to reopen; if declined, say not
-manually reviewed/static checks only. Start in the background, hand over one sentence and the URL
+manually reviewed; static checks plus the adversarial pass. Start in the background, hand over one sentence and the URL
 **alone**, never print card text. Wait; on "done" read disk, generalise, stop with
 `curl -s -X POST <url>/finish`; never `pkill -f`.
 
@@ -156,16 +159,16 @@ pass over the same plan when the deck is computation-heavy, or alone when recall
 After the user reviews, run one `pipeline.py --gates-only` call. It reads `review_feedback.jsonl`
 plus `review_recall.jsonl`, reduces each log to its last row per card, and writes
 `$WORK/review_actions.json` when feedback exists and regenerates `review_packet.md`. The skeleton
-groups score 1 by topic/KC and lists score 5 removals, score 4 diagnoses, recall failures, and the
-cards the sample did not cover.
+groups score 1 by topic/KC and lists score 5 removals, score 4 comments, and recall failures.
+`review_plan.json` names the human sample and the cards it did not show.
 
 In one pass, apply all card changes in one complete write of `cards.jsonl` and fill
-`score1[].action`, `score1[].target`, and any `score4[].decision` from the source of truth; set
-`"status": "resolved"`. Every score-1 block must name one of `merge | relevel | replace | keep
-anchor` and a non-empty target. `pipeline.py --build` refuses while the file is missing, open,
-stale, or incomplete; a score-5 card still present is incomplete. Score 1 is rescope evidence,
-never an automatic cut; score 5 is the only removal verdict. Then build; the build runs the gates
-once more.
+`score1[].action` and `score1[].target` from the source of truth; set `"status": "resolved"`.
+Score 4 comments are applied from the feedback log; there is no action field for them. Every
+score-1 block must name one of `merge | relevel | replace | keep anchor` and a non-empty target.
+`pipeline.py --build` refuses while the file is missing, open, stale, or incomplete; a score-5
+card still present is incomplete. Score 1 is rescope evidence, never an automatic cut; score 5 is
+the only removal verdict. Then build; the build runs the gates once more.
 
 The KC map and cards remain the reasoning record. Read `cards.jsonl` once before the whole-file
 rewrite if it is not current; do not re-read it after. Do not re-read the corpus, build script,

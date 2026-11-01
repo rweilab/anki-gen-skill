@@ -460,7 +460,7 @@ def _feedback_sha(out: Path) -> str:
 def _review_actions_doc(cards: list[Card], plan: dict, out: Path,
                         scale_rows: list[dict], recall_rows: list[dict]) -> dict:
     by_hash = {card_hash(c): i for i, c in enumerate(cards, 1)}
-    score5, score1, score4, kept = [], {}, [], []
+    score5, score1, score4 = [], {}, []
     for row in scale_rows:
         n = _card_number(row, cards, by_hash)
         if n is None:
@@ -479,9 +479,7 @@ def _review_actions_doc(cards: list[Card], plan: dict, out: Path,
             if comment:
                 score1[key]["comments"].append(f"{n}: {comment}")
         elif score == 4:
-            score4.append({"card": n, "reason": comment, "decision": ""})
-        elif score in (2, 3):
-            kept.append(n)
+            score4.append({"card": n, "reason": comment})
     recalled_no = []
     for row in recall_rows:
         if row.get("recall") is False:
@@ -506,7 +504,6 @@ def _review_actions_doc(cards: list[Card], plan: dict, out: Path,
             "comments": item["comments"],
             "action": "",
             "target": "",
-            "net_delta": 0,
         })
     return {
         "schema": 1,
@@ -517,8 +514,6 @@ def _review_actions_doc(cards: list[Card], plan: dict, out: Path,
         "score5": score5,
         "score4": score4,
         "recall_failures": [{"card": n} for n in recalled_no],
-        "kept": kept,
-        "second_round": plan.get("second_round") or {},
     }
 
 
@@ -606,17 +601,25 @@ def review_actions_state(out: Path, cards_path: Path | None = None,
         if doc.get("feedback_sha") != _feedback_sha(out):
             return {"required": True, "state": "stale", "path": action,
                     "legacy": False}
-        for item in doc.get("score1") or []:
+        for index, item in enumerate(doc.get("score1") or []):
             action_name = str(item.get("action") or "").strip().strip("`").lower()
             target = str(item.get("target") or "").strip()
-            if action_name not in VALID_REVIEW_ACTIONS or not target:
+            if action_name not in VALID_REVIEW_ACTIONS:
                 return {"required": True, "state": "incomplete", "path": action,
-                        "legacy": False}
+                        "legacy": False,
+                        "detail": f"score1[{index}].action {action_name!r} is invalid; "
+                                  "use merge|relevel|replace|keep anchor"}
+            if not target:
+                return {"required": True, "state": "incomplete", "path": action,
+                        "legacy": False,
+                        "detail": f"score1[{index}].target is required"}
         hashes = {card_hash(c) for c in (cards or [])}
         for item in doc.get("score5") or []:
             if str(item.get("hash") or "") in hashes:
                 return {"required": True, "state": "incomplete", "path": action,
-                        "legacy": False}
+                        "legacy": False,
+                        "detail": f"score5 card {item.get('card')} is still present; "
+                                  "remove it from cards.jsonl"}
         return {"required": True, "state": "resolved", "path": action,
                 "legacy": False}
 
@@ -666,6 +669,13 @@ def _intake_images(out: Path) -> str:
     return match.group(1).lower() if match else ""
 
 
+def _intake_review(out: Path) -> str:
+    """The intake's review decision; missing means the default (review required)."""
+    text = _read_optional(out / "intake.md")
+    match = re.search(r"(?mi)^\s*-?\s*review\s*:\s*(no review|default)\b", text)
+    return match.group(1).lower() if match else "default"
+
+
 def _extracted_figures(out: Path) -> int:
     """Figure count from extraction state, falling back to source manifests."""
     state = _load_state(out)
@@ -685,17 +695,17 @@ def _extracted_figures(out: Path) -> int:
 
 def write_review_packet(out: Path, cards: list[Card], plan: dict,
                         ledger_text: str | None) -> Path:
-    """A compact, packet-only input for the optional adversarial reviewer.
+    """A packet-only input for the full-deck adversarial reviewer.
 
-    The reviewer sees selected cards, their KC rows/evidence, and the intake/scope
-    context. It never receives the full deck or extracted corpus.
+    The reviewer sees every card, its KC rows/evidence, and the intake/scope
+    context. It never receives the extracted corpus.
     """
     from validate_cards import parse_kc_map
 
-    selected = list(plan.get("entries") or [])
-    chosen = [cards[e["i"] - 1] for e in selected
-              if isinstance(e.get("i"), int) and 1 <= e["i"] <= len(cards)]
-    selected_kcs = {str(c.get("kc") or "").strip() for c in chosen
+    reasons = {e["i"]: e for e in plan.get("entries") or []
+               if isinstance(e.get("i"), int)}
+    selected = [{"i": i, **reasons.get(i, {})} for i in range(1, len(cards) + 1)]
+    selected_kcs = {str(c.get("kc") or "").strip() for c in cards
                     if str(c.get("kc") or "").strip()}
     kcs, _, _, _ = parse_kc_map(ledger_text or "")
     shown = set(selected_kcs)
@@ -824,6 +834,8 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
     review = _ensure_review_actions(out, cards, plan, cards_path)
     packet_path = write_review_packet(out, cards, plan, ledger_text)
     kc_map, _, _, _ = parse_kc_map(ledger_text or "")
+    kc_counts = Counter(str(c.get("kc") or "") for c in cards)
+    kc_single = sum(1 for kc_id in kc_map if kc_counts.get(kc_id, 0) == 1)
     layers = Counter(str(c.get("layer") or "?") for c in cards)
     strata = Counter(str(c.get("stratum") or "unspecified") for c in cards)
     gates_path = out / "gates.json"
@@ -839,6 +851,7 @@ def stage_gates(cards_path: Path, out: Path) -> dict:
             "media_risks": media_risks, "review": review,
             "kc_total": len(kc_map),
             "kc_linked": sum(1 for c in cards if c.get("kc")),
+            "kc_single": kc_single,
             "ceiling": ceiling,
             "cards_sig": cards_sig, "small_change_streak": small_change_streak,
             "loop": loop,
@@ -995,7 +1008,6 @@ def main(argv: list[str] | None = None) -> int:
               "use --out-apkg for the deck", file=sys.stderr)
         return 2
     out = Path(out_arg)
-    out.mkdir(parents=True, exist_ok=True)
     root = Path.cwd()
     lines: list[str] = []
     if args.status:
@@ -1022,7 +1034,6 @@ def main(argv: list[str] | None = None) -> int:
         print("pipeline.py: another extraction is still running in this work "
               "dir; wait for it or use a different --out", file=sys.stderr)
         return 2
-    _mark(out, "run", "running")
 
     if args.gates_only and not args.cards:
         print("pipeline.py: --gates-only requires --cards", file=sys.stderr)
@@ -1031,12 +1042,16 @@ def main(argv: list[str] | None = None) -> int:
         print("pipeline.py: pass --sources to extract, or --cards to gate an existing "
               "deck (or --gates-only with --cards)", file=sys.stderr)
         return 2
+    media_sources, doc_sources = [], []
     if args.sources and not args.gates_only:
         media_sources, doc_sources = _split_sources(args.sources, exclude=out)
         if not media_sources and not doc_sources:
             print("pipeline.py: no sources left after excluding the work dir",
                   file=sys.stderr)
             return 2
+    out.mkdir(parents=True, exist_ok=True)
+    _mark(out, "run", "running")
+    if args.sources and not args.gates_only:
         _mark(out, "extract", "running", pid=os.getpid())
         if media_sources:
             med = stage_media(media_sources, out,
@@ -1120,7 +1135,7 @@ def main(argv: list[str] | None = None) -> int:
         lines.append(f"strata     {strata or 'none'}")
         if g["roi_split"]:
             shown = ", ".join(str(card) for card in g["roi_split"][:8])
-            lines.append(f"roi-split  {len(g['roi_split'])} candidate(s): {shown}")
+            lines.append(f"roi-split  {len(g['roi_split'])} candidate(s) (report only): {shown}")
         if g["media_risks"]:
             shown = "; ".join(
                 f"card {risk['card']} {risk['risk']}"
@@ -1129,7 +1144,7 @@ def main(argv: list[str] | None = None) -> int:
         lines.append(evidence_line(load_cards(Path(args.cards)), out))
         if g["kc_total"]:
             lines.append(f"kc         {g['kc_linked']}/{g['cards']} card(s) linked "
-                         f"to {g['kc_total']} KC(s)")
+                         f"to {g['kc_total']} KC(s), {g['kc_single']} single-card")
         rv = g["review"]
         if rv["required"]:
             lines.append(f"review     {rv['state']} -> {_short(rv['path'], root)}")
@@ -1150,8 +1165,10 @@ def main(argv: list[str] | None = None) -> int:
             lines.append(f"deck-name  {args.deck_name}")
         if args.build:
             if g["review"]["required"] and g["review"]["state"] != "resolved":
+                detail = g["review"].get("detail", "")
                 print("pipeline.py: refusing --build: review feedback exists but "
                       f"{g['review']['path'].name} is {g['review']['state']}. "
+                      f"{detail + ' ' if detail else ''}"
                       "Fill every score-1 action/target, set `status: resolved`, "
                       "and re-run the gates.",
                       file=sys.stderr)
@@ -1169,6 +1186,14 @@ def main(argv: list[str] | None = None) -> int:
                       f"({', '.join(missing)}). Write them in {out} or pass "
                       "--allow-missing-artifacts for a draft.", file=sys.stderr)
                 return 2
+            if (not args.allow_missing_artifacts
+                    and _intake_review(out) != "no review"
+                    and not (out / "review_done").is_file()
+                    and not _feedback_paths(out)):
+                print("pipeline.py: refusing --build: the review page was not opened. "
+                      "Open it, or set `review: no review` in intake.md for an "
+                      "explicit no-human run.", file=sys.stderr)
+                return 1
             if g["errors"]:
                 print("pipeline.py: refusing --build while validation errors remain",
                       file=sys.stderr)

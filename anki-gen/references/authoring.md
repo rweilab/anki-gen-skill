@@ -13,7 +13,7 @@ cards, and it re-sends the whole file at every step.
 
 1. `intake.md` § Scope: what to card/not card, `Ceiling: N`, parked list with reasons.
 2. `kcs.md`: compact KC table. A KC is a concept, not a card; single-card KCs are allowed when
-   `why` makes the value case. A 1:1 map warns; duplicate claims are errors; no filler.
+   `why` makes the value case. A too-granular map warns; duplicate claims are errors; no filler.
 3. `cards.jsonl` topic by topic in source order. `kc` is required; `stratum` is optional. A topic
    is a small batch, not a quota.
 
@@ -96,10 +96,12 @@ a back, or an answer-leaking term in `topic`/`objects`.
 | thermo.steady_flow | procedure | Apply the steady-flow energy equation. | One-card method decision | thermo.control_volume | "Apply the steady-flow energy equation" | Lec 04 p.12 |
 ```
 
-- A KC is a concept, not a card. Single-card KCs are allowed when `why` makes the value case:
-  reused, exam-weighted, error-prone, prerequisite, high-value exception.
-- Single-card `concept`/`mechanism` warns; other types may be singles. A 1:1 map warns; duplicate
-  claims are errors. Do not add cards/types to clear a warning; no filler.
+- A KC is a concept, not a card. Single-card KCs are allowed when `why` names the boundary, error,
+  integration, or anchor that makes the card the complete decision.
+- Single-card `concept`/`mechanism` warns; other types may be singles. A map with more KCs than half
+  the deck warns: it is a card index. Duplicate claims are errors; no filler.
+- Bad: 41 cards, 32 KCs, 25 singles. Good: ~12–16 KCs, each covering several cards, plus a few
+  justified anchors/boundaries. `why: one-card exception` is not a value case.
 - `type` is optional. Every `requires` resolves. Source-dependent KCs need a short quote from the
   corpus; `derived` exempts.
 - `Ceiling: N` is a soft cap; the gate warns, never cuts. Park the weaker candidate.

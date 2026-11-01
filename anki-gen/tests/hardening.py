@@ -291,7 +291,7 @@ def main() -> int:
     data, _ = validate_with(flat_cards, ledger=flat_ledger,
                              source="A control volume is fixed. Apply the steady-flow equation.")
     assert data["valid"] is True, data
-    assert any("every KC has exactly one card" in w for w in data["warnings"]), data
+    assert any("reads as a card index" in w for w in data["warnings"]), data
     assert any("single-card concept" in w for w in data["warnings"]), data
     print("ok    flat KC map warns instead of forcing filler")
 
@@ -538,6 +538,10 @@ def main() -> int:
     case("section label without blank line",
          lambda: [dict(BASE, back="The answer is fixed. **Why:** geometry fixes it.")],
          "warning", "not preceded by a blank line")
+    section_ok, _ = validate([dict(BASE, back="The answer is fixed.\n\n"
+                                              "**Why:** geometry fixes it.")])
+    assert not any("not preceded by a blank line" in w
+                   for w in section_ok["warnings"]), section_ok
     case("LaTeX outside math",
          lambda: [dict(BASE, back="Use \\frac{1}{2} here.\n\n**Why:** geometry fixes it.")],
          "error", "LaTeX command outside math")

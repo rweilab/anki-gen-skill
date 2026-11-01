@@ -11,8 +11,11 @@ and build an `.apkg`.
 Harness-agnostic: `SKILL` is the directory containing this file. Install paths
 (`~/.claude/skills/...`, `.opencode/skills/...`, `.agents/skills/...`) differ only by entry point.
 
-`$WORK` is `.anki-gen-temp/<slug>` (deck name lowercased, `::`/spaces → `-`), e.g.
-`circuits-midterm2`. Every artifact lives there; the `.apkg` is the only new file in the caller's directory.
+`$WORK` is a fresh `.anki-gen-temp/<slug>-<YYYYMMDD-HHMM>` (deck name lowercased, `::`/spaces
+→ `-`). Never reuse a previous run's directory; if it exists, pick a new suffix. Every artifact
+lives there; the `.apkg` is the only new file in the caller's directory. Keep source files outside
+`$WORK`; the extractor excludes it. If the caller pins the run to one folder, put `$WORK` in a
+subfolder and keep the sources at the parent.
 
 ## Route first
 
@@ -68,12 +71,11 @@ Seven steps; no parallel path. Read only the current step's reference; more cont
 4. **Gates.** Run one gates call. It writes `gates.json`, `review_plan.json`,
    `review_packet.md`, and `roi.txt`. Fix all errors in one whole-file rewrite, then run one gates
    call again. Do not run a separate validator after every edit.
-5. **Review.** Start the web review. Wait. Run one adversarial subagent pass whenever a
-   read-only subagent is available; skip only if none exists. If no human
-   reviewer is available, skip the page, say "not manually reviewed; static checks only," and still
-   run the adversarial pass after the gates call if a subagent is available. Read only low scores and
-   comments. If feedback exists, run one gates call to create `review_actions.json`; apply all
-   feedback in one complete write of `cards.jsonl`; fill every score-1 action/target, set
+5. **Review.** Start the web review. Wait. If no human reviewer is available, skip the page and say
+   "not manually reviewed; static checks only." Run one full-deck adversarial subagent pass whenever
+   a read-only subagent is available; skip only if none exists. Read the human's low scores/comments
+   and the adversarial findings; apply both in one complete write of `cards.jsonl`. If human feedback
+   exists, run one gates call to create `review_actions.json`; fill every score-1 action/target, set
    `"status": "resolved"`, then build.
 6. **Build.** Run one build call. It validates the real import.
 7. **Cleanup.** Stop the review server, delete `$WORK` in full, leave only the `.apkg`.
@@ -133,7 +135,8 @@ Rules, all scale-free:
   error-prone, prerequisite, or high-value exception. A single-card `concept`/`mechanism` warns;
   other types (`condition`, `procedure`, `representation`, `schema`, `boundary`, `error`,
   `metacognition`, `integration`, `anchor`) may be singles.
-- A 1:1 map warns; duplicate `claim`s are errors. Do not add cards/types to clear a warning.
+- A too-granular map warns (more KCs than half the deck); duplicate `claim`s are errors. Do not add
+  cards/types to clear a warning.
 - No filler cards for a KC count; park the weaker candidate in `intake.md` § Scope.
 - Every `requires` resolves. Source-dependent KCs need an `evidence_quote` from the corpus;
   `derived` is exempt.
@@ -172,7 +175,7 @@ only bulk-pixel path, and the normal media rule still forbids main-model bulk vi
 ## Review
 
 On the first generation, run the web review by default. On later changes, ask whether to
-reopen it; if declined, say “not manually reviewed; static checks only.”
+reopen it; if declined, say “not manually reviewed; static checks plus the adversarial pass.”
 
 Run the server in the background; hand over one sentence and the URL alone; wait. Do not print card
 text. On “done”, one gates call → apply all feedback in one complete `cards.jsonl` write → fill
@@ -182,11 +185,11 @@ No feedback: no action file; build.
 Stop a stuck server with `curl -X POST <url>/finish`, never `pkill -f`. Score 1 is calibration
 (“known / too easy”), not automatic rejection; score 5 is the only removal verdict.
 
-The adversarial reviewer is mandatory when a read-only subagent/task tool is available. Give it
-`$WORK/review_packet.md` only (the gates call writes it), after the web review is open or after the
-gates call when the page is skipped, and ask for findings by card number. It never rewrites or
-certifies. Skip only when no subagent exists. Do not rerun it after a formatting-only change;
-render one card instead.
+The full-deck adversarial reviewer is mandatory when a read-only subagent/task tool is available.
+Give it `$WORK/review_packet.md` only (the gates call writes every card into it), after the web
+review is open or after the gates call when the page is skipped, and ask for one finding line per
+card. It never rewrites or certifies. Skip only when no subagent exists. Do not rerun it after a
+formatting-only change; render one card instead.
 
 ## Build, cleanup, report
 
@@ -205,6 +208,7 @@ Report:
 Study first: <2–3 highest-weight topics, and why>
 Assumed: <the one or two assumptions you made>
 Quality: DONE / DONE WITH WARNINGS / NOT REVIEWED / BLOCKED — one line
+Review: human N/M (X%), U unshown; adversarial M/M
 <optional: a one-line cut list>
 ```
 
@@ -251,7 +255,7 @@ Read each file once, at the step named. The rules above are the contract; refere
 |---|---|---|
 | `references/card-writing.md` | before authoring | calibration, symbols, tier-zero, anchors, cloze, recallability, provenance, topic/objects, Procedure |
 | `references/authoring.md` | before authoring | fields/shapes, `cards.jsonl`, KC map, media policy, JSON escaping, batching |
-| `references/prompts.md` | authoring and review follow-up | classifier and debloater only |
+| `references/prompts.md` | optional; authoring/review | classifier and debloater only |
 | `references/review.md` | review and follow-up | triage, score meanings, review actions, rescope |
 | `references/survey.md` | intake and extraction | source survey, learner context, deck name |
 | `references/video.md` | video sources | transcripts, playlists, frames |
