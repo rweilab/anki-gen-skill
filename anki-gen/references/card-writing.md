@@ -45,7 +45,8 @@ definition** — contrasting FCC against BCC gives a handle for every later card
 
 A yes/no front ("Is a 1p state possible?") can be answered in one word while its back is a
 paragraph, so the paragraph is never read. Demand the mechanism ("Why can there be no 1p state?")
-or cut the back. Nothing checks this.
+or cut the back. The validator warns on any yes/no front; the review packet carries front/back
+word counts so the adversarial reviewer can judge length.
 
 ### Speak the course's language, not the textbook's
 
@@ -115,13 +116,9 @@ the learner can decide without a lookup; `validate_cards` warns when one has non
 legitimate pure recall). The builder routes on `card["cloze"]` and validates deletion count and
 brace balance.
 
-**The build goes through Anki's own library.** `genanki` writes `cards.type = 0` where Anki needs
-the 1-based cloze ordinal, so its cloze decks show `{{c1::4}}` literally; patching the database to
-`ord + 1` makes Anki 26 refuse the package (`DbError InvalidColumnType(6, "type", Integer)` —
-verified by isolation: re-zipping alone imports, a no-op SQL write imports, only the `type` write
-fails). So `build_native.py` has Anki create the notetypes and notes and zips the collection Anki
-wrote. **Do not reintroduce genanki.** `validate_apkg.py` runs a **real import** first — the only
-proof a deck opens is that something opened it.
+**The build goes through Anki's own library.** `build_native.py` has Anki create the notetypes
+and notes and zips the collection Anki wrote. **Do not reintroduce genanki.** `validate_apkg.py`
+runs a **real import** first — the only proof a deck opens is that something opened it.
 
 ### Write for the version of you who has forgotten
 
@@ -275,11 +272,12 @@ real chapter.
 ### Deck-wide uniqueness, without a card cap
 
 These are the axioms behind `similar_answer_pairs()` and the ROI report. They are about distinct
-retrieval targets, not about keeping a deck small:
+retrieval targets, not about keeping a deck small. The ROI report lists overlap and duplicate
+*candidates*; it never cuts, and a deliberate contrast stays.
 
 1. **One card, one retrieval.** Judge by the answer and source, not by front wording.
 2. **Contrast pairs are not duplicates.** Stack vs heap and bounded vs unbounded inversion must
-   stay separate; the ROI report's overlap signal is only a warning.
+   stay separate; the ROI report's overlap signal is a candidate, not a verdict.
 3. **A scenario card must add a decision.** If it repeats a definition with a story, merge it.
 4. **An enumeration is one comparison card unless each item changes a decision.** Five heap
    variants with distinct failure modes can stay; five names with the same consequence should not.

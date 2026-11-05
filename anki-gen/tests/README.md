@@ -13,7 +13,7 @@ owns the rule; shared setup must not hide the defect being tested.
 | `visual_hardening.py` | visual scoring, PDF figures, media index, vision bridge | 2s | PyMuPDF, PIL |
 | `slides_hardening.py` | PPTX text/notes/images and rejections | <1s | PIL |
 | `local_media_hardening.py` | sidecars, audio-only, model selection, local WAV decode | <1s | ffmpeg |
-| `quality_precision.py` | validator false-positive floor | <1s | none |
+| `quality_precision.py` | validator false-positive floor, ROI duplicate candidates | <1s | none |
 | `install_test.sh` | installer/upgrade and key preservation | smoke | bash |
 
 Canonical ownership:
@@ -22,6 +22,7 @@ Canonical ownership:
 - AnkiConnect behavior and snapshots: `revision_hardening.py`
 - dossier format and archives: `context_hardening.py`
 - pipeline flag passthrough, combined sources, media state/resume, review actions, packet, shape, mixed sources: `pipeline_hardening.py`
+- prerequisite depth order and soft-duplicate candidates: `hardening.py`, `quality_precision.py`
 - per-video progress and playlist resume: `video_hardening.py`
 - vision confirmation selection: `visual_hardening.py`
 - review plan staleness, review page, and UI text: `scripts/smoke.sh`

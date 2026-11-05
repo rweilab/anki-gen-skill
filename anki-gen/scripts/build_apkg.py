@@ -98,57 +98,31 @@ def normalize_objects(cards: list[Card]) -> list[Card]:
     return out
 
 
-def _grouped_order(cards: list[Card]) -> list[Card]:
-    topic_order: dict[str, int] = {}
-    for c in cards:
-        topic = str(c.get("topic", ""))
-        topic_order.setdefault(topic, len(topic_order))
-    return sorted(
-        cards,
-        key=lambda c: (
-            topic_order[str(c.get("topic", ""))],
-            0 if c.get("tier_zero") else 1,
-            LAYER_ORDER.get(str(c.get("layer", "")), 2),
-        ),
-    )
+def study_order(cards: list[Card], depths: dict[str, int] | None = None) -> list[Card]:
+    """Order cards by topic, prerequisite depth, tier-zero, then layer.
 
-
-def study_order(cards: list[Card]) -> list[Card]:
-    """Scatter topics loosely, without breaking a topic's tier-zero anchor.
-
-    Small decks stay grouped. Larger decks interleave topics: a topic's tier-zero
-    card is a hard release gate for that topic, then its remaining cards compete
-    with other topics. A seeded RNG makes a rebuild reproducible.
+    Small decks stay grouped. Larger decks interleave topics: each topic's queue
+    is already dependency-ordered, and the seeded RNG makes a rebuild reproducible.
+    Ordering is within a topic; a cross-topic prerequisite is recorded but not
+    enforced by the interleaver.
     """
     topics: dict[str, list[dict]] = {}
     for c in cards:
         topics.setdefault(str(c.get("topic", "")), []).append(c)
+    depths = depths or {}
+    topic_order = {name: i for i, name in enumerate(topics)}
+
+    def order_key(c: dict) -> tuple:
+        kc = str(c.get("kc") or "")
+        return (topic_order[str(c.get("topic", ""))],
+                int(depths.get(kc, 0)),
+                0 if c.get("tier_zero") else 1,
+                LAYER_ORDER.get(str(c.get("layer", "")), 2))
+
     if len(topics) < 3 or len(cards) / len(topics) < 6:
-        return _grouped_order(cards)
+        return sorted(cards, key=order_key)
     names = list(topics)
-    queues = {}
-    for name, group in topics.items():
-        queues[name] = {
-            "anchors": [c for c in group if c.get("tier_zero")],
-            "rest": [c for c in group if not c.get("tier_zero")],
-            "anchor_i": 0,
-            "rest_i": 0,
-        }
-
-    def remaining(name: str) -> int:
-        q = queues[name]
-        return (len(q["anchors"]) - q["anchor_i"]
-                + len(q["rest"]) - q["rest_i"])
-
-    def take(name: str) -> dict:
-        q = queues[name]
-        if q["anchor_i"] < len(q["anchors"]):
-            card = q["anchors"][q["anchor_i"]]
-            q["anchor_i"] += 1
-            return card
-        card = q["rest"][q["rest_i"]]
-        q["rest_i"] += 1
-        return card
+    queues = {name: sorted(group, key=order_key) for name, group in topics.items()}
 
     seed = hashlib.sha256(
         "|".join(card_hash(c) for c in cards).encode()).digest()
@@ -156,19 +130,18 @@ def study_order(cards: list[Card]) -> list[Card]:
     max_run = max(2, min(4, len(names) // 3))
     out, last, run = [], None, 0
     while len(out) < len(cards):
-        choices = [n for n in names if remaining(n) and
+        choices = [n for n in names if queues[n] and
                    not (n == last and run >= max_run)]
         if not choices:
-            choices = [n for n in names if remaining(n)]
+            choices = [n for n in names if queues[n]]
         weights = []
         for i, name in enumerate(names):
             if name not in choices:
                 weights.append(0.0)
                 continue
-            q = queues[name]
-            weight = float(remaining(name))
+            weight = float(len(queues[name]))
             weight *= 1.0 + (len(names) - i) / (len(names) * SOURCE_BIAS)
-            if q["anchor_i"] < len(q["anchors"]):
+            if queues[name][0].get("tier_zero"):
                 weight *= ANCHOR_BOOST
             if name == last:
                 weight *= REPEAT_PENALTY
@@ -183,7 +156,7 @@ def study_order(cards: list[Card]) -> list[Card]:
             if pick <= total:
                 chosen = name
                 break
-        out.append(take(chosen))
+        out.append(queues[chosen].pop(0))
         if chosen == last:
             run += 1
         else:
@@ -196,6 +169,8 @@ def main() -> int:
     ap.add_argument("cards_json")
     ap.add_argument("output_apkg")
     ap.add_argument("--merge-existing")
+    ap.add_argument("--kcs", default=None,
+                    help="optional kcs.md; orders cards by prerequisite depth")
     # Required, not defaulted. A silent "Default" put a real, valid deck somewhere nobody
     # would ever look for it again -- and the user is the one who knows where it belongs.
     ap.add_argument("--deck-name", required=True,
@@ -211,6 +186,26 @@ def main() -> int:
     args = ap.parse_args()
 
     cards = load_cards(args.cards_json)
+
+    depths: dict[str, int] = {}
+    if args.kcs:
+        from validate_cards import parse_kc_map, requires_depths
+        try:
+            kc_text = Path(args.kcs).read_text()
+        except OSError as e:
+            print(f"  ! cannot read --kcs {args.kcs}: {e}", file=sys.stderr)
+            return 2
+        kcs, _, _, _ = parse_kc_map(kc_text)
+        if not kcs:
+            print(f"  ! no KC table in {args.kcs}; using source order",
+                  file=sys.stderr)
+        else:
+            depths, cycle = requires_depths(kcs)
+            if cycle:
+                print(f"  ! KC requires cycle: {' -> '.join(cycle)}; "
+                      "using source order", file=sys.stderr)
+                depths = {}
+    cards = study_order(cards, depths)
 
     # The build path cannot see a bad front or a leaked delimiter, so the static
     # checks stop it by default. --allow-invalid is for diagnosis, not delivery.

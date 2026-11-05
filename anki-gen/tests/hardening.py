@@ -24,7 +24,7 @@ GOLDEN = ROOT / "tests" / "golden_cards.jsonl"
 sys.path.insert(0, str(SCRIPTS))
 from build_apkg import normalize_objects, study_order  # noqa: E402
 from cardid import card_hash  # noqa: E402
-from validate_cards import similar_answer_pairs  # noqa: E402
+from validate_cards import similar_answer_pairs, requires_depths  # noqa: E402
 from render import to_html, with_source  # noqa: E402
 
 BASE = {
@@ -40,18 +40,24 @@ def run(cmd, env=None):
     return subprocess.run(cmd, capture_output=True, text=True, env=env)
 
 
-def validate(cards, scripts=SCRIPTS, deep=False):
+def validate(cards, scripts=SCRIPTS):
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "cards.json"
         p.write_text(json.dumps(cards))
         cmd = [sys.executable, str(scripts / "validate_cards.py"), str(p), "--json"]
-        if deep:
-            cmd.append("--deep")
         r = run(cmd)
         try:
             return json.loads(r.stdout), r
         except json.JSONDecodeError as e:
             raise AssertionError(f"validator did not emit JSON: {r.stdout}\n{r.stderr}") from e
+
+
+def roi(cards, scripts=SCRIPTS):
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "cards.json"
+        p.write_text(json.dumps(cards))
+        r = run([sys.executable, str(scripts / "roi_report.py"), str(p)])
+        return r.stdout, r
 
 
 def validate_with(cards, ledger=None, source=None):
@@ -274,6 +280,17 @@ def main() -> int:
     data, _ = validate_with([kc_cards[1], kc_cards[2]], ledger=bad_ledger,
                              source="Apply the steady-flow equation.")
     assert any("requires unknown KC" in e for e in data["errors"]), data
+    cycle_ledger = """# Authoring ledger
+
+## KCs
+| kc_id | type | claim | source | evidence_quote | requires |
+|---|---|---|---|---|---|
+| thermo.control_volume | concept | A control volume is fixed. | Lec 04 p.3 | A control volume is fixed. | thermo.steady_flow |
+| thermo.steady_flow | procedure | Apply the steady-flow equation. | Lec 04 p.12 | Apply the steady-flow equation. | thermo.control_volume |
+"""
+    data, _ = validate_with([kc_cards[0], kc_cards[1]], ledger=cycle_ledger,
+                             source="A control volume is fixed. Apply the steady-flow equation.")
+    assert any("requires cycle" in w for w in data["warnings"]), data
     data, _ = validate_with([kc_cards[0]], ledger=ledger,
                              source="A control volume is fixed.")
     assert any("has no cards" in w for w in data["warnings"]), data
@@ -294,6 +311,28 @@ def main() -> int:
     assert any("reads as a card index" in w for w in data["warnings"]), data
     assert any("single-card concept" in w for w in data["warnings"]), data
     print("ok    flat KC map warns instead of forcing filler")
+
+    boundary_ledger = """# KCs
+
+| kc | type | claim | why | requires | evidence_quote | source |
+|---|---|---|---|---|---|---|
+| a | concept | Current is charge flow. | Reused | — | derived | derived |
+| b | boundary | A supernode wraps a source. | One-card exception | a | derived | derived |
+| c | boundary | A Norton source is a current source. | One-card exception | a | derived | derived |
+"""
+    boundary_cards = [
+        dict(BASE, front="What is current?", back="Charge flow per unit time. **Why:** it is the rate.",
+             kc="a", source="derived"),
+        dict(BASE, front="Why does current flow?", back="Charge moves under a field. **Why:** the field does work.",
+             kc="a", source="derived"),
+        dict(BASE, front="When is a supernode used?", back="When a source sits between non-reference nodes. **Why:** it removes an unknown.",
+             kc="b", source="derived"),
+        dict(BASE, front="What is a Norton source?", back="A current source with a parallel resistance. **Why:** it is the dual of Thevenin.",
+             kc="c", source="derived"),
+    ]
+    data, _ = validate_with(boundary_cards, ledger=boundary_ledger)
+    assert not any("reads as a card index" in w for w in data["warnings"]), data
+    print("ok    boundary singles do not trigger the card-index warning")
 
     why_ledger = """# KCs — Thermodynamics
 
@@ -429,6 +468,19 @@ def main() -> int:
     got_order = [c["front"] for c in study_order(order_cards)]
     assert got_order == expected_order, got_order
     print("ok    grouped order for a small deck")
+
+    dep_cards = [
+        dict(BASE, front="What is the supernode?", back="A supernode wraps a voltage source. **Why:** it reduces unknowns.", kc="a"),
+        dict(BASE, front="What is nodal analysis?", back="It writes KCL at every non-reference node. **Why:** node voltages are the unknowns.", kc="b"),
+    ]
+    depths, cycle = requires_depths({"a": {"requires": ["b"]}, "b": {"requires": []}})
+    assert depths == {"a": 1, "b": 0} and not cycle, (depths, cycle)
+    dep_order = [c["front"] for c in study_order(dep_cards, depths)]
+    assert dep_order[0].startswith("What is nodal"), dep_order
+    _, cycle = requires_depths({"a": {"requires": ["b"]},
+                                "b": {"requires": ["a"]}})
+    assert cycle, cycle
+    print("ok    prerequisite depth orders cards and detects cycles")
 
     scatter_cards = []
     for topic in ("Alpha", "Beta", "Gamma"):
@@ -615,6 +667,9 @@ def main() -> int:
     data, _ = validate([dict(BASE, front="Does a series circuit keep the same current?",
                              back="**Yes, because there is one path.**")])
     assert any("yes/no front" in w for w in data["warnings"]), data
+    data, _ = validate([dict(BASE, front="Does a series circuit keep the same current?",
+                             back="There is only one path, so the same current flows.")])
+    assert any("yes/no front" in w for w in data["warnings"]), data
     data, _ = validate([dict(BASE, front="Why does a series circuit keep the same current?",
                              back="**Because there is one path.**")])
     assert not any("yes/no front" in w for w in data["warnings"]), data
@@ -636,6 +691,10 @@ def main() -> int:
              back="A high-priority task waits for a low-priority lock holder."),
     ]
     assert not similar_answer_pairs(contrast), contrast
+    out, _ = roi(same_answer)
+    assert "duplicate" in out, out
+    data, _ = validate(same_answer)
+    assert not any("overlapping" in w for w in data["warnings"]), data
     print("ok    answer-aware overlap warning")
 
     with tempfile.TemporaryDirectory() as td:
@@ -649,11 +708,11 @@ def main() -> int:
         print("ok    sabotage detected: tag leak")
 
         mut = copy_scripts(td / "mut-overlap")
-        mutate(mut / "validate_cards.py", mut / "validate_cards.py",
+        mutate(mut / "roi_report.py", mut / "roi_report.py",
                [("for i, j, r in similar_answer_pairs(cards):",
                  "for i, j, r in []:")])
-        data, _ = validate(same_answer, mut, deep=True)
-        assert not any("answers" in w for w in data["warnings"]), data
+        out, _ = roi(same_answer, mut)
+        assert "duplicate" not in out, out
         print("ok    sabotage detected: answer overlap")
 
     # Golden deck: quality counters must not silently drop.

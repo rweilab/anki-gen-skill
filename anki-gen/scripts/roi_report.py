@@ -31,6 +31,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from cardid import load_cards
+from validate_cards import similar_answer_pairs
 
 # Exam weights are deliberately NOT baked in. A hardcoded table only ever matches the
 # one course it was written for: keyed on "Ch N" in `source`, it sent every card of a
@@ -80,10 +81,11 @@ def repeated_content(cards) -> list[tuple]:
     near-duplicates. The reliable proxies for "someone already said this":
       * the same equation, appearing in 2+ cards
       * the same distinctive multi-word phrase, appearing in 3+ cards
+      * two answers with high vocabulary overlap
 
-    Neither proves redundancy -- an equation repeated in a worked example and a
-    summary card can be right. They are flags for the semantic pass, which is
-    the part that actually decides. See the DEBLOATER PROMPT.
+    None proves redundancy -- an equation repeated in a worked example and a
+    summary card can be right. They are candidates for the semantic pass, which
+    is the part that actually decides. See the DEBLOATER PROMPT.
     """
     eqs: dict[str, list[int]] = defaultdict(list)
     phrases: dict[str, set] = defaultdict(set)
@@ -103,6 +105,8 @@ def repeated_content(cards) -> list[tuple]:
     for ph, who in sorted(phrases.items(), key=lambda kv: -len(kv[1])):
         if len(who) >= 3:
             out.append(("phrase", ph, sorted(who)))
+    for i, j, r in similar_answer_pairs(cards):
+        out.append(("duplicate", f"answer overlap {r:.0%}", [i, j]))
     return out
 
 
@@ -255,7 +259,6 @@ def main():
     ap.add_argument("--list", action="store_true",
                     help="print one line per card (number, topic, layer, front), "
                          "then exit; no backs")
-    ap.add_argument("--deep", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--show", type=int, default=None, metavar="N",
                     help="print card N's full front and back, then exit. Lets the "
                          "deblater cite a card without pulling every card's text "

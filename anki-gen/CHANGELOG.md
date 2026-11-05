@@ -2,6 +2,7 @@
 
 Newest first. Keep the index to one line per release; details live below.
 
+- **v1.5.9** — Prerequisite ordering, distinct yes/no gate, ROI duplicate candidates, and quieter gates
 - **v1.5.8** — Fixed 12-card review, live-deck inspection, sync plans, and dossier-only snapshots
 - **v1.5.7** — JSON review actions, intake scope, revision boundary, and final card schema
 - **v1.5.6** — One maintainer read order, one installer, route-first runbook, and gate plumbing cleanup
@@ -35,6 +36,37 @@ These are deliberate, not forgotten:
   not overwrite them.
 - **Full semantic duplicate detection and per-deck analytics.** Useful later; not on the critical
   path for the KC/review work.
+
+## v1.5.9 — Prerequisite ordering, distinct yes/no gate, and quieter gates
+
+### Changed
+
+- A yes/no front now warns on the front alone; the old yes/no-back condition missed the common
+  "one-word answer, paragraph back" shape. Message names the fix: ask for the reason, mechanism,
+  or decision.
+- The KC card-index warning now needs at least one single-card `concept`/`mechanism`. A tiny deck
+  of justified boundary singles no longer triggers it.
+- `build_apkg.py --kcs` orders cards by KC `requires` depth within each topic. `pipeline.py`
+  passes the work directory's `kcs.md` (or legacy `authoring_ledger.md`) automatically. A cycle
+  warns and falls back to source order; no hidden note fields and no schema change.
+- `study_order` is one sorted queue per topic keyed by topic, prerequisite depth, tier-zero, then
+  layer. `_grouped_order` and the anchors/rest queue state are gone. Cross-topic prerequisites are
+  recorded but not enforced by the interleaver.
+- Soft answer-overlap duplicates are always computed by `roi_report.py` and folded into its
+  candidate list. The validator keeps only exact duplicates as errors. `--deep` is removed from
+  both `validate_cards.py` and `roi_report.py`.
+- Gate stdout groups findings by pattern, prints card numbers once, and prints each `fix:` hint
+  once. Full per-card detail stays in `gates.json`.
+- The review packet carries front/back word counts and a compact context block; the full intake
+  dump and `Why selected` lines are gone. It still carries every card and the KC evidence.
+- Runtime history moved to `maintainers/lessons.md`; card-writing and review references keep the
+  rule and the one-line why.
+
+### Tests
+
+- Yes/no warning now covers a non-yes/no back; prerequisite depth and cycle fallback are covered;
+  ROI duplicate candidates and the validator/ROI ownership split are covered; the pipeline
+  `--kcs` pass-through and the trimmed packet are covered.
 
 ## v1.5.8 — Fixed review sample and safe live-deck sync
 

@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from validate_cards import check_cards  # noqa: E402
+from roi_report import report as roi_report_text  # noqa: E402
 
 BASE = {"layer": "L2", "topic": "Data Structures", "objects": [],
         "deck": "QUALITY::TEST", "source": "Lec 4 p.2"}
@@ -42,21 +43,27 @@ def main() -> int:
              "array, linked list, or balanced tree?",
              "A balanced tree. **Why:** $O(\\log n)$ beats $O(n)$.", stratum="comparison"),
     ]
-    errors, warnings, info = check_cards(cards, deep=False)
+    errors, warnings, info = check_cards(cards)
     assert not errors, errors
     assert not [w for w in warnings if "similar" in w or "overlapping" in w
                 or "duplicate" in w], warnings
-    # Deep similarity remains available but opt-in; the test only requires that
-    # it does not turn legitimate cards into default build failures.
-    deep_errors, deep_warnings, _ = check_cards(cards, deep=True)
-    assert not deep_errors, deep_errors
+    # Soft duplicates are candidates in the ROI report, not validator warnings;
+    # deliberate contrasts may appear there and the debloat pass decides.
+    assert not errors, errors
     print("ok    legitimate contrast/reciprocal/glossary cards stay clean by default")
 
     # A true duplicate is still an exact, deterministic error.
     dup = [cards[0], dict(cards[0])]
-    errors, _, _ = check_cards(dup, deep=False)
+    errors, _, _ = check_cards(dup)
     assert any("exact duplicate" in e for e in errors), errors
-    print("ok    exact duplicates remain errors")
+    pair = [
+        card("How is the next task chosen by the scheduler?",
+             "The scheduler picks the highest-priority ready task and runs it until it blocks."),
+        card("Which task does the scheduler run next when several are ready?",
+             "The scheduler picks the highest-priority ready task and runs it until it blocks."),
+    ]
+    assert "duplicate" in roi_report_text(pair)
+    print("ok    exact duplicates remain errors; soft duplicates are ROI candidates")
     print("\nPASS  quality precision")
     return 0
 

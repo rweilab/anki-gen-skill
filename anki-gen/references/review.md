@@ -4,9 +4,8 @@ Commands use `$SKILL` for the directory containing `SKILL.md`.
 
 ## REVIEW — the local review page
 
-Review happens in a throwaway localhost page, **not in the chat** — the chat version pushed every
-card's full text through the conversation, and `y/n/e` could not express the two signals that drive
-cutting and splitting (*too hard for me*, *I already know this cold*).
+Review happens in a throwaway localhost page, **not in the chat**. The 1–5 scale carries the two
+signals cutting and splitting need: *too hard for me* and *I already know this cold*.
 
 ### Quality rubric — one rubric
 
@@ -214,8 +213,8 @@ already current, then write the complete file once. A per-card comment changes o
 single write; it is not a separate edit. Do not re-read the file after the write; let the gates
 check it.
 
-`roi_report.py` prints image coverage per topic, restatement flags, costliest
-cards, and anchors. In the handoff, report the
+`roi_report.py` prints image coverage per topic, restatement and duplicate candidates,
+costliest cards, and anchors. In the handoff, report the
 image-card count, any topic with strong visual candidates but no images, and which
 images were confirmed versus merely listed.
 

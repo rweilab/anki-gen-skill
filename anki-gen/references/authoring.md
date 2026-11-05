@@ -102,7 +102,8 @@ a back, or an answer-leaking term in `topic`/`objects`.
   the deck warns: it is a card index. Duplicate claims are errors; no filler.
 - Bad: 41 cards, 32 KCs, 25 singles. Good: ~12–16 KCs, each covering several cards, plus a few
   justified anchors/boundaries. `why: one-card exception` is not a value case.
-- `type` is optional. Every `requires` resolves. Source-dependent KCs need a short quote from the
+- `type` is optional. Every `requires` resolves and the graph is acyclic; the builder orders cards
+  by prerequisite depth within each topic. Source-dependent KCs need a short quote from the
   corpus; `derived` exempts.
 - `Ceiling: N` is a soft cap; the gate warns, never cuts. Park the weaker candidate.
 

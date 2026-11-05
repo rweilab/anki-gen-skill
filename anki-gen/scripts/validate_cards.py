@@ -7,7 +7,7 @@ the deck still imported fine, it just looked broken on screen.
   1. control-char corruption   LaTeX written in a non-raw Python string
   2. LaTeX delimiter imbalance braces/\\( )/\\[ ] not closed
   3. rendered-output leaks     stray $, literal **, markdown tables/lists
-  4. forbidden fronts          computation demands (see FORBIDDEN below)
+  4. forbidden fronts          computation demands and yes/no recognition (see FORBIDDEN below)
   5. empty / stub cards
   6. near-duplicate fronts
   7. glossary signal           symbol card without a definitions section (warning)
@@ -129,7 +129,6 @@ MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 YES_NO_FRONT = re.compile(
     r"^\s*(?:\*\*)?(?:is|are|does|do|can|could|will|would|should|has|have|was|were|did)\b",
     re.I)
-YES_NO_BACK = re.compile(r"^\s*(?:\*\*)?(?:yes|no)\b", re.I)
 POINTER = re.compile(
     r"\b(?:see|refer to|check)\b[^.?!\n]{0,40}\bcard\b"
     r"|\b(?:the|this|that)\s+(?:next|previous|above|below|earlier|later)\s+card\b",
@@ -255,6 +254,41 @@ def parse_kc_map(text: str) -> tuple[dict[str, KC], list[str], bool, bool]:
     return rows, duplicates, has_evidence, has_why
 
 
+def requires_depths(kcs: dict[str, dict]) -> tuple[dict[str, int], list[str]]:
+    """Longest prerequisite chain per KC, plus one cycle if the graph has one.
+
+    Depth is 0 for a root; every card in a topic is sorted by its KC's depth.
+    A cycle is a warning, not a build blocker: the builder falls back to source
+    order rather than inventing an order from a contradictory map.
+    """
+    depths: dict[str, int] = {}
+    state: dict[str, int] = {}          # 1 = visiting, 2 = done
+    stack: list[str] = []
+    cycle: list[str] = []
+
+    def visit(kc_id: str) -> int:
+        if state.get(kc_id) == 2:
+            return depths[kc_id]
+        if state.get(kc_id) == 1:
+            if kc_id in stack:
+                cycle.extend(stack[stack.index(kc_id):] + [kc_id])
+            return 0
+        state[kc_id] = 1
+        stack.append(kc_id)
+        depth = 0
+        for req in kcs.get(kc_id, {}).get("requires", []):
+            if req in kcs:
+                depth = max(depth, visit(req) + 1)
+        stack.pop()
+        state[kc_id] = 2
+        depths[kc_id] = depth
+        return depth
+
+    for kc_id in kcs:
+        visit(kc_id)
+    return depths, cycle
+
+
 def kc_findings(cards: list[Card], kc_text: str,
                 source_text: str | None = None,
                 require_map: bool = False) -> list[tuple[str, str]]:
@@ -295,11 +329,14 @@ def kc_findings(cards: list[Card], kc_text: str,
             out.append(("warn", f"{label} -- unknown stratum {stratum!r}; use one of "
                                f"{', '.join(sorted(STRATA))}, or omit it and use the KC type"))
 
-    if len(cards) > 1 and len(kcs) * 2 > len(cards):
-        out.append(("warn", f"KC map has {len(kcs)} KCs for {len(cards)} cards; it "
-                           "reads as a card index. Group cards under shared concepts; "
-                           "keep singles only for anchors, boundaries, errors, or "
-                           "integrations."))
+    weak_singles = sum(
+        1 for kc_id, row in kcs.items()
+        if counts.get(kc_id, 0) == 1 and row["type"] in {"concept", "mechanism"})
+    if len(cards) > 1 and len(kcs) * 2 > len(cards) and weak_singles:
+        out.append(("warn", f"KC map has {len(kcs)} KCs for {len(cards)} cards and "
+                           f"{weak_singles} single-card concept(s); it reads as a card "
+                           "index. Group cards under shared concepts; keep singles only "
+                           "for anchors, boundaries, errors, or integrations."))
 
     for kc_id, row in kcs.items():
         count = counts.get(kc_id, 0)
@@ -317,6 +354,11 @@ def kc_findings(cards: list[Card], kc_text: str,
         for req in row["requires"]:
             if req != "external" and req not in kcs:
                 out.append(("err", f"KC {kc_id!r} requires unknown KC {req!r}"))
+
+    _, cycle = requires_depths(kcs)
+    if cycle:
+        out.append(("warn", f"KC requires cycle: {' -> '.join(cycle)}; "
+                           "prerequisite ordering falls back to source order"))
 
     seen_claims: dict[str, str] = {}
     for kc_id, row in kcs.items():
@@ -477,9 +519,9 @@ def findings(cards: list[Card]):
         front, back = str(c.get("front", "")), str(c.get("back", ""))
         layer = c.get("layer", "")
 
-        if YES_NO_FRONT.search(front) and YES_NO_BACK.search(back):
-            add(i, "warn", f"{label} -- yes/no front with a yes/no answer; ask for the "
-                          "reason or a decision, not recognition")
+        if YES_NO_FRONT.search(front):
+            add(i, "warn", f"{label} -- yes/no front tests recognition; ask for the "
+                          "reason, mechanism, or decision")
 
         # 1. escape corruption
         for f, t in (("front", front), ("back", back)):
@@ -728,9 +770,9 @@ def _norm_card(c: dict) -> tuple[str, str]:
 def exact_duplicate_pairs(cards: list[Card]) -> list[tuple[int, int]]:
     """1-based pairs whose normalized front+back are identical.
 
-    Deterministic and O(n). This is the only in-deck duplicate check on the
-    default path; soft answer-overlap similarity is opt-in via `--deep`, because
-    front-only similarity produced contrast false positives on a real deck.
+    Deterministic and O(n). Soft answer-overlap similarity belongs to the ROI
+    report, where it is a candidate list rather than a validator warning; front-only
+    similarity produced contrast false positives on a real deck.
     """
     seen: dict[tuple[str, str], int] = {}
     out = []
@@ -874,7 +916,8 @@ def similar_answer_pairs(cards: list[Card]) -> list[tuple[int, int, float]]:
 
     Front similarity alone flags contrasts (stack vs heap, bounded vs unbounded).
     This uses answer vocabulary instead, and skips pairs whose fronts explicitly
-    signal a contrast. Warning-only: it asks for a merge-or-keep decision.
+    signal a contrast. It is a candidate list for `roi_report.py`, not a warning;
+    the debloat pass decides whether to merge or keep a contrast.
     """
     out = []
     backs = [_tag_words(str(c.get("back", ""))) for c in cards]
@@ -896,13 +939,12 @@ def similar_answer_pairs(cards: list[Card]) -> list[tuple[int, int, float]]:
     return out
 
 
-def check_cards(cards: list[Card], deep: bool = False, ledger_text: str | None = None,
+def check_cards(cards: list[Card], ledger_text: str | None = None,
                 source_text: str | None = None, require_kc_map: bool = False):
     """The CLI's (errors, warnings, info) view.
 
-    Exact normalized duplicates are always errors. Soft answer-overlap similarity
-    is only computed with `deep=True`: it is useful for an explicit debloat pass
-    but front-only similarity was contrast-family noise on a real deck.
+    Exact normalized duplicates are errors. Soft answer-overlap similarity lives
+    in `roi_report.py`: it is a debloat candidate, not a gate.
 
     `ledger_text` is the kcs.md table (legacy: authoring_ledger.md) and enables the KC
     map checks; `source_text` enables evidence-quote grounding. Both are optional so standalone callers and legacy decks keep
@@ -943,10 +985,6 @@ def check_cards(cards: list[Card], deep: bool = False, ledger_text: str | None =
     errs.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "err")
     warns.extend(f"card {i}: {msg}" for i, sev, msg in tag_findings if sev == "warn")
 
-    if deep:
-        for i, j, r in similar_answer_pairs(cards):
-            warns.append(f"cards {i} and {j} answers {r:.0%} overlapping; "
-                         "merge or keep only if they are a contrast")
     return errs, warns, info
 
 
@@ -1000,8 +1038,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cards_json")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--deep", action="store_true",
-                    help="also run soft answer-overlap similarity (opt-in debloat)")
     ap.add_argument("--ledger", help="kcs.md (or legacy authoring_ledger.md) with a ## KCs map")
     ap.add_argument("--source", help="extracted source markdown for quote grounding")
     args = ap.parse_args()
@@ -1010,7 +1046,7 @@ def main():
     ledger = Path(args.ledger).read_text() if args.ledger else None
     source = Path(args.source).read_text() if args.source else None
     require_map = bool(args.ledger and Path(args.ledger).name == "kcs.md")
-    errs, warns, info = check_cards(cards, deep=args.deep, ledger_text=ledger,
+    errs, warns, info = check_cards(cards, ledger_text=ledger,
                                     source_text=source,
                                     require_kc_map=require_map)
 

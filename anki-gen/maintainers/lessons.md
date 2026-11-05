@@ -52,7 +52,11 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   and compare the working tree before/after.
 - **`genanki` and `--engine` are gone.** That path could not produce a cloze deck Anki 26 opens,
   forced `genanki` on every import, and hashed with sha256 where everything else uses md5, so
-  identity did not survive an engine change. `anki` is now a hard requirement.
+  identity did not survive an engine change. `anki` is now a hard requirement. Why the manual
+  patch failed: `genanki` writes `cards.type = 0` where Anki needs the 1-based cloze ordinal, so
+  its cloze decks show `{{c1::4}}` literally; patching the database to `ord + 1` makes Anki 26
+  refuse the package (`DbError InvalidColumnType(6, "type", Integer)` — verified by isolation:
+  re-zipping alone imports, a no-op SQL write imports, only the `type` write fails).
 - **`--strict` did nothing on the default path** (implemented only on the deleted genanki path). It
   now runs the static checks and refuses on an error.
 - **`roi_report.py` has no built-in exam weights.** Coverage groups by `topic`; weighting is

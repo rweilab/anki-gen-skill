@@ -236,6 +236,21 @@ def main() -> int:
         assert gates_json["errors"], gates_json
         print("ok    gates print exact errors, fixes, and gates.json")
 
+        bad_many = td / "bad-many.jsonl"
+        bad_many.write_text("".join(json.dumps({
+            "front": f"Why does missing source {i} fail the provenance gate?",
+            "back": "The gate cannot trace the claim. **Why:** provenance is required.",
+            "layer": "L2", "topic": "Provenance", "deck": "LOCAL::TEST",
+        }) + "\n" for i in range(1, 4)))
+        many_work = td / "many-bad-work"
+        many_work.mkdir()
+        r = run([sys.executable, str(SCRIPTS / "pipeline.py"),
+                 "--cards", str(bad_many), "--out", str(many_work), "--gates-only"], td)
+        assert r.returncode != 0, (r.stdout, r.stderr)
+        assert "cards 1, 2, 3" in r.stdout, r.stdout
+        assert r.stdout.count("fix: add a page/slide") == 1, r.stdout
+        print("ok    repeated gate findings are grouped with one fix hint")
+
         lock_work = td / "lock-work"
         lock_work.mkdir()
         (lock_work / "pipeline_state.json").write_text(json.dumps({
@@ -386,7 +401,8 @@ def main() -> int:
         packet_text = packet.read_text()
         assert review_rows[0]["front"] in packet_text, packet_text
         assert review_rows[1]["front"] in packet_text, packet_text
-        assert "Why selected: test" in packet_text, packet_text
+        assert "Why selected" not in packet_text, packet_text
+        assert "front " in packet_text and "back " in packet_text, packet_text
         assert "sources.md" not in packet_text, packet_text
         print("ok    review feedback creates actions, packet, and shape line")
 
@@ -589,6 +605,23 @@ def main() -> int:
         assert not target.exists(), "failed validation published an .apkg"
         assert not list(td.glob(".atomic.apkg.tmp-*")), "temp build left behind"
         print("ok    failed validation leaves no .apkg or temp file")
+
+        kcs_dir = td / "kcs-pass"
+        kcs_dir.mkdir()
+        (kcs_dir / "kcs.md").write_text("# KCs\n\n| kc | claim |\n|---|---|\n| a | thing |\n")
+        seen = []
+        def fake_kcs_run(cmd, *args, **kwargs):
+            seen.append(list(cmd))
+            if any(str(x).endswith("build_apkg.py") for x in cmd):
+                Path(cmd[3]).write_bytes(b"not a package")
+                return subprocess.CompletedProcess(cmd, 0, "Built 1 note", "")
+            return subprocess.CompletedProcess(cmd, 0, "ok", "")
+        with mock.patch("pipeline.subprocess.run", side_effect=fake_kcs_run):
+            pipeline.stage_build(Path("cards.jsonl"), kcs_dir, "DECK",
+                                 td / "kcs.apkg", False, None)
+        build_cmd = next(c for c in seen if any(str(x).endswith("build_apkg.py") for x in c))
+        assert "--kcs" in build_cmd and str(kcs_dir / "kcs.md") in build_cmd, build_cmd
+        print("ok    build receives --kcs from the work directory")
 
         fake_home = td / "home"
         (fake_home / ".claude" / "skills" / ".backups" / "old").mkdir(parents=True)

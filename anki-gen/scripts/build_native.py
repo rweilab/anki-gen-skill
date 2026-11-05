@@ -132,8 +132,7 @@ def build_with_anki(cards: list[Card], out_path: str, deck_name: str,
                     enable_media: bool = False) -> dict:
     import build_apkg                           # noqa: E402
 
-    # New cards are read in add order, so this is the deck's default study order.
-    cards = build_apkg.study_order(cards)
+    # The caller supplies study order (build_apkg.study_order); this module builds.
     cards = build_apkg.normalize_objects(cards)
 
     if enable_media:

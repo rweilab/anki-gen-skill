@@ -38,8 +38,8 @@ Method/next-step problem fronts are Procedure cards, not exclusions. Scope is th
 
 ## DEBLOATER PROMPT
 
-A short judgement pass after review, not a subagent. `roi_report.py` is a signal; measured review
-feedback outranks it. Never auto-cut.
+A short judgement pass after review, not a subagent. `roi_report.py` is a signal: it now includes
+restatement, duplicate, and split candidates. Measured review feedback outranks it. Never auto-cut.
 
 - **Audience sets aggressiveness:** cramming keeps anchors; a strong learner can lose them.
 - **Redundancy** → drop/merge. **Bad bundling** (independent facts share a schedule) → split.

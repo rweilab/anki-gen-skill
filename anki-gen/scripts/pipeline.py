@@ -717,11 +717,19 @@ def write_review_packet(out: Path, cards: list[Card], plan: dict,
              "Read only this packet. Do not open the full card deck or source corpus.",
              ""]
     intake = _read_optional(out / "intake.md")
-    scope = "" if _scope_section(intake) else _read_optional(out / "scope_gate.md")
-    if intake:
-        lines += ["## Intake", "", intake.strip(), ""]
+    context = {}
+    for line in intake.splitlines():
+        match = re.match(r"^\s*-\s*(deck|learner|calibration|goal|minutes/day|"
+                         r"reference|images|review|assumed)\s*:\s*(.+)$", line, re.I)
+        if match:
+            context[match.group(1).lower()] = match.group(2).strip()
+    if context:
+        lines += ["## Context", ""]
+        lines += [f"- {key}: {value}" for key, value in context.items()]
+        lines.append("")
+    scope = _scope_section(intake) or _read_optional(out / "scope_gate.md")
     if scope:
-        lines += ["## Scope gate", "", scope.strip(), ""]
+        lines += ["## Scope", "", scope.strip(), ""]
     if shown and kcs:
         header = "| kc_id | type | claim | source | evidence_quote | requires |"
         rule = "|---|---|---|---|---|---|"
@@ -745,7 +753,10 @@ def write_review_packet(out: Path, cards: list[Card], plan: dict,
         topic = str(c.get("topic") or "")
         stratum = str(c.get("stratum") or "")
         kc_id = str(c.get("kc") or "")
-        lines += [f"### card {i} — {topic} / {stratum} / {kc_id}", "",
+        front_words = len(str(c.get("front") or "").split())
+        back_words = len(str(c.get("back") or "").split())
+        lines += [f"### card {i} — {topic} / {stratum} / {kc_id} "
+                  f"(front {front_words}w, back {back_words}w)", "",
                   "Front:", str(c.get("front") or ""), "",
                   "Back:", str(c.get("back") or ""), "",
                   f"Source: {c.get('source') or c.get('source_ref') or ''}"]
@@ -757,13 +768,44 @@ def write_review_packet(out: Path, cards: list[Card], plan: dict,
                     lines.append(f"- {m.get('file','')} — {m.get('caption','')}")
                 else:
                     lines.append(f"- {m}")
-        if e.get("reasons"):
-            lines.append("Why selected: " + "; ".join(map(str, e["reasons"])))
         lines.append("")
 
     path = out / "review_packet.md"
     path.write_text("\n".join(lines).rstrip() + "\n")
     return path
+
+
+def _gate_lines(messages: list[str], label: str, limit: int,
+                lines: list[str]) -> None:
+    """Group repeated gate findings so stdout stays short.
+
+    Full per-card messages remain in gates.json. The model fixes from card
+    numbers; it does not need the front excerpt repeated on every line.
+    """
+    groups: dict[str, list[str]] = {}
+    for msg in messages:
+        match = re.match(r"^card (\d+):\s*(.*)$", msg)
+        if match:
+            rest = match.group(2)
+            reason = rest.split(" -- ", 1)[1] if " -- " in rest else rest
+            groups.setdefault(reason, []).append(match.group(1))
+        else:
+            groups.setdefault(msg, []).append("")
+    seen_hints: set[str] = set()
+    for reason, numbers in list(groups.items())[:limit]:
+        if numbers[0]:
+            shown = ", ".join(numbers[:12]) + ("…" if len(numbers) > 12 else "")
+            where = f"card {shown}" if len(numbers) == 1 else f"cards {shown}"
+            lines.append(f"{label}      {where}: {reason}")
+        else:
+            lines.append(f"{label}      {reason}")
+        hint = fix_for(reason) if label == "error" else ""
+        if hint and hint not in seen_hints:
+            lines.append(f"           fix: {hint}")
+            seen_hints.add(hint)
+    if len(groups) > limit:
+        lines.append(f"           ... and {len(groups) - limit} more pattern(s); "
+                     "see gates.json")
 
 
 def _roi_risks(text: str) -> tuple[list[int], int]:
@@ -870,6 +912,11 @@ def stage_build(cards_path: Path, out: Path, deck_name: str, apkg: Path | None,
            str(cards_path), str(tmp), "--deck-name", deck_name]
     if media:
         cmd += ["--media", "--media-root", str(media_root or cards_path.parent)]
+    for name in ("kcs.md", "authoring_ledger.md"):
+        kcs_path = out / name
+        if kcs_path.is_file():
+            cmd += ["--kcs", str(kcs_path)]
+            break
     if merge_existing:
         cmd += ["--merge-existing", merge_existing]
     built = subprocess.run(cmd, capture_output=True, text=True)
@@ -1109,19 +1156,8 @@ def main(argv: list[str] | None = None) -> int:
                      f"{g['warnings']} warning(s)")
         if g["loop"]:
             lines.append(f"loop       {g['loop']}")
-        for msg in g["errs"][:20]:
-            lines.append(f"error      {msg}")
-            hint = fix_for(msg)
-            if hint:
-                lines.append(f"           fix: {hint}")
-        if len(g["errs"]) > 20:
-            lines.append(f"           ... and {len(g['errs']) - 20} more errors; "
-                         f"see {_short(g['gates'], root)}")
-        for msg in g["warns"][:10]:
-            lines.append(f"warn       {msg}")
-        if len(g["warns"]) > 10:
-            lines.append(f"           ... and {len(g['warns']) - 10} more warnings; "
-                         f"see {_short(g['gates'], root)}")
+        _gate_lines(g["errs"], "error", 12, lines)
+        _gate_lines(g["warns"], "warn", 8, lines)
         lines.append(f"gates-json {_short(g['gates'], root)}")
         lines.append(f"triage     {g['selected']} of {g['total']} selected -> "
                      f"{_short(g['plan'], root)}")

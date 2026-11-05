@@ -92,6 +92,8 @@ These were removed or rejected because they added surface without reliability:
 - literal `<br>` in `cards.jsonl` and plaintext `P_0`
 - a second adversarial pass after a formatting-only change
 - editing the live skill during a deck run
+- `--deep` and a second soft-duplicate path in the validator; the ROI report owns candidates
+- hidden `KC`/`Requires` note fields; prerequisite order lives in the build, not the schema
 
 ### Research anchors
 
@@ -130,13 +132,15 @@ This table is the ownership map, not a second rule list.
 | Source-grounded or `derived` | `card-writing.md` § provenance | `validate_cards` source + KC evidence |
 | One retrieval decision | `card-writing.md` § recallability | `validate_cards` / review |
 | Unambiguous cue, no leak | `card-writing.md` § recallability | `validate_cards` tag leak / review |
-| Production, not recognition | `card-writing.md` § recallability | `validate_cards` computation front |
+| Production, not recognition | `card-writing.md` § recallability | `validate_cards` computation + yes/no front |
 | Conditions, units, symbols | `card-writing.md` § symbols | glossary warning / review |
 | Near-miss discrimination | `card-writing.md` | review / adversarial review |
 | Answer first, then why | `card-writing.md` § Backs answer, then explain | `validate_cards` proxy / review |
 | Self-contained front | `card-writing.md` § fronts | `validate_cards` front-image warning / review |
 | Media bar | `authoring.md`, `video.md` | `media_index` risk audit + review |
 | KCs and fields | `authoring.md` | `validate_cards` KC checks |
+| Soft redundancy / duplicates | `card-writing.md` § uniqueness | `roi_report.py` candidates; debloat decides |
+| Prerequisite order | `authoring.md` § KCs | `build_apkg.py --kcs` depth sort |
 | Review rescope | `review.md` | `review_actions.json` build gate |
 | Build/import | `pipeline.py`, `validate_apkg.py` | build + real import |
 | Cleanup | `SKILL.md` | `smoke.sh` no-litter |
@@ -197,5 +201,5 @@ removal version in this table. Canonical docs never mention a deprecated path.
 | `scope_gate.md` | Read-only fallback | `intake.md` § Scope | 2.0 |
 | `review_actions.md` | Legacy read-only | `review_actions.json` | 2.0 |
 | `--no-context` | Hidden no-op | omit it | 2.0 |
-| `--deep` | Hidden no-op | omit it | 2.0 |
+| `--deep` | Removed now | `roi_report.py` always lists duplicate candidates | done |
 | `--allow-invalid`, `--status` | Advanced/maintainer | keep | review at 2.0 |
