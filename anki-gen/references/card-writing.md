@@ -107,7 +107,8 @@ whole answer is the deletion.
 
    Anki creates one card per deletion; each must still be answerable from the same labels and
    surrounding sentence. Bad: `Metal film — {{c1::0.01–5%}}` with no “Tolerance” label. Do not
-   cloze a whole definition or a computed answer.
+   cloze a whole definition or a computed answer. A prose enumeration is its own context; the
+   label check applies to field-like rows (a line or table with several blanks).
 
 **Constraint 3 holds for every free front, not just cloze blanks** — it is about the *retrieval
 target*. A compound front is fine, but every clause must state what kind of answer it wants.

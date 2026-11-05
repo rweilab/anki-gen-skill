@@ -52,9 +52,11 @@ documentation.
 - **Every behavior, script, schema, reference, packaging, or install change gets a changelog
   entry under the section matching `VERSION`. Do not bump `VERSION` or create a new version
   unless the user explicitly says so.** Do not leave a change only in code or docs.
-- **Run `bash scripts/smoke.sh` for behavior, script, schema, packaging, or test changes.** It
-  includes the changelog/version check, package/shipping manifest check, negative fixtures,
-  golden deck, sabotage probes, video fixtures, and installer test.
+- **Run `bash scripts/smoke.sh --fast` for behavior, script, schema, packaging, or test changes
+  while iterating; run full `bash scripts/smoke.sh` before handoff.** The fast path includes the
+  changelog/version check, package/shipping check, negative fixtures, golden deck, sabotage
+  probes, core build/import, and the quality corpus. Full smoke adds media, video, slides, local
+  media, dossier, revision, and installer tests.
 - **Passing tests are a floor, not proof.** They show expected paths do not syntactically fail;
   they do not prove card quality, adherence to the skill, or alignment. Review the control flow,
   failure modes, user impact, and maintainability of every change.
@@ -100,19 +102,17 @@ Before calling a change to `SKILL.md`, references, stage flow, commands, or pipe
 
 ### Cold dry-run audit
 
-Use a tiny text source so the run is fast:
+Use the maintained fixture so the audit exercises topic separation, KC granularity, prerequisite
+order, and varied card families. A single-digit deck cannot show any of those:
 
 ```bash
 mkdir -p /tmp/opencode/anki-cold-<date>
-printf '%s\n' \
-  "Ohm's law: V = IR. Resistance is the ratio V/I." \
-  "In a series circuit, the same current flows through every element." \
-  "In a parallel circuit, the same voltage appears across every branch." \
-  > /tmp/opencode/anki-cold-<date>/notes.txt
+cp tests/fixtures/cold_audit_notes.txt /tmp/opencode/anki-cold-<date>/notes.txt
 ```
 
-Give the agent only the skill path, the user request, and these constraints. Do not describe the
-seven steps or the expected answers; the point is to see what the skill alone produces.
+Expect roughly 15–25 cards across three topics. Give the agent only the skill path, the user
+request, and these constraints. Do not describe the seven steps or the expected answers; the point
+is to see what the skill alone produces.
 
 > This is a cold-start dry run. Treat it as a fresh task: do not use prior conversation context.
 > Read `SKILL.md` first; open another reference only when the skill says that step needs it.
@@ -130,9 +130,10 @@ seven steps or the expected answers; the point is to see what the skill alone pr
 > work files under the temporary folder. Use the skill's scripts directly. If a command fails, capture the exact
 > error and continue only if safe.
 >
-> Report: steps and exact commands; artifacts; where the skill broke, was ambiguous, or made you
-> guess; whether you stayed on the path; unclear defaults (adversarial, images, context/dossier,
-> review actions). Do not fix the skill. Leave the folder for inspection.
+> Report: steps and exact commands; artifacts; card and topic counts; KC count; warning classes;
+> whether prerequisite order is observable; packet size and word counts; where the skill broke,
+> was ambiguous, or made you guess; whether you stayed on the path; unclear defaults (adversarial,
+> images, context/dossier, review actions). Do not fix the skill. Leave the folder for inspection.
 
 Findings: a confirmed break gets a fix and, where deterministic, a regression test. An ambiguous
 line gets a one-line wording fix; do not add a new stage or document. A default confusion belongs

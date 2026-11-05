@@ -64,7 +64,8 @@ a back, or an answer-leaking term in `topic`/`objects`.
 ## Batching
 
 - Write one topic batch in one `write` call during initial authoring. Do not append card-by-card.
-- Run one gates call after the batch. Fix all errors in one whole-file rewrite.
+- Run one gates call after the authoring batch (all topics), not one per topic. Fix all errors in
+  one whole-file rewrite.
 - After review, apply all feedback in one complete whole-file write; then one gates call.
 - A global symbol or formatting change is one whole-file write, not one edit per card or per symbol.
 - A deck of any size is a sequence of topic batches during initial authoring. A review change is
@@ -102,8 +103,9 @@ a back, or an answer-leaking term in `topic`/`objects`.
   the deck warns: it is a card index. Duplicate claims are errors; no filler.
 - Bad: 41 cards, 32 KCs, 25 singles. Good: ~12–16 KCs, each covering several cards, plus a few
   justified anchors/boundaries. `why: one-card exception` is not a value case.
-- `type` is optional. Every `requires` resolves and the graph is acyclic; the builder orders cards
-  by prerequisite depth within each topic. Source-dependent KCs need a short quote from the
+- `type` is optional. Every `requires` resolves and the graph is acyclic; the builder orders each
+  topic's queue by prerequisite depth, then interleaves topics. A cross-topic prerequisite is
+  recorded but not guaranteed by the interleaver. Source-dependent KCs need a short quote from the
   corpus; `derived` exempts.
 - `Ceiling: N` is a soft cap; the gate warns, never cuts. Park the weaker candidate.
 

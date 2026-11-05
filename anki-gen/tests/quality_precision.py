@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from validate_cards import check_cards  # noqa: E402
 from roi_report import report as roi_report_text  # noqa: E402
+from triage import select  # noqa: E402
+from build_apkg import study_order  # noqa: E402
 
 BASE = {"layer": "L2", "topic": "Data Structures", "objects": [],
         "deck": "QUALITY::TEST", "source": "Lec 4 p.2"}
@@ -25,32 +28,48 @@ def main() -> int:
         card("What does a queue do with the most recently added item?",
              "It returns it last (FIFO). **Why:** items leave from the front.", tier_zero=True),
         card("What is the difference between a stack and a queue?",
-             "A stack is LIFO; a queue is FIFO. **Why:** the accessible end differs.", stratum="contrast"),
+             "A stack is LIFO; a queue is FIFO. **Why:** the accessible end differs."),
         card("How do you convert a 3-index to a 4-index?",
              "Add 1 to each position. **Why:** the reciprocal pair is the confusion being tested."),
         card("How do you convert a 4-index to a 3-index?",
              "Subtract 1 from each position. **Why:** the reciprocal pair is the confusion being tested."),
         card("What is a graph?",
              "A set of vertices and edges. **Glossary:** $V$ = vertices; $E$ = edges. "
-             "**Why:** relations are the object of study.", stratum="definition"),
+             "**Why:** relations are the object of study."),
         card("What is a tree?",
              "A connected acyclic graph. **Glossary:** $V$ = vertices; $E$ = edges. "
-             "**Why:** removing cycles makes paths unique.", stratum="definition"),
+             "**Why:** removing cycles makes paths unique."),
         card("When does a greedy algorithm fail?",
              "When a local choice blocks a better global choice. **Why:** the exchange "
              "argument no longer holds; a counterexample is the classic trap.", layer="L3"),
         card("Which structure has the lowest worst-case search for 1,000 sorted items: "
              "array, linked list, or balanced tree?",
-             "A balanced tree. **Why:** $O(\\log n)$ beats $O(n)$.", stratum="comparison"),
+             "A balanced tree. **Glossary:** $O(\\cdot)$ = asymptotic upper bound. "
+             "**Why:** $O(\\log n)$ beats $O(n)$."),
+        card("The three primary colors are {{c1::red}}, {{c2::green}}, and {{c3::blue}}.",
+             "Additive mixing uses red, green, and blue. **Why:** the eye has three cone types.",
+             layer="L1", cloze=True, source="derived"),
     ]
     errors, warnings, info = check_cards(cards)
     assert not errors, errors
-    assert not [w for w in warnings if "similar" in w or "overlapping" in w
-                or "duplicate" in w], warnings
+    assert not warnings, warnings
     # Soft duplicates are candidates in the ROI report, not validator warnings;
     # deliberate contrasts may appear there and the debloat pass decides.
-    assert not errors, errors
     print("ok    legitimate contrast/reciprocal/glossary cards stay clean by default")
+
+    perf = [
+        card(f"Perf card {i}?", f"The answer is stable. **Why:** reason number {i} is distinct.",
+             topic="Perf", source="derived")
+        for i in range(300)
+    ]
+    started = time.perf_counter()
+    check_cards(perf)
+    roi_report_text(perf)
+    select(perf, 1, 12)
+    study_order(perf)
+    elapsed = time.perf_counter() - started
+    assert elapsed < 5, f"core path took {elapsed:.2f}s on 300 cards"
+    print(f"ok    core path stays fast on 300 cards ({elapsed:.2f}s)")
 
     # A true duplicate is still an exact, deterministic error.
     dup = [cards[0], dict(cards[0])]

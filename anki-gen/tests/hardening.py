@@ -477,6 +477,15 @@ def main() -> int:
     assert depths == {"a": 1, "b": 0} and not cycle, (depths, cycle)
     dep_order = [c["front"] for c in study_order(dep_cards, depths)]
     assert dep_order[0].startswith("What is nodal"), dep_order
+    diamond, _ = requires_depths({"a": {"requires": ["b", "c"]},
+                                  "b": {"requires": ["d"]},
+                                  "c": {"requires": ["d"]},
+                                  "d": {"requires": []}})
+    assert diamond == {"a": 2, "b": 1, "c": 1, "d": 0}, diamond
+    missing, _ = requires_depths({"a": {"requires": ["nope", "external"]}})
+    assert missing == {"a": 0}, missing
+    _, cycle = requires_depths({"a": {"requires": ["a"]}})
+    assert cycle, cycle
     _, cycle = requires_depths({"a": {"requires": ["b"]},
                                 "b": {"requires": ["a"]}})
     assert cycle, cycle
@@ -549,6 +558,13 @@ def main() -> int:
          "error", "no source")
     case("source without locator", lambda: [dict(BASE, source="Lecture")],
          "warning", "no locator")
+    case("comparison front without data",
+         lambda: [dict(BASE, objects=[], front="Which structure has the lowest density?")],
+         "warning", "comparison front")
+    data, _ = validate([dict(BASE, objects=[],
+                             front="Does the scheduler run the highest-priority task?")])
+    assert not any("comparison front" in w for w in data["warnings"]), data
+    print("ok    superlative in ordinary recall is not a comparison warning")
     case("topic is layer code", lambda: [dict(BASE, topic="L2")],
          "error", "topic is the layer")
     case("objects string", lambda: [dict(BASE, objects="vacancy")],
@@ -561,8 +577,16 @@ def main() -> int:
          lambda: [dict(BASE, objects=[], front="For the circuit shown, what is the current?")],
          "warning", "front refers")
     case("multi-blank cloze without labels",
-         lambda: [dict(BASE, objects=[], front="{{c1::5}} and {{c2::7}}", cloze=True)],
+         lambda: [dict(BASE, objects=[],
+                       front="Metal film\nTolerance {{c1::5}}\nPower {{c2::7}}",
+                       cloze=True)],
          "warning", "multi-blank")
+    prose_cloze, _ = validate([dict(
+        BASE, objects=[], layer="L1",
+        front="The three primary colors are {{c1::red}}, {{c2::green}}, and {{c3::blue}}.",
+        back="Additive mixing uses red, green, and blue. **Why:** the eye has three cone types.",
+        cloze=True, source="derived")])
+    assert not any("multi-blank" in w for w in prose_cloze["warnings"]), prose_cloze
     front_media, _ = validate([dict(
         BASE, front="For the circuit shown, what is the current?",
         media=[{"file": "figure.png", "side": "front"}])])
@@ -587,13 +611,6 @@ def main() -> int:
     html_code, _ = validate([dict(BASE, back="Use `<p>` as a literal HTML tag.\n\n"
                                            "**Why:** the tag is the lesson.")])
     assert not any("raw HTML tag" in w for w in html_code["warnings"]), html_code
-    case("section label without blank line",
-         lambda: [dict(BASE, back="The answer is fixed. **Why:** geometry fixes it.")],
-         "warning", "not preceded by a blank line")
-    section_ok, _ = validate([dict(BASE, back="The answer is fixed.\n\n"
-                                              "**Why:** geometry fixes it.")])
-    assert not any("not preceded by a blank line" in w
-                   for w in section_ok["warnings"]), section_ok
     case("LaTeX outside math",
          lambda: [dict(BASE, back="Use \\frac{1}{2} here.\n\n**Why:** geometry fixes it.")],
          "error", "LaTeX command outside math")
@@ -715,6 +732,14 @@ def main() -> int:
         assert "duplicate" not in out, out
         print("ok    sabotage detected: answer overlap")
 
+        mut = copy_scripts(td / "mut-yesno")
+        mutate(mut / "validate_cards.py", mut / "validate_cards.py",
+               [("if YES_NO_FRONT.search(front):", "if False:")])
+        data, _ = validate([dict(BASE, front="Does a series circuit keep the same current?",
+                                 back="There is only one path.")], mut)
+        assert not any("yes/no front" in w for w in data["warnings"]), data
+        print("ok    sabotage detected: yes/no front")
+
     # Golden deck: quality counters must not silently drop.
     golden = load_golden()
     data, _ = validate(golden)
@@ -724,7 +749,10 @@ def main() -> int:
     tier = sum(1 for c in golden if c.get("tier_zero"))
     gloss = sum(1 for c in golden if re.search(r"\*\*Glossary", c["back"]))
     assert (why, sources, tier, gloss) == (5, 5, 1, 1), (why, sources, tier, gloss)
-    print("ok    golden quality counters")
+    assert len(data["warnings"]) == 2, data["warnings"]
+    assert any("glossary" in w for w in data["warnings"]), data["warnings"]
+    assert any("build will drop" in w for w in data["warnings"]), data["warnings"]
+    print("ok    golden quality counters and warning allowlist")
 
     r = run([sys.executable, str(SCRIPTS / "roi_report.py"), str(GOLDEN),
              "--list"])

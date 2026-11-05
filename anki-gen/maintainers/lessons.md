@@ -137,6 +137,18 @@ These are prose-only guards. Use them in audits; do not turn them into new scrip
   directory was never created), `schemas/intent.json` (read by nothing), Image Occlusion and Type-in
   templates (no notetype implements them), and the lettered check labels (`A3`, `B4`) in favour of
   rule numbers.
+- **Section-label warning removed; renderer owns it.** The warning described source style while
+  `render.py` already split known labels into paragraphs. The regression test now checks the
+  rendered HTML, not the warning.
+- **Prose multi-blank cloze is accepted.** The label warning now applies to field-like fronts
+  (newline or table row); a one-line enumeration carries its own sentence context.
+- **Topic-count and comparison warnings are kept as grouped warnings until proven replaceable.**
+  They guard prior low-quality decks. The judgment lens, ROI topic/restatement report, and the
+  quality corpus are the replacement evidence; do not remove them on the strength of the new lens
+  alone.
+- **The adversarial reviewer is not a second validator.** It gets a judgment lens, not the
+  validator's compliance checklist, and no source corpus. Duplicating the author's rules made it
+  rubber-stamp the author's framing.
 
 ## Architecture failure modes
 

@@ -7,10 +7,10 @@ Commands use `$SKILL` for the directory containing `SKILL.md`.
 Review happens in a throwaway localhost page, **not in the chat**. The 1–5 scale carries the two
 signals cutting and splitting need: *too hard for me* and *I already know this cold*.
 
-### Quality rubric — one rubric
+### Human quality rubric
 
-Use this on the human sample plus flagged cards and on the full-deck adversarial pass. Both use
-the same rubric; do not maintain a second checklist.
+Use this on the human sample plus flagged cards. The full-deck adversarial reviewer uses the
+judgment lens below; it is not a second compliance checklist.
 
 1. **Source-grounded:** locator supports the claim, or `derived` is genuinely self-contained.
 2. **One retrieval decision:** a wrong answer points to one thing to repair. It is not a duplicate
@@ -40,21 +40,31 @@ concepts. Card count is not KC quality.
 
 **Full-deck adversarial reviewer:** run whenever a read-only subagent is available; skip only if
 none exists. Start after the web review opens, or after the gates call when the page is skipped.
-Give it `$WORK/review_packet.md` only; it contains every card. Ask for one line per card: `KEEP|FIX|FAIL | card number | one-line reason`. Use the one
-rubric for source, symbols, and media, then apply this decision/overlap pass. Also flag a KC map
-that is mostly one-card; the packet contains every KC.
+Give it `$WORK/review_packet.md` only; it contains every card. Ask for one line per card:
+`KEEP|FIX|FAIL | card number | one-line reason`.
 
-- Reduce each front to the exact answer it demands.
-- FAIL when the demand is a final numeric value requiring computation (basic counting of visible
-  steps/items is allowed), when the back is a worked or remaining solution, when the front demands
-  more than one decision, has no explicit question, or cues its own answer, when the card is yes/no
-  or multiple-choice recognition, or when it duplicates another card’s target unless the pair is
-  contrastive. Fail the redundant duplicate, not both.
-- KEEP a card only when the front is self-contained — the equation, every symbol, and any
-  “left side/this equation” are on the card — and the back names the decision with its condition
-  or reason. Problem data and an equation sheet are allowed; Procedure cards are expected.
-- FIX a valid decision card with a generic “calculate/compute” cue, a missing selecting condition,
-  or an undefined symbol/context.
+**It is not a second validator.** The validator owns source presence, MathJax, tags, cloze braces,
+media shape, and field mechanics; do not spend findings re-auditing them. Its value is the
+judgment a validator cannot make. Use this lens:
+
+- **Retrieval value:** would this learner fail it after one careful read? If they would ace it,
+  FAIL; the deck's value is the fraction they fail, not its size.
+- **Single decision:** name the one thing a wrong answer repairs. More than one → FIX.
+- **Production:** can the answer be produced from memory, or is it recognition/computation?
+  Computation → FAIL.
+- **Cue sufficiency:** does the front name the exact target and carry the data and conditions it
+  needs? If not → FIX.
+- **Discrimination:** does it separate the target from a tempting sibling? If not → FIX.
+- **Opportunity cost:** does it duplicate a target or crowd a higher-value card? MERGE/CUT.
+- **Prerequisite:** does it assume a KC not yet introduced? Flag the missing anchor/order.
+- **Calibration:** is the back's scaffolding right for the stated learner? Over-scaffolded → FIX.
+- **Transfer:** does it test a decision that moves to exam problems, or a label?
+- **Evidence:** if the claim goes beyond the KC `evidence_quote`, flag it for source check.
+
+The principles are retrieval practice, desirable difficulty, interference/discrimination,
+expertise reversal, cognitive load, and transfer-appropriate processing. The packet carries the
+learner context, KC claims, and evidence quotes; do not give it the source corpus or the author's
+reasoning. Also flag a KC map that is mostly one-card.
 
 It never rewrites or certifies. If it returns no output or ends on its length limit, treat it as
 **not run**. Do not rerun it after a formatting-only change; render one card instead.

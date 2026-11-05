@@ -1,0 +1,44 @@
+CIRCUITS
+
+Electric current is the rate of charge flow. One ampere is one coulomb per second.
+Ohm's law says the voltage across a resistor is V = IR at constant temperature.
+Resistance is the ratio R = V/I; its unit is the ohm.
+In a series circuit the same current flows through every element.
+In a parallel circuit the same voltage appears across every branch.
+Electrical power is P = VI; it is also I squared R and V squared over R.
+A node is a junction where two or more circuit elements meet.
+The reference node is the node chosen as zero volts.
+Kirchhoff's current law says the currents leaving a node sum to zero.
+Nodal analysis writes Kirchhoff's current law at every non-reference node.
+A voltage source between two non-reference nodes creates a supernode.
+A supernode lets one write a single equation around the source instead of treating both terminals separately.
+The supernode does not apply when one terminal is the reference node; then the source directly fixes one node voltage.
+A Norton source is a current source in parallel with a resistance.
+A Thevenin source is a voltage source in series with a resistance.
+
+THERMODYNAMICS
+
+A control volume is a fixed region in space through which mass and energy can flow.
+The first law for a control volume balances energy entering, energy leaving, and the change of energy inside.
+A steady-flow device has no change in stored mass or stored energy with time.
+The steady-flow energy equation is often written with enthalpy, kinetic energy, potential energy, heat, and work terms.
+Sign convention: heat added to the system is positive, and work done by the system is positive.
+A turbine extracts work from a flowing fluid.
+A compressor adds work to a flowing fluid.
+A nozzle converts pressure energy into kinetic energy.
+The steady-flow equation fails during startup and shutdown, when stored energy changes.
+A closed system has fixed mass but may exchange heat and work with its surroundings.
+Specific heat at constant pressure and specific heat at constant volume are different for a gas.
+
+MATERIALS
+
+A vacancy is an empty lattice site in a crystal.
+The equilibrium vacancy concentration increases with temperature.
+The Arrhenius form gives the vacancy concentration as an exponential of formation energy over thermal energy.
+Diffusion is net atom motion down a concentration gradient.
+Fick's first law says the diffusion flux is proportional to the negative concentration gradient.
+The diffusion coefficient increases with temperature in an Arrhenius form.
+Interstitial diffusion is usually faster than substitutional diffusion because the migrating atom is smaller.
+Grain boundaries can act as fast diffusion paths.
+Fick's first law assumes steady state; it does not describe a concentration that changes with time.
+A dislocation is a line defect, not a point defect.

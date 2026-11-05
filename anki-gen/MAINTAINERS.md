@@ -94,6 +94,8 @@ These were removed or rejected because they added surface without reliability:
 - editing the live skill during a deck run
 - `--deep` and a second soft-duplicate path in the validator; the ROI report owns candidates
 - hidden `KC`/`Requires` note fields; prerequisite order lives in the build, not the schema
+- the section-label blank-line warning; the renderer owns section layout
+- packet-level `Why selected`; it biases the full-deck reviewer toward the triage sample
 
 ### Research anchors
 

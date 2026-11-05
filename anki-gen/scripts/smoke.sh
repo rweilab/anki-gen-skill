@@ -6,7 +6,8 @@
 # kills a process: it asks the review server to finish (POST /finish) and lets its
 # own idle-timeout be the backstop.
 #
-#   bash scripts/smoke.sh
+#   bash scripts/smoke.sh                  # full gate; run before handoff
+#   bash scripts/smoke.sh --fast           # core path while iterating
 #   KEEP_WORK=1 bash scripts/smoke.sh      # opt in to keeping the temp tree
 #   SMOKE_DEBUG=1 bash scripts/smoke.sh    # trace shell commands
 #
@@ -20,8 +21,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS="$ROOT/scripts"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/anki-gen-smoke.XXXXXX")"
 VERSION="$(cat "$ROOT/VERSION")"
+FAST=0
+for arg in "$@"; do
+  case "$arg" in
+    --fast) FAST=1 ;;
+    *) echo "usage: bash scripts/smoke.sh [--fast]" >&2; exit 2 ;;
+  esac
+done
+junk() {
+  find "$ROOT/.." -maxdepth 2 \
+    \( -name '*.apkg' -o -name 'review_done' -o -name '.anki-gen-temp' \
+       -o -name '*.tmp' -o -name '*.log' -o -name 'review_packet.md' \) \
+    -print 2>/dev/null | sort
+}
 BEFORE_STATUS="$(git -C "$ROOT/.." status --porcelain --untracked-files=all 2>/dev/null || true)"
-BEFORE_JUNK="$(find "$ROOT/.." -maxdepth 1 \( -name '*.apkg' -o -name 'review_done' -o -name '.anki-gen-temp' \) -print 2>/dev/null | sort)"
+BEFORE_JUNK="$(junk)"
 URL=""
 server_pid=""
 KEEP_WORK="${KEEP_WORK:-0}"
@@ -230,6 +244,14 @@ for md in runtime_docs:
         bad.append(f"{rel}: adversarial review is mandatory when available")
     if "glossary info" in text or "reports (info, not a warning)" in text:
         bad.append(f"{rel}: glossary severity is a warning")
+removed_surface = ("--deep", "_grouped_order", "Why selected",
+                   "not preceded by a blank line; split the sections")
+for path in (root / "SKILL.md", *sorted((root / "references").glob("*.md")),
+             *sorted((root / "scripts").glob("*.py"))):
+    text = path.read_text()
+    for token in removed_surface:
+        if token in text:
+            bad.append(f"{path.relative_to(root)}: reintroduced removed surface {token!r}")
 authoring = (root / "references" / "authoring.md").read_text()
 for line in authoring.splitlines():
     if line.startswith("Optional fields:") and "evidence_quote" in line:
@@ -513,38 +535,47 @@ pass "recall-mode review stores a false row"
 python3 "$ROOT/tests/hardening.py" || fail "hardening checks"
 pass "hardening checks"
 
-python3 "$ROOT/tests/visual_hardening.py" || fail "visual hardening"
-pass "visual hardening"
+if [ "$FAST" = 0 ]; then
+  python3 "$ROOT/tests/visual_hardening.py" || fail "visual hardening"
+  pass "visual hardening"
 
-python3 "$ROOT/tests/video_hardening.py" || fail "video hardening"
-pass "video hardening"
+  python3 "$ROOT/tests/video_hardening.py" || fail "video hardening"
+  pass "video hardening"
 
-python3 "$ROOT/tests/slides_hardening.py" || fail "slides hardening"
-pass "slides hardening"
+  python3 "$ROOT/tests/slides_hardening.py" || fail "slides hardening"
+  pass "slides hardening"
 
-python3 "$ROOT/tests/local_media_hardening.py" || fail "local media hardening"
-pass "local media hardening"
+  python3 "$ROOT/tests/local_media_hardening.py" || fail "local media hardening"
+  pass "local media hardening"
+fi
 
 python3 "$ROOT/tests/pipeline_hardening.py" || fail "pipeline hardening"
 pass "pipeline hardening"
 
-python3 "$ROOT/tests/context_hardening.py" || fail "context hardening"
-pass "context hardening"
+if [ "$FAST" = 0 ]; then
+  python3 "$ROOT/tests/context_hardening.py" || fail "context hardening"
+  pass "context hardening"
 
-python3 "$ROOT/tests/revision_hardening.py" || fail "revision hardening"
-pass "revision hardening"
+  python3 "$ROOT/tests/revision_hardening.py" || fail "revision hardening"
+  pass "revision hardening"
+fi
 
 python3 "$ROOT/tests/quality_precision.py" || fail "quality precision"
 pass "quality precision"
 
-bash "$ROOT/tests/install_test.sh" || fail "installer/upgrade"
-pass "installer/upgrade"
+if [ "$FAST" = 0 ]; then
+  bash "$ROOT/tests/install_test.sh" || fail "installer/upgrade"
+  pass "installer/upgrade"
+fi
 
 AFTER_STATUS="$(git -C "$ROOT/.." status --porcelain --untracked-files=all 2>/dev/null || true)"
-AFTER_JUNK="$(find "$ROOT/.." -maxdepth 1 \( -name '*.apkg' -o -name 'review_done' -o -name '.anki-gen-temp' \) -print 2>/dev/null | sort)"
+AFTER_JUNK="$(junk)"
 if [ "$AFTER_STATUS" != "$BEFORE_STATUS" ] || [ "$AFTER_JUNK" != "$BEFORE_JUNK" ]; then
   fail "test changed the working tree or left files behind"
 fi
 pass "no test litter in the working tree"
 
+if [ "$FAST" = 1 ]; then
+  printf '\nFAST MODE — run full smoke before handoff.\n'
+fi
 printf '\nPASS  anki-gen smoke test\n'

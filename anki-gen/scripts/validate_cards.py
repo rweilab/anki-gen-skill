@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cardid import load_cards   # noqa: E402
-from render import DERIVED_SOURCES, SECTION_LABELS, to_html  # noqa: E402
+from render import DERIVED_SOURCES, to_html  # noqa: E402
 from schema_types import Card, KC  # noqa: E402
 
 # Scoped to FRONTS. A back legitimately says "set them equal and solve" as a method
@@ -122,7 +122,11 @@ STRUCT_GLOSSARY = re.compile(
     re.I | re.M)
 
 TIER_ZERO = re.compile(r"tier\s*[- ]?zero|tier\s*0", re.I)
-CMP = re.compile(r'(lowest|highest|most|least|rank|among)\b', re.I)
+# The warning is for a comparison/ranking DEMAND, not for a superlative inside
+# ordinary recall ("highest-priority task", "most recently pushed").
+CMP = re.compile(
+    r'^\s*(?:\*\*)?(?:which|what|rank)\b[^?\n]{0,120}\b(lowest|highest|rank|among)\b',
+    re.I)
 FORMULA = re.compile(r"\$[^$]+\$|\b(?:formula|equation)\b", re.I)
 CODE_SPAN = re.compile(r"`[^`]*`", re.S)
 MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
@@ -135,8 +139,6 @@ POINTER = re.compile(
     re.I)
 
 MATH_SPAN = re.compile(r"\$[^$]+\$", re.S)
-SECTION_LABEL = re.compile(
-    r"\*\*(" + "|".join(SECTION_LABELS) + r"):\*\*", re.I)
 # Structural HTML in the source is almost always a copy of built fields. Keep
 # this a warning: a deck whose subject is HTML/CSS may intentionally show tags,
 # and the renderer already escapes them.
@@ -624,7 +626,7 @@ def findings(cards: list[Card]):
         if has_deletion and not is_cloze_flag:
             add(i, "err", f"{label} -- front contains cloze syntax but card is not "
                           "flagged cloze; it would render literally as a Basic note")
-        if is_cloze_flag:
+        if is_cloze_flag and ("\n" in front or "|" in front):
             blanks = list(re.finditer(r"\{\{c\d+::", front))
             if len(blanks) >= 2:
                 for blank in blanks:
@@ -751,8 +753,8 @@ def findings(cards: list[Card]):
                        f"most common: {', '.join(f'{o}({k})' for o, k in objs.most_common(6))}")
         if len(objs) >= 3 and len(singletons) > len(objs) / 2:
             add(0, "warn", f"{len(singletons)} of {len(objs)} object tags appear on a "
-                           f"single card ({', '.join(singletons[:6])}); an object "
-                           "tag should name a thing more than one card is about")
+                           f"single card ({', '.join(singletons[:6])}); the build will "
+                           "drop these tags — re-pick or remove them")
     if back_verb_cards:
         add(0, "info", f"{len(back_verb_cards)} card(s) use an instructional verb in the "
                        "back (expected -- a back may describe method)")
@@ -861,15 +863,6 @@ def math_format_findings(cards: list[Card]):
                     out.append((i, "warn", f"math inside a code span in {field}; "
                                           "remove the backticks so MathJax renders it"))
                     break
-            if field == "back":
-                prose = CODE_SPAN.sub("", text)
-                for match in SECTION_LABEL.finditer(prose):
-                    before = prose[:match.start()]
-                    if before and not before.endswith("\n\n"):
-                        out.append((i, "warn", f"section label {match.group(0)} in "
-                                              "the back is not preceded by a blank "
-                                              "line; split the sections"))
-                        break
             prose = _outside_math(text)
             if SOURCE_HTML.search(prose):
                 out.append((i, "warn", f"raw HTML tag in {field}; source is Markdown "
@@ -1021,8 +1014,6 @@ def fix_for(message: str) -> str:
         return "let the builder convert `$...$`; do not pre-convert MathJax delimiters"
     if "math inside a code span" in low:
         return "remove the backticks around `$...$`; code spans render literally"
-    if "section label" in low and "blank line" in low:
-        return "put a blank line before `**Why:**` / `**Glossary:**` / other section labels"
     if "double-escaped latex" in low:
         return "use one backslash in JSONL; write `$...$`, not `\\(...\\)`"
     if "latex command outside math" in low:

@@ -14,8 +14,9 @@ Harness-agnostic: `SKILL` is the directory containing this file. Install paths
 `$WORK` is a fresh `.anki-gen-temp/<slug>-<YYYYMMDD-HHMM>` (deck name lowercased, `::`/spaces
 → `-`). Never reuse a previous run's directory; if it exists, pick a new suffix. Every artifact
 lives there; the `.apkg` is the only new file in the caller's directory. Keep source files outside
-`$WORK`; the extractor excludes it. If the caller pins the run to one folder, put `$WORK` in a
-subfolder and keep the sources at the parent.
+`$WORK`; the extractor excludes it. If the caller pins the run to one folder, use
+`<folder>/.anki-gen-temp/<slug>-<date>` for `$WORK`, keep the sources at the parent, and write the
+`.apkg` to the pinned folder.
 
 ## Route first
 

@@ -330,7 +330,8 @@ def build_plan(cards_json: str, cards: list[Card], entries, stats,
         if stats.get("media_total"):
             note += (f"; images {stats['media_shown']}/{stats['media_total']}")
         if stats["flagged_total"] == 0:
-            note += ". Nothing is flagged, so the questionable-card axis is empty"
+            note += (". No gate finding is flagged, so the questionable-card axis is empty; "
+                     "ROI candidates are separate")
         if stats["withheld"]:
             note += (f". {len(stats['withheld'])} more card(s) were available and are held "
                      f"back by --max (listed below, grouped) — raise it for depth, or cover "

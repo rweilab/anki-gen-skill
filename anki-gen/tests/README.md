@@ -27,5 +27,7 @@ Canonical ownership:
 - vision confirmation selection: `visual_hardening.py`
 - review plan staleness, review page, and UI text: `scripts/smoke.sh`
 
-Run one suite directly while iterating. Run `bash scripts/smoke.sh` once before
-handoff; it contains the changelog, package, UI, installer, and no-litter gates.
+Run one suite directly while iterating. `bash scripts/smoke.sh --fast` runs the
+core path; full `bash scripts/smoke.sh` runs media, video, dossier, revision,
+installer, and no-litter gates before handoff. The maintainer cold audit uses
+`tests/fixtures/cold_audit_notes.txt` and expects 15–25 cards across 3+ topics.

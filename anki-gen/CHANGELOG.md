@@ -61,12 +61,31 @@ These are deliberate, not forgotten:
   dump and `Why selected` lines are gone. It still carries every card and the KC evidence.
 - Runtime history moved to `maintainers/lessons.md`; card-writing and review references keep the
   rule and the one-line why.
+- The section-label blank-line warning is gone: `render.py` already splits known labels into
+  paragraphs. The regression test checks the rendered HTML instead of the source-style warning.
+- The multi-blank cloze label warning now applies to field-like fronts (newline or table row).
+  A prose enumeration carries its own context and is accepted.
+- The comparison warning now requires a comparison demand ("which/what/rank" plus
+  lowest/highest/rank/among). It no longer flags ordinary recall such as "most recently pushed"
+  or "highest-priority task".
+- The object-singleton warning now says the build will drop the tag, so the consequence is clear.
+- The adversarial reviewer gets a judgment lens rather than the validator's compliance checklist:
+  retrieval value, single decision, production, cue sufficiency, discrimination, opportunity
+  cost, prerequisite coherence, calibration, transfer, and evidence. It stays source-blind.
+- `smoke.sh --fast` runs the core path while iterating; full smoke remains the handoff gate.
+- Cold-audit clarifications: the pinned work-dir shape is explicit, gates run once after all
+  topics, the builder's per-topic queue/interleave behavior is stated, and the triage note no
+  longer implies ROI candidates are gate flags.
 
 ### Tests
 
 - Yes/no warning now covers a non-yes/no back; prerequisite depth and cycle fallback are covered;
   ROI duplicate candidates and the validator/ROI ownership split are covered; the pipeline
   `--kcs` pass-through and the trimmed packet are covered.
+- The golden deck asserts an exact warning allowlist; the clean corpus asserts zero warnings;
+  a 300-card path has a generous performance budget; the yes/no, tag, and duplicate mutations
+  each have a sabotage probe.
+- The maintainer cold audit uses a 3-topic fixture and expects a 15–25 card deck.
 
 ## v1.5.8 — Fixed review sample and safe live-deck sync
 
